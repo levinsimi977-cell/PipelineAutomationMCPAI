@@ -31,7 +31,7 @@ class ReportGenerator:
     """
 
     def __init__(self, templates_dir: str | Path | None = None) -> None:
-        base_dir = Path(__file__).resolve().parents[1]
+        base_dir = Path(__file__).resolve().parent
         default_templates = base_dir / "templates"
         self.templates_dir = Path(templates_dir) if templates_dir else default_templates
 
