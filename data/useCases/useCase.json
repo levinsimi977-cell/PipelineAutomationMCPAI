@@ -1,1 +1,88 @@
-[]
+{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "Validate SDK integration and deep link flow in a resilient way.",
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "deeplink": {
+      "use_deep_linking": true,
+      "onelink_url": "https://example.onelink.me/abc1",
+      "url_identifier": "offers",
+      "uri_scheme": "myapp",
+      "use_custom_uri_scheme": true
+    },
+    "in_app_event": {
+      "inapp_event_method": "log_event",
+      "event_name": "af_purchase",
+      "event_params": {
+        "currency": "USD",
+        "value": 9.99
+      }
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "android": null
+  },
+  "installation_answers": [
+    {
+      "question": "Is AppsFlyer initialized in app startup?",
+      "answer": "yes"
+    }
+  ],
+  "agent_messages": [
+    "Prompt analyzed successfully",
+    "Rules loaded successfully"
+  ],
+  "installation_agent_summary": "SDK integration flow completed with no critical setup errors."
+}
+{
+    "app_path": "data/application/banana.app",
+    "platform": "ios",
+    "prompt_goal": "Validate SDK integration and deep link flow in a resilient way.",
+    "answer_policy": {
+      "ios_minimal": {
+        "use_att": true,
+        "use_cuid": false,
+        "use_scene_delegate": true,
+        "use_response_listener": true
+      },
+      "deeplink": {
+        "use_deep_linking": true,
+        "onelink_url": "https://example.onelink.me/abc1",
+        "url_identifier": "offers",
+        "uri_scheme": "myapp",
+        "use_custom_uri_scheme": true
+      },
+      "in_app_event": {
+        "inapp_event_method": "log_event",
+        "event_name": "af_purchase",
+        "event_params": {
+          "currency": "USD",
+          "value": 9.99
+        }
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      },
+      "android": null
+    },
+    "installation_answers": [
+      {
+        "question": "Is AppsFlyer initialized in app startup?",
+        "answer": "yes"
+      }
+    ],
+    "agent_messages": [
+      "Prompt analyzed successfully",
+      "Rules loaded successfully"
+    ],
+    "installation_agent_summary": "SDK integration flow completed with no critical setup errors."
+  }
