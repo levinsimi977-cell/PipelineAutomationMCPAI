@@ -1,7 +1,7 @@
 {
   "app_path": "data/application/banana.app",
   "platform": "ios",
-  "prompt_goal": "Validate SDK integration and deep link flow in a resilient way.",
+  "prompt_goal": "Trigger generic deep link and validate destination handling.",
   "answer_policy": {
     "ios_minimal": {
       "use_att": true,
@@ -17,12 +17,9 @@
       "use_custom_uri_scheme": true
     },
     "in_app_event": {
-      "inapp_event_method": "log_event",
-      "event_name": "af_purchase",
-      "event_params": {
-        "currency": "USD",
-        "value": 9.99
-      }
+      "inapp_event_method": "none",
+      "event_name": null,
+      "event_params": {}
     },
     "verify_sdk": {
       "verify_logs_ready": true,
@@ -30,15 +27,11 @@
     },
     "android": null
   },
-  "installation_answers": [
-    {
-      "question": "Is AppsFlyer initialized in app startup?",
-      "answer": "yes"
-    }
-  ],
+  "installation_answers": [],
   "agent_messages": [
-    "Prompt analyzed successfully",
-    "Rules loaded successfully"
+    "Deep link dispatched",
+    "Destination screen validated"
   ],
-  "installation_agent_summary": "SDK integration flow completed with no critical setup errors."
+  "installation_agent_summary": "Deep link smoke flow passed."
 }
+
