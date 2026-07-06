@@ -1,0 +1,44 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AuditRecord",
+    "type": "object",
+    "required": ["run", "summary", "events"],
+    "properties": {
+      "run": {
+        "type": "object",
+        "required": ["run_id", "platform", "use_case_id", "started_at", "ended_at"],
+        "properties": {
+          "run_id": { "type": "string" },
+          "platform": { "type": "string", "enum": ["ios", "android"] },
+          "use_case_id": { "type": "string" },
+          "started_at": { "type": "string" },
+          "ended_at": { "type": "string" }
+        }
+      },
+      "summary": {
+        "type": "object",
+        "required": ["status", "total_events", "failed_events", "warnings"],
+        "properties": {
+          "status": { "type": "string", "enum": ["passed", "failed", "partial"] },
+          "total_events": { "type": "integer", "minimum": 0 },
+          "failed_events": { "type": "integer", "minimum": 0 },
+          "warnings": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["timestamp", "source", "event", "status"],
+          "properties": {
+            "timestamp": { "type": "string" },
+            "phase": { "type": "string" },
+            "source": { "type": "string" },
+            "event": { "type": "string" },
+            "status": { "type": "string" },
+            "details": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
