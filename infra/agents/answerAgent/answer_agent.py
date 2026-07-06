@@ -753,14 +753,14 @@ def answer_question(state: dict[str, Any], question: str) -> str:
     raise UnansweredQuestionError(question, category)
 
 
+
 def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
     """
     LangGraph node: read state["incoming_question"], answer it, update state.
 
     T3-04b (Developer 9) — not implemented here.
     """
-    ...
-
+    
 
 def build_prompt_with_answers(
     base_prompt: str,
