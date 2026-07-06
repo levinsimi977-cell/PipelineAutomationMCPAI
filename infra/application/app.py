@@ -1,43 +1,6 @@
 import shutil
-import os
 from datetime import datetime
 from pathlib import Path
-
-# =====================================================================
-# TASK 2: Application Selection & Validation (Team 2 Integration)
-# =====================================================================
-
-def list_available_applications(base_dir: str = "data/application") -> list:
-    """
-    Scans the application data directory and returns a list of available app folders/files.
-    Excludes hidden files/directories (e.g., .gitkeep, .DS_Store).
-    """
-    base_path = Path(base_dir)
-    if not base_path.exists():
-        print(f"Warning: Base directory {base_dir} does not exist.")
-        return []
-        
-    # Standard security & cleanup filter to list only visible target apps
-    return [f.name for f in base_path.iterdir() if not f.name.startswith(".")]
-
-def select_and_validate_app(app_name: str, base_dir: str = "data/application") -> str:
-    """
-    Validates if the selected application exists in the target directory.
-    Ensures strict path safety to prevent directory traversal attacks (e.g., passing "../../etc").
-    Returns the absolute path if valid, otherwise raises an exception.
-    """
-    base_path = Path(base_dir).resolve()
-    # Resolve the target path completely to eliminate relative segments like '..'
-    target_app_path = (base_path / app_name).resolve()
-    
-    # Security Guardrail: Prevent escaping the designated data/application directory
-    if base_path not in target_app_path.parents and target_app_path != base_path:
-        raise ValueError(f"Security Alert: Path traversal detected for input '{app_name}'")
-    
-    if not target_app_path.exists():
-        raise FileNotFoundError(f"Requested application '{app_name}' was not found in {base_dir}")
-        
-    return str(target_app_path)
 
 
 # =====================================================================
@@ -79,43 +42,75 @@ def create_sandbox_app(original_app_path: str) -> str:
         
     return str(sandbox_app_path.resolve())
 
+# ****helper function****
+# =====================================================================
+# FUNCTION 1: Input Data Parsing
+# =====================================================================
+def extract_platform_from_json(state: dict) -> str:
+    """
+    Extracts the platform name from the incoming UseCase JSON state payload.
+    Raises a KeyError if the required 'PLATFORM' key is missing.
+    """
+    platform = state.get("platform")
+    if not platform:
+        raise KeyError("Missing 'platform' key in the input UseCase JSON.")
+    return platform
+
+# ****helper function
+# =====================================================================
+# FUNCTION 2: Directory Mapping and Sandbox Routing
+# =====================================================================
+def resolve_and_replicate_app(platform_name: str) -> str:
+    """
+    Maps the extracted platform name to the local directory structure 
+    and passes the validated absolute path to the sandbox replicator.
+    """
+    base_dir = "data/application"
+    
+    # Map the platform string to your exact repository folder names
+    if platform_name == "android":
+        app_folder_name = "appsflyer-onelink-android-sample-apps"
+    elif platform_name == "ios":
+        app_folder_name = "appsflyer-onelink-ios-sample-apps"
+    else:
+        raise ValueError(f"Unsupported platform: {platform_name}. Must be 'android' or 'ios'.")
+        
+    # Build the absolute path to the target folder
+    absolute_app_path = str(Path(base_dir).resolve() / app_folder_name)
+    
+    # Verify the physical folder exists locally before duplicating
+    if not Path(absolute_app_path).exists():
+        raise FileNotFoundError(f"Required application folder missing at: {absolute_app_path}")
+        
+    # Execute replication by calling your original function
+    return create_sandbox_app(absolute_app_path)
+
+
 def setup_environment(state: dict) -> dict:
     """
-    Workflow Node function that serves as the official pipeline entry point.
-    Dynamically extracts the selected app name from the shared state, validates it,
-    clones it into an isolated sandbox, and updates the pipeline state for downstream tasks.
+    Official pipeline workflow node. Parses the contract state,
+    provisions the sandbox directory, and outputs the updated pipeline payload.
     """
-    selected_app_name = state.get("selected_app")
-    
-    if not selected_app_name:
-        return {
-            "test_status": "FAIL",
-            "error_reason": "Missing 'selected_app' in the initial workflow state."
-        }
-        
     try:
-        # Step 1: Dynamically scan and validate user selection
-        absolute_app_path = select_and_validate_app(selected_app_name)
+        platform_name = extract_platform_from_json(state)        
+        sandbox_app_path = resolve_and_replicate_app(platform_name)
         
-        # Step 2: Provision the sterile environment
-        sandbox_app_path = create_sandbox_app(absolute_app_path)
-        
-        # Step 3: Populate and return the state update payload
+        # Return state compatible with downstream pipeline components
         return {
-            "selected_app": selected_app_name,
-            "original_app_path": absolute_app_path, 
+            "platform": platform_name,
             "app_path": sandbox_app_path,             
             "sandbox_path": sandbox_app_path,
             "test_status": "READY"
         }
-    except Exception as exc:
-        print(f"Error during environment setup: {exc}")
+    except KeyError as k_err:
+        print(f"Validation Error: {k_err}")
         return {
-            "selected_app": selected_app_name,
-            "original_app_path": "",
-            "app_path": "",
-            "sandbox_path": "",
+            "test_status": "FAIL",
+            "error_reason": str(k_err)
+        }
+    except Exception as exc:
+        print(f"Critical Error during environment setup orchestrator: {exc}")
+        return {
             "test_status": "FAIL",
             "error_reason": f"Environment setup failed: {str(exc)}"
         }
-        
