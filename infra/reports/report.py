@@ -1,21 +1,21 @@
 """
-MCP tool-order validator.
+ולידטור סדר הפעלת כלי MCP.
 
-Inputs (must be supplied by the caller — this module does NOT fetch them):
-  - platform: target platform for the run, e.g. "android" or "ios".
-              Expected source: use-case / run config (e.g. data/useCases/useCase.json)
-              or the orchestration layer (infra/aplication/app.py).
+קלטים (חייבים להגיע מהקורא — המודול הזה לא שולף אותם בעצמו):
+  - platform: פלטפורמת הריצה, למשל "android" או "ios".
+              מקור צפוי: הגדרת use-case / קונפיג ריצה (למשל data/useCases/useCase.json)
+              או שכבת האורקסטרציה (infra/aplication/app.py).
 
-  - call_log: ordered list of MCP tool invocations from the agent run.
-              Each entry: {"tool": "<name>", "action": "<optional>"} for multi-step iOS tools.
-              Expected source: SDK agent output or MCP session trace
-              (infra/agents/sdkAgent/tools/agent.py → passed through app.py).
+  - call_log: רשימה מסודרת של הפעלות כלי MCP מריצת ה-agent.
+              כל רשומה: {"tool": "<name>", "action": "<optional>"} לכלי iOS רב-שלביים.
+              מקור צפוי: פלט ה-SDK agent או trace של ס session MCP
+              (infra/agents/sdkAgent/tools/agent.py → עובר דרך app.py).
 """
 
 
 class McpToolOrderValidator:
     def __init__(self):
-        # Platform-specific tools allowed in a validated sequence.
+        # כלים המותרים ברצף לפי פלטפורמה.
         self.android_tools = {
             "integrateSdk", "verifySdk", "createDeepLink", "guideDeepLinkTesting",
             "verifyDeepLink", "createInAppEvent", "verifyInAppEvent",
@@ -25,18 +25,18 @@ class McpToolOrderValidator:
             "verifyIosDeepLink", "createIosInAppEvent", "verifyIosInAppEvent",
         }
 
-        # Tools that may appear anywhere in the log without order constraints.
+        # כלים עצמאיים — יכולים להופיע בכל מקום בלוג ללא בדיקת סדר.
         self.independent_tools = {
             "getVersion", "fetchLogs", "getErrors", "getLaunchLogs",
             "getInAppLogs", "getConversionLogs", "getDeepLinkLogs",
         }
 
-        # Optional catalog lookups; if used, they must appear before create-event tools.
+        # כלי קטלוג אופציונליים; אם שימשו — חייבים להופיע לפני create-event.
         self.catalog_tools = {"getTopInAppEvents", "getInAppEventsByVertical"}
         self.create_event_tools = {"createInAppEvent", "createIosInAppEvent"}
 
-        # Mandatory dependency rules: (pre, post) — post must not appear before pre.
-        # post is the step id returned by _to_step_id (tool_action for multi-step iOS tools).
+        # כללי תלות חובה: (pre, post) — post לא יופיע לפני pre.
+        # post הוא מזהה השלב ש-_to_step_id מחזיר (tool_action לכלי iOS רב-שלבי).
         self.rules = [
             ("integrateSdk", "verifySdk"),
             ("integrateSdk", "verifyIosSdk_prepare"),
@@ -55,11 +55,11 @@ class McpToolOrderValidator:
 
     def validate_sequence(self, call_log, platform):
         """
-        Validate that call_log respects platform rules and tool dependency order.
+        בודק ש-call_log עומד בכללי הפלטפורמה ובסדר תלויות הכלים.
 
         Args:
-            call_log: ordered tool invocations — fetch from agent/MCP run output (see module docstring).
-            platform: "android" or "ios" — fetch from use-case config or app orchestration.
+            call_log: הפעלות כלים לפי סדר — יש לשלוף מפלט agent/MCP (ראה docstring למעלה).
+            platform: "android" או "ios" — יש לשלוף מקונפיג use-case או מ-app.
         """
         if not call_log:
             return True, "Log is empty"
@@ -73,27 +73,27 @@ class McpToolOrderValidator:
             current_step = processed_log[i]
             prefix = processed_log[:i]
 
-            # Independent tools are ignored for ordering checks.
+            # כלים עצמאיים — מדלגים על בדיקת סדר.
             if tool_name in self.independent_tools:
                 continue
 
-            # Reject tools that do not belong to the target platform.
+            # דוחה כלים שלא שייכים לפלטפורמת הריצה.
             if tool_name not in allowed and tool_name not in self.catalog_tools:
                 return False, f"Tool '{tool_name}' not supported for '{p}'"
 
-            # guideDeepLinkTesting requires at least one create tool earlier in the log.
+            # guideDeepLinkTesting דורש לפחות כלי create אחד קודם בלוג.
             if tool_name == "guideDeepLinkTesting":
                 if not any(t in prefix for t in ("createDeepLink", "createIosDeepLink")):
                     return False, "Rule Violation: 'guideDeepLinkTesting' requires a 'create' tool first."
                 continue
 
-            # Catalog is optional, but if present it must come before create-event tools.
+            # קטלוג אופציונלי — אם הופיע, חייב לבוא לפני create-event.
             if tool_name in self.create_event_tools:
                 for cat in self.catalog_tools:
                     if cat in processed_log and cat not in prefix:
                         return False, f"Rule Violation: '{current_step}' before '{cat}'."
 
-            # Enforce mandatory (pre, post) dependency rules.
+            # אכיפת כללי תלות (pre, post).
             for pre, post in self.rules:
                 if current_step == post and pre not in prefix:
                     return False, f"Rule Violation ({p}): '{post}' requires '{pre}' first."
@@ -101,7 +101,7 @@ class McpToolOrderValidator:
         return True, "Sequence is valid"
 
     def _to_step_id(self, entry):
-        """Normalize a log entry to a unique step id, e.g. verifyIosSdk_prepare."""
+        """מנרמל רשומת לוג למזהה שלב ייחודי, למשל verifyIosSdk_prepare."""
         tool = entry["tool"]
         action = entry.get("action")
         return f"{tool}_{action}" if action else tool
