@@ -1,0 +1,39 @@
+{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "Validate first-open behavior and baseline SDK presence.",
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "deeplink": {
+      "use_deep_linking": false,
+      "onelink_url": null,
+      "url_identifier": null,
+      "uri_scheme": null,
+      "use_custom_uri_scheme": false
+    },
+    "in_app_event": {
+      "inapp_event_method": "validate_payload",
+      "event_name": "af_app_opened",
+      "event_params": {
+        "source": "organic"
+      }
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "android": null
+  },
+  "installation_answers": [],
+  "agent_messages": [
+    "First open flow started",
+    "SDK baseline signal found"
+  ],
+  "installation_agent_summary": "First-open baseline validation passed."
+}
+
