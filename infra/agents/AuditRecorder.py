@@ -14,6 +14,7 @@ class AuditRecorder:
         self.audit_log_path = run_dir / "audit.jsonl"
         self.events: List[Dict[str, Any]] = []
 
+
     def write(self, event_type: str, payload: Dict[str, Any]):
         """
         Write function: Records a new event.
@@ -32,6 +33,7 @@ class AuditRecorder:
         with self.audit_log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
+
     def agent_decisions(self) -> List[Dict[str, Any]]:
         """
         Getter function: Retrieves all the tools and decisions the LLM (Agent) decided to execute.
@@ -42,6 +44,7 @@ class AuditRecorder:
             for e in self.events
             if e["event_type"] == "AGENT_DECISION"
         ]
+
 
     def mcp_tool_results(self) -> List[Dict[str, Any]]:
         """
@@ -54,6 +57,7 @@ class AuditRecorder:
             if e["event_type"] == "MCP_TOOL_RESULT"
         ]
 
+
     def simulated_user_replies(self) -> List[Dict[str, Any]]:
         """
         Getter function: Retrieves all messages and responses received from the "Simulated User" during the conversation.
@@ -64,3 +68,10 @@ class AuditRecorder:
             for e in self.events
             if e["event_type"] == "SIMULATED_USER_REPLY"
         ]
+
+    def all_events(self) -> List[Dict[str, Any]]:
+        """
+        Getter function: Retrieves all events recorded in the audit log.
+        Returns the entire events list.
+        """
+        return self.events
