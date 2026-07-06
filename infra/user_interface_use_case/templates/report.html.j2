@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PiplineAutomatoinMCP - Audit Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:24px; }
+    .container { max-width:1200px; margin:0 auto; }
+    .card { background:#111827; border:1px solid #334155; border-radius:10px; padding:16px; margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(160px,1fr)); gap:12px; }
+    .metric { background:#1e293b; border-radius:8px; padding:10px; }
+    .label { color:#94a3b8; font-size:12px; }
+    .value { font-size:20px; font-weight:700; margin-top:4px; }
+    .passed { color:#22c55e; }
+    .warning { color:#f59e0b; }
+    .failed { color:#ef4444; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { text-align:left; padding:8px; border-bottom:1px solid #334155; font-size:14px; }
+    th { color:#93c5fd; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>PiplineAutomatoinMCP - Audit Dashboard</h1>
+      <p>Generated at: {{ generated_at }}</p>
+      <p>Run ID: <strong>{{ summary.run_id }}</strong> | Platform: <strong>{{ summary.platform }}</strong> | Use Case: <strong>{{ summary.use_case_id }}</strong></p>
+      <p>Status: <strong class="{{ summary.status }}">{{ summary.status|upper }}</strong> | Start: {{ summary.started_at }} | End: {{ summary.ended_at }}</p>
+    </div>
+
+    <div class="grid">
+      <div class="metric"><div class="label">Total Events</div><div class="value">{{ summary.total_events }}</div></div>
+      <div class="metric"><div class="label">Passed</div><div class="value passed">{{ summary.passed_events }}</div></div>
+      <div class="metric"><div class="label">Warnings</div><div class="value warning">{{ summary.warning_events }}</div></div>
+      <div class="metric"><div class="label">Failed</div><div class="value failed">{{ summary.failed_events }}</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Phase Summary</h2>
+      <table>
+        <thead>
+          <tr><th>Phase</th><th>Events</th><th>Passed</th><th>Warning</th><th>Failed</th></tr>
+        </thead>
+        <tbody>
+          {% for row in phase_rows %}
+          <tr>
+            <td>{{ row.phase }}</td>
+            <td>{{ row.events }}</td>
+            <td class="passed">{{ row.passed }}</td>
+            <td class="warning">{{ row.warning }}</td>
+            <td class="failed">{{ row.failed }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Failed Events</h2>
+      {% if failed_rows %}
+      <table>
+        <thead>
+          <tr><th>#</th><th>Timestamp</th><th>Phase</th><th>Source</th><th>Event</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          {% for event in failed_rows %}
+          <tr>
+            <td>{{ event.index }}</td>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.phase }}</td>
+            <td>{{ event.source }}</td>
+            <td>{{ event.event }}</td>
+            <td>{{ event.details }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>No failed events were detected.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Timeline</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Timestamp</th><th>Phase</th><th>Source</th><th>Event</th><th>Status</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+          <tr>
+            <td>{{ event.index }}</td>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.phase }}</td>
+            <td>{{ event.source }}</td>
+            <td>{{ event.event }}</td>
+            <td class="{{ event.status }}">{{ event.status }}</td>
+            <td>{{ event.details }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
+
