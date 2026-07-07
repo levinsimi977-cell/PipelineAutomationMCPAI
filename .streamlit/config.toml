@@ -1,0 +1,4 @@
+[theme]
+# Replaces Streamlit's default red/coral primaryColor (#FF4B4B), which drives
+# the active tab underline, buttons, checkboxes, sliders, and links.
+primaryColor = "#4F46E5"

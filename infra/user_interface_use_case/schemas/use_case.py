@@ -16,6 +16,17 @@ from .policies import (
 
 Platform = Literal["ios", "android"]
 
+LlmModel = Literal[
+    "claude-sonnet-5-thinking-high",
+    "claude-opus-4-8-thinking-high",
+    "gpt-5.5-medium",
+    "gpt-5.3-codex",
+    "composer-2.5-fast",
+    "grok-build-0.1",
+]
+
+DEFAULT_LLM_MODEL: LlmModel = "claude-sonnet-5-thinking-high"
+
 
 class AnswerPolicy(BaseContract):
     """Flexible wrapper around all supported policy blocks."""
@@ -39,6 +50,9 @@ class UseCaseContract(BaseContract):
     installation_answers: List[Dict[str, Any]] = Field(default_factory=list)
     agent_messages: List[str] = Field(default_factory=list)
     installation_agent_summary: str
+    llm_model: LlmModel = DEFAULT_LLM_MODEL
+    app_id: Optional[str] = None
+    dev_key: Optional[str] = None
 
     @field_validator("app_path", "prompt_goal", "installation_agent_summary")
     @classmethod
@@ -46,6 +60,14 @@ class UseCaseContract(BaseContract):
         """Ensure mandatory text fields are not empty."""
         if not value or not value.strip():
             raise ValueError("Field must not be empty")
+        return value
+
+    @field_validator("app_id", "dev_key")
+    @classmethod
+    def validate_optional_non_blank(cls, value: Optional[str]) -> Optional[str]:
+        """Allow these fields to be absent, but reject blank/whitespace-only values."""
+        if value is not None and not value.strip():
+            raise ValueError("Field must not be blank when provided")
         return value
 
     @model_validator(mode="after")

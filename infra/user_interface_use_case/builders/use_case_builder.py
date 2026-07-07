@@ -3,14 +3,17 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from ..schemas import (
+    DEFAULT_LLM_MODEL,
     AndroidPolicy,
     AnswerPolicy,
     DeepLinkPolicy,
     IOSMinimalPolicy,
     InAppEventPolicy,
+    LlmModel,
     UseCaseContract,
     VerifySDKPolicy,
 )
+from ..utils import encode_dev_key
 
 
 class UseCaseBuilder:
@@ -31,6 +34,9 @@ class UseCaseBuilder:
         self._installation_summary: Optional[str] = None
         self._installation_answers: List[Dict[str, Any]] = []
         self._agent_messages: List[str] = []
+        self._app_id: Optional[str] = None
+        self._dev_key_encoded: Optional[str] = None
+        self._llm_model: LlmModel = DEFAULT_LLM_MODEL
 
         self._ios_minimal: Optional[IOSMinimalPolicy] = None
         self._deeplink: Optional[DeepLinkPolicy] = None
@@ -45,12 +51,29 @@ class UseCaseBuilder:
         platform: str,
         prompt_goal: str,
         installation_agent_summary: str,
+        app_id: Optional[str] = None,
+        dev_key: Optional[str] = None,
     ) -> "UseCaseBuilder":
-        """Set top-level required fields."""
+        """
+        Set top-level required fields.
+
+        app_id/dev_key are optional here because they are per-user credentials,
+        not part of the reusable use case template — callers that already have
+        them (e.g. the "create new" form) may pass them in directly, but a
+        template loaded for reuse (seed or custom) is expected to have them
+        filled in later via a dedicated credentials step, not baked into the file.
+        """
         self._app_path = app_path
         self._platform = platform
         self._prompt_goal = prompt_goal
         self._installation_summary = installation_agent_summary
+        self._app_id = app_id
+        self._dev_key_encoded = encode_dev_key(dev_key) if dev_key else None
+        return self
+
+    def with_llm_model(self, llm_model: LlmModel) -> "UseCaseBuilder":
+        """Select which LLM model this use case's workflow should run on."""
+        self._llm_model = llm_model
         return self
 
     def with_ios_minimal(
@@ -157,6 +180,9 @@ class UseCaseBuilder:
             installation_answers=self._installation_answers,
             agent_messages=self._agent_messages,
             installation_agent_summary=self._installation_summary or "",
+            app_id=self._app_id,
+            dev_key=self._dev_key_encoded,
+            llm_model=self._llm_model,
         )
 
     def build_json(self, indent: int = 2) -> str:

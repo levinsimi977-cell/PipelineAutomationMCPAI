@@ -8,7 +8,13 @@ from .policies import (
     InAppEventPolicy,
     VerifySDKPolicy,
 )
-from .use_case import AnswerPolicy, Platform, UseCaseContract
+from .use_case import (
+    DEFAULT_LLM_MODEL,
+    AnswerPolicy,
+    LlmModel,
+    Platform,
+    UseCaseContract,
+)
 
 __all__ = [
     "BaseContract",
@@ -21,5 +27,7 @@ __all__ = [
     "AnswerPolicy",
     "Platform",
     "UseCaseContract",
+    "LlmModel",
+    "DEFAULT_LLM_MODEL",
 ]
 
