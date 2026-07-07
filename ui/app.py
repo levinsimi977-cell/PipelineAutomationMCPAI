@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional, get_args
 
@@ -16,6 +17,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from infra.user_interface_use_case.builders.use_case_builder import UseCaseBuilder
+from infra.user_interface_use_case.repositories import run_repository as run_repo
 from infra.user_interface_use_case.repositories import use_case_repository as repo
 from infra.user_interface_use_case.schemas import DEFAULT_LLM_MODEL, LlmModel, UseCaseContract
 
@@ -32,6 +34,163 @@ _PLATFORM_APP_EXTENSIONS = {
     "ios": (".ipa", ".app", ".zip"),
     "android": (".apk", ".aab", ".zip"),
 }
+
+# ---------------------------------------------------------------------------
+# Visual design only — no business logic lives below this point.
+# ---------------------------------------------------------------------------
+
+_CUSTOM_CSS = """
+<style>
+    /* ---- Global spacing & typography ------------------------------------ */
+    .block-container {
+        padding-top: 2.25rem;
+        padding-bottom: 3rem;
+        max-width: 900px;
+    }
+    h1 {
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.15rem !important;
+    }
+    h2, h3 {
+        font-weight: 600;
+        letter-spacing: -0.01em;
+    }
+    p, .stCaption, [data-testid="stCaptionContainer"] {
+        color: #475569;
+    }
+
+    /* ---- Segmented top-level navigation ---------------------------------- */
+    div[role="radiogroup"][aria-label="__nav__"] {
+        display: flex;
+        gap: 0.35rem;
+        background: #F1F5F9;
+        padding: 0.3rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        border: 1px solid #E2E8F0;
+    }
+    div[role="radiogroup"][aria-label="__nav__"] label {
+        flex: 1;
+        justify-content: center;
+        border-radius: 9px;
+        padding: 0.45rem 0.75rem !important;
+        margin: 0 !important;
+        transition: background 0.15s ease, color 0.15s ease;
+        font-weight: 500;
+    }
+    div[role="radiogroup"][aria-label="__nav__"] label:has(input:checked) {
+        background: #FFFFFF;
+        box-shadow: 0 1px 3px rgba(13, 148, 136, 0.18);
+    }
+    div[role="radiogroup"][aria-label="__nav__"] label div[data-testid="stMarkdownContainer"] p {
+        font-size: 0.95rem;
+    }
+    div[role="radiogroup"][aria-label="__nav__"] input {
+        display: none;
+    }
+
+    /* ---- Cards / containers ------------------------------------------------ */
+    div[data-testid="stExpander"] {
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px !important;
+        background: #FFFFFF;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        margin-bottom: 0.6rem;
+    }
+    div[data-testid="stExpander"] summary {
+        font-weight: 500;
+        padding: 0.65rem 0.9rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 12px !important;
+    }
+
+    /* ---- Badges (Custom / Seed) ------------------------------------------- */
+    .badge {
+        display: inline-block;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 0.12rem 0.55rem;
+        border-radius: 999px;
+        text-transform: uppercase;
+        vertical-align: middle;
+    }
+    .badge-custom {
+        background: #CCFBF1;
+        color: #0F766E;
+    }
+    .badge-seed {
+        background: #F1F5F9;
+        color: #475569;
+    }
+
+    /* ---- Section headers --------------------------------------------------- */
+    .section-eyebrow {
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #0D9488;
+        margin-bottom: 0.15rem;
+    }
+
+    /* ---- Buttons ------------------------------------------------------------ */
+    .stButton button {
+        border-radius: 8px;
+        font-weight: 500;
+    }
+
+    /* ---- Divider breathing room --------------------------------------------- */
+    hr {
+        margin: 1.75rem 0 !important;
+    }
+</style>
+"""
+
+
+def _inject_base_styles() -> None:
+    st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
+
+
+def _badge_html(is_editable: bool) -> str:
+    if is_editable:
+        return '<span class="badge badge-custom">Custom</span>'
+    return '<span class="badge badge-seed">Seed · read-only</span>'
+
+
+def _restore_scroll_position() -> None:
+    """
+    Best-effort scroll-position memory across reruns.
+
+    Streamlit's rerun mechanism repaints the app in place rather than doing a
+    full browser navigation, but it still resets viewport scroll to the top
+    each time. This keeps the last known scroll offset in the browser's
+    sessionStorage and re-applies it a moment after each rerun completes, so
+    clicking a button deep in the "Existing use cases" list doesn't bounce the
+    user back to the page title.
+    """
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+            const KEY = "usecase_builder_scroll_y";
+            const doc = window.parent.document;
+            const scroller = doc.scrollingElement || doc.documentElement;
+
+            const saved = window.parent.sessionStorage.getItem(KEY);
+            if (saved !== null) {
+                setTimeout(() => scroller.scrollTo(0, parseInt(saved, 10)), 60);
+            }
+            window.parent.addEventListener("scroll", () => {
+                window.parent.sessionStorage.setItem(KEY, scroller.scrollTop);
+            }, { passive: true });
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 
 def _apps_for_platform(platform: str) -> list[str]:
@@ -53,6 +212,20 @@ def _selected_map() -> dict[str, dict]:
     and block Android from being selected alongside it.
     """
     return st.session_state.setdefault("selected_use_cases", {})
+
+
+def _session_id() -> str:
+    """
+    A stable id for this browser session, created once and reused for every
+    rerun of it.
+
+    This is what makes a saved run selection map onto "one session" instead
+    of "one click of the Save button": every save this session ever performs
+    is written to run_repository.py's storage keyed by this same id, so
+    saving again always overwrites the same file rather than creating a new
+    one alongside it.
+    """
+    return st.session_state.setdefault("session_id", uuid.uuid4().hex)
 
 
 def _selected_concrete_platforms(exclude_id: Optional[str] = None) -> set[str]:
@@ -92,17 +265,20 @@ def credentials_section(context_key: str) -> tuple[str, str]:
     stored file. Pre-filling from session_state means the user only has to
     type them once per session, not once per use case.
     """
-    app_id = st.text_input(
-        "App ID *",
-        value=st.session_state.get("session_app_id", ""),
-        key=f"{context_key}_app_id",
-    )
-    dev_key = st.text_input(
-        "Dev Key *",
-        value=st.session_state.get("session_dev_key", ""),
-        type="password",
-        key=f"{context_key}_dev_key",
-    )
+    col1, col2 = st.columns(2)
+    with col1:
+        app_id = st.text_input(
+            "App ID *",
+            value=st.session_state.get("session_app_id", ""),
+            key=f"{context_key}_app_id",
+        )
+    with col2:
+        dev_key = st.text_input(
+            "Dev Key *",
+            value=st.session_state.get("session_dev_key", ""),
+            type="password",
+            key=f"{context_key}_dev_key",
+        )
     # Sync back into the shared session keys so the *next* place this section
     # is rendered (a different tab/entry) starts pre-filled with this value.
     st.session_state["session_app_id"] = app_id
@@ -149,6 +325,10 @@ def render_use_case_form(
     """
     is_edit = editing_entry is not None
     form_prefix = f"edit_{editing_entry.id}" if is_edit else "create"
+
+    if not is_edit:
+        st.markdown('<div class="section-eyebrow">New use case</div>', unsafe_allow_html=True)
+        st.subheader("Define the scenario")
 
     # Platform lives outside st.form() on purpose: widgets inside a form only
     # trigger a rerun when the form is submitted, so if platform were inside
@@ -209,6 +389,7 @@ def render_use_case_form(
         # The schema requires ios_minimal for iOS and android for Android, and
         # forbids the other one — so the fields shown here must always match
         # whichever platform is currently selected above.
+        st.divider()
         st.markdown("**Required platform policy**")
         existing_ios = prefill.answer_policy.ios_minimal if prefill else None
         existing_android = prefill.answer_policy.android if prefill else None
@@ -249,6 +430,7 @@ def render_use_case_form(
         # These stay entirely absent (None) unless explicitly turned on, so a
         # use case that doesn't care about deep links/in-app events doesn't
         # carry irrelevant empty structures.
+        st.divider()
         st.markdown("**Optional policies**")
         existing_deeplink = prefill.answer_policy.deeplink if prefill else None
         enable_deeplink = st.checkbox(
@@ -311,13 +493,16 @@ def render_use_case_form(
         # use case already carries are left untouched (see the patch below).
         app_id, dev_key = None, None
         if not is_edit:
+            st.divider()
             st.markdown(
-                "**Your credentials** (required — kept for this session only, "
-                "never assumed from the stored file)"
+                "**Your credentials** — kept for this session only, never assumed from the stored file"
             )
             app_id, dev_key = credentials_section(form_prefix)
 
-        submitted = st.form_submit_button("Save changes" if is_edit else "Create use case")
+        st.write("")
+        submitted = st.form_submit_button(
+            "Save changes" if is_edit else "Create use case", use_container_width=True, type="primary"
+        )
 
     if not submitted:
         return
@@ -412,22 +597,16 @@ def render_use_case_form(
 
 def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
     """Render one catalog entry: its content, and the actions available for it."""
-    badge = "Custom" if entry.is_editable else "Seed (read-only)"
-    with st.expander(f"{entry.id} · {entry.type} · {badge}"):
+    with st.container(border=True):
         try:
             contract = repo.load_use_case(entry)
         except ValidationError as exc:
+            st.markdown(f"**{entry.id}**", unsafe_allow_html=True)
             st.error("This use case file is invalid and cannot be loaded.")
             _display_validation_errors(exc)
             return
 
         is_editing = st.session_state.get("editing_use_case_id") == entry.id
-        if is_editing:
-            render_use_case_form(editing_entry=entry, prefill=contract)
-            if st.button("Cancel edit", key=f"cancel_edit_{entry.id}"):
-                st.session_state["editing_use_case_id"] = None
-                st.rerun()
-            return
 
         # Per-entry toggle state for the panels below — each button just
         # flips a flag; nothing renders until its panel section is reached
@@ -437,100 +616,129 @@ def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
         choose_key = f"choose_open_{entry.id}"
         confirm_delete_key = f"confirm_delete_open_{entry.id}"
 
-        # Seed use cases are the shared, known-good baseline — never editable
-        # or deletable, so they only ever get Preview/Choose. Custom ones get
-        # all four actions.
-        if entry.is_editable:
-            col_preview, col_edit, col_delete, col_choose = st.columns(4)
-        else:
-            col_preview, col_choose = st.columns(2)
-            col_edit = col_delete = None
+        # Keeping the expander open whenever one of its inner panels is
+        # active (or it's mid-edit) is what stops the "everything collapses
+        # and the page jumps back" feeling after every click.
+        should_expand = (
+            is_editing
+            or st.session_state.get(preview_key, False)
+            or st.session_state.get(choose_key, False)
+            or st.session_state.get(confirm_delete_key, False)
+        )
 
-        with col_preview:
-            if st.button("👁️ Preview", key=f"preview_btn_{entry.id}", use_container_width=True):
-                st.session_state[preview_key] = not st.session_state.get(preview_key, False)
+        header = f"{entry.id}  ·  {entry.type}"
+        with st.expander(header, expanded=should_expand):
+            st.markdown(_badge_html(entry.is_editable), unsafe_allow_html=True)
+            st.write("")
 
-        if col_edit is not None:
-            with col_edit:
-                if st.button("✏️ Edit", key=f"edit_{entry.id}", use_container_width=True):
-                    st.session_state["editing_use_case_id"] = entry.id
+            if is_editing:
+                render_use_case_form(editing_entry=entry, prefill=contract)
+                if st.button("Cancel edit", key=f"cancel_edit_{entry.id}"):
+                    st.session_state["editing_use_case_id"] = None
                     st.rerun()
+                return
 
-        if col_delete is not None:
-            with col_delete:
-                if st.button("🗑️ Delete", key=f"delete_btn_{entry.id}", use_container_width=True):
-                    st.session_state[confirm_delete_key] = not st.session_state.get(
-                        confirm_delete_key, False
-                    )
-
-        # 'common' use cases are always compatible; concrete ios/android ones
-        # can only join a selection that doesn't already contain the other
-        # concrete platform. Already-selected entries are exempt from their
-        # own check (re-resolving/re-choosing something already in the set
-        # never conflicts with itself).
-        is_selected = entry.id in _selected_map()
-        blocked_reason = None if is_selected else _platform_conflict(entry.platform, entry.id)
-
-        with col_choose:
-            choose_label = "✓ Selected" if is_selected else "✅ Choose"
-            if st.button(
-                choose_label,
-                key=f"choose_btn_{entry.id}",
-                use_container_width=True,
-                disabled=bool(blocked_reason),
-            ):
-                st.session_state[choose_key] = not st.session_state.get(choose_key, False)
-
-        if blocked_reason:
-            st.caption(f"🚫 {blocked_reason}")
-
-        # --- Delete confirmation panel (custom only) -------------------------
-        if entry.is_editable and st.session_state.get(confirm_delete_key):
-            st.warning(f"Delete '{entry.id}'? This cannot be undone.")
-            col_confirm, col_cancel = st.columns(2)
-            with col_confirm:
-                if st.button("Yes, delete it", key=f"confirm_delete_yes_{entry.id}"):
-                    repo.delete_custom_use_case(entry.id)
-                    _selected_map().pop(entry.id, None)
-                    st.session_state[confirm_delete_key] = False
-                    _flash("success", f"Deleted '{entry.id}'.")
-                    st.rerun()
-            with col_cancel:
-                if st.button("Cancel", key=f"confirm_delete_no_{entry.id}"):
-                    st.session_state[confirm_delete_key] = False
-                    st.rerun()
-
-        # --- Preview panel -----------------------------------------------------
-        if st.session_state.get(preview_key):
-            st.json(json.loads(contract.to_pretty_json()))
-
-        # --- Choose panel (credentials required for both seed and custom) ------
-        if st.session_state.get(choose_key):
-            # Defensive re-check: the selection could have changed (via another
-            # entry rendered earlier in this same script pass) since the button
-            # above was drawn.
-            conflict = _platform_conflict(entry.platform, entry.id)
-            if conflict:
-                st.error(conflict)
+            # Seed use cases are the shared, known-good baseline — never editable
+            # or deletable, so they only ever get Preview/Choose. Custom ones get
+            # all four actions.
+            if entry.is_editable:
+                col_preview, col_edit, col_delete, col_choose = st.columns(4)
             else:
-                st.markdown("**Use this use case** — requires your credentials for this run")
-                with st.form(f"use_form_{entry.id}"):
-                    use_app_id, use_dev_key = credentials_section(f"use_{entry.id}")
-                    use_submitted = st.form_submit_button("Resolve & select for this run")
-                if use_submitted:
-                    if not use_app_id or not use_dev_key:
-                        st.error("App ID and Dev Key are required.")
-                    else:
-                        # Overlays this run's credentials without ever writing
-                        # them back into the shared seed/custom file on disk.
-                        resolved = repo.resolve_for_run(contract, app_id=use_app_id, dev_key=use_dev_key)
-                        _selected_map()[entry.id] = {
-                            "contract": resolved,
-                            "catalog_platform": entry.platform,
-                        }
-                        st.session_state[choose_key] = False
-                        _flash("success", f"'{entry.id}' added to this run's selection.")
+                col_preview, col_choose = st.columns(2)
+                col_edit = col_delete = None
+
+            with col_preview:
+                if st.button("👁️ Preview", key=f"preview_btn_{entry.id}", use_container_width=True):
+                    st.session_state[preview_key] = not st.session_state.get(preview_key, False)
+
+            if col_edit is not None:
+                with col_edit:
+                    if st.button("✏️ Edit", key=f"edit_{entry.id}", use_container_width=True):
+                        st.session_state["editing_use_case_id"] = entry.id
                         st.rerun()
+
+            if col_delete is not None:
+                with col_delete:
+                    if st.button("🗑️ Delete", key=f"delete_btn_{entry.id}", use_container_width=True):
+                        st.session_state[confirm_delete_key] = not st.session_state.get(
+                            confirm_delete_key, False
+                        )
+
+            # 'common' use cases are always compatible; concrete ios/android ones
+            # can only join a selection that doesn't already contain the other
+            # concrete platform. Already-selected entries are exempt from their
+            # own check (re-resolving/re-choosing something already in the set
+            # never conflicts with itself).
+            is_selected = entry.id in _selected_map()
+            blocked_reason = None if is_selected else _platform_conflict(entry.platform, entry.id)
+
+            with col_choose:
+                choose_label = "✓ Selected" if is_selected else "Choose"
+                if st.button(
+                    choose_label,
+                    key=f"choose_btn_{entry.id}",
+                    use_container_width=True,
+                    disabled=bool(blocked_reason),
+                    type="primary" if is_selected else "secondary",
+                ):
+                    st.session_state[choose_key] = not st.session_state.get(choose_key, False)
+
+            if blocked_reason:
+                st.caption(f"🚫 {blocked_reason}")
+
+            # --- Delete confirmation panel (custom only) -------------------------
+            if entry.is_editable and st.session_state.get(confirm_delete_key):
+                st.write("")
+                st.warning(f"Delete '{entry.id}'? This cannot be undone.")
+                col_confirm, col_cancel = st.columns(2)
+                with col_confirm:
+                    if st.button("Yes, delete it", key=f"confirm_delete_yes_{entry.id}", use_container_width=True):
+                        repo.delete_custom_use_case(entry.id)
+                        _selected_map().pop(entry.id, None)
+                        st.session_state[confirm_delete_key] = False
+                        _flash("success", f"Deleted '{entry.id}'.")
+                        st.rerun()
+                with col_cancel:
+                    if st.button("Cancel", key=f"confirm_delete_no_{entry.id}", use_container_width=True):
+                        st.session_state[confirm_delete_key] = False
+                        st.rerun()
+
+            # --- Preview panel -----------------------------------------------------
+            if st.session_state.get(preview_key):
+                st.write("")
+                st.json(json.loads(contract.to_pretty_json()))
+
+            # --- Choose panel (credentials required for both seed and custom) ------
+            if st.session_state.get(choose_key):
+                # Defensive re-check: the selection could have changed (via another
+                # entry rendered earlier in this same script pass) since the button
+                # above was drawn.
+                conflict = _platform_conflict(entry.platform, entry.id)
+                if conflict:
+                    st.write("")
+                    st.error(conflict)
+                else:
+                    st.write("")
+                    st.markdown("**Use this use case** — requires your credentials for this run")
+                    with st.form(f"use_form_{entry.id}"):
+                        use_app_id, use_dev_key = credentials_section(f"use_{entry.id}")
+                        use_submitted = st.form_submit_button(
+                            "Resolve & select for this run", use_container_width=True, type="primary"
+                        )
+                    if use_submitted:
+                        if not use_app_id or not use_dev_key:
+                            st.error("App ID and Dev Key are required.")
+                        else:
+                            # Overlays this run's credentials without ever writing
+                            # them back into the shared seed/custom file on disk.
+                            resolved = repo.resolve_for_run(contract, app_id=use_app_id, dev_key=use_dev_key)
+                            _selected_map()[entry.id] = {
+                                "contract": resolved,
+                                "catalog_platform": entry.platform,
+                            }
+                            st.session_state[choose_key] = False
+                            _flash("success", f"'{entry.id}' added to this run's selection.")
+                            st.rerun()
 
 
 def render_existing_tab() -> None:
@@ -540,54 +748,129 @@ def render_existing_tab() -> None:
         st.info("No use cases found yet.")
         return
 
-    for platform_group in ["ios", "android", "common"]:
-        group = [entry for entry in all_entries if entry.platform == platform_group]
-        if not group:
-            continue
-        st.subheader(platform_group.capitalize())
-        for entry in group:
-            _render_use_case_entry(entry)
+    platform_labels = {"ios": "iOS", "android": "Android", "common": "Common"}
+    groups = [
+        (platform_group, [e for e in all_entries if e.platform == platform_group])
+        for platform_group in ["ios", "android", "common"]
+    ]
+    groups = [(p, g) for p, g in groups if g]
+
+    if not groups:
+        st.info("No use cases found yet.")
+        return
+
+    tab_labels = [f"{platform_labels[p]} ({len(g)})" for p, g in groups]
+    for tab, (_platform_group, group) in zip(st.tabs(tab_labels), groups):
+        with tab:
+            st.write("")
+            for entry in group:
+                _render_use_case_entry(entry)
 
 
 st.set_page_config(page_title="Use Case Builder", page_icon="🧪", layout="centered")
+_inject_base_styles()
+_restore_scroll_position()
+
 st.title("🧪 Use Case Builder")
 st.caption("Create a new test use case, or reuse an existing one, for the AppsFlyer SDK automation pipeline.")
 _show_flash()
 
-tab_create, tab_existing = st.tabs(["➕ Create new use case", "📂 Existing use cases"])
+# A session-state-backed selector (rather than st.tabs) so the active
+# section survives reruns triggered by buttons deeper in the page — with
+# native st.tabs, every rerun snaps back to the first tab.
+NAV_OPTIONS = ["➕ Create new use case", "📂 Existing use cases"]
+active_section = st.radio(
+    "__nav__",
+    NAV_OPTIONS,
+    key="active_nav_section",
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
-with tab_create:
+if active_section == NAV_OPTIONS[0]:
     render_use_case_form()
-
-with tab_existing:
+else:
     render_existing_tab()
 
 selected_map = _selected_map()
 if selected_map:
     st.divider()
-    st.subheader(f"Selected use cases for this run ({len(selected_map)})")
-    for use_case_id, info in list(selected_map.items()):
-        contract: UseCaseContract = info["contract"]
-        catalog_platform = info["catalog_platform"]
+    with st.container(border=True):
+        st.markdown('<div class="section-eyebrow">This run</div>', unsafe_allow_html=True)
+        st.subheader(f"Selected use cases ({len(selected_map)})")
 
-        # A short stamp instead of the full contract — platform + goal is
-        # enough to confirm "yes, this is one I picked" without repeating
-        # everything already shown while browsing/creating it.
-        stamp = f"[{catalog_platform.upper()}] {use_case_id} — {contract.prompt_goal}"
-        if len(stamp) > 90:
-            stamp = stamp[:87] + "..."
+        for use_case_id, info in list(selected_map.items()):
+            contract: UseCaseContract = info["contract"]
+            catalog_platform = info["catalog_platform"]
 
-        col_stamp, col_preview, col_remove = st.columns([6, 2, 2])
-        with col_stamp:
-            st.caption(stamp)
-        with col_preview:
-            preview_key = f"preview_selected_{use_case_id}"
-            if st.button("👁️ Preview", key=f"preview_selected_btn_{use_case_id}", use_container_width=True):
-                st.session_state[preview_key] = not st.session_state.get(preview_key, False)
-        with col_remove:
-            if st.button("✖ Remove", key=f"remove_selected_{use_case_id}", use_container_width=True):
-                selected_map.pop(use_case_id, None)
-                st.rerun()
+            # A short stamp instead of the full contract — platform + goal is
+            # enough to confirm "yes, this is one I picked" without repeating
+            # everything already shown while browsing/creating it.
+            stamp = f"[{catalog_platform.upper()}] {use_case_id} — {contract.prompt_goal}"
+            if len(stamp) > 90:
+                stamp = stamp[:87] + "..."
 
-        if st.session_state.get(f"preview_selected_{use_case_id}"):
-            st.json(json.loads(contract.to_pretty_json()))
+            col_stamp, col_preview, col_remove = st.columns([6, 2, 2])
+            with col_stamp:
+                st.caption(stamp)
+            with col_preview:
+                preview_key = f"preview_selected_{use_case_id}"
+                if st.button("👁️ Preview", key=f"preview_selected_btn_{use_case_id}", use_container_width=True):
+                    st.session_state[preview_key] = not st.session_state.get(preview_key, False)
+            with col_remove:
+                if st.button("✖ Remove", key=f"remove_selected_{use_case_id}", use_container_width=True):
+                    selected_map.pop(use_case_id, None)
+                    st.rerun()
+
+            if st.session_state.get(f"preview_selected_{use_case_id}"):
+                st.json(json.loads(contract.to_pretty_json()))
+
+        st.write("")
+        if st.button("💾 Save selection for this run", use_container_width=True, type="primary"):
+            try:
+                saved = run_repo.save_selected_use_cases(_session_id(), selected_map)
+            except run_repo.RunRepositoryError as exc:
+                _flash("error", str(exc))
+            else:
+                relative_path = saved.file_path.relative_to(_PROJECT_ROOT)
+                _flash(
+                    "success",
+                    f"Saved {saved.use_case_count} use case(s) for this session "
+                    f"to {relative_path}. Saving again will overwrite this same file.",
+                )
+            st.rerun()
+
+pending_runs = run_repo.list_pending_run_selections()
+
+# This section is only relevant once the user has actually chosen a use case
+# at some point — either it's currently selected, or a save from earlier is
+# still sitting on disk waiting to be cleaned up. On a fresh session with
+# neither, showing an empty "nothing pending" box is just clutter.
+if selected_map or pending_runs:
+    st.divider()
+    with st.container(border=True):
+        st.markdown('<div class="section-eyebrow">Housekeeping</div>', unsafe_allow_html=True)
+        st.subheader("Saved run selections pending cleanup")
+        st.caption(
+            "A saved selection is only supposed to exist for the lifetime of one run — "
+            "from being saved above until that run's result has been reported back, at "
+            "which point it should be deleted automatically. That automatic step doesn't "
+            "exist yet, so use this to clear things out manually in the meantime."
+        )
+        if not pending_runs:
+            st.caption("Nothing pending.")
+        else:
+            st.write("")
+            for pending_run in pending_runs:
+                col_info, col_delete = st.columns([4, 1])
+                with col_info:
+                    st.caption(f"`{pending_run.session_id}` — {pending_run.use_case_count} use case(s)")
+                with col_delete:
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_pending_run_{pending_run.session_id}",
+                        use_container_width=True,
+                    ):
+                        run_repo.delete_run_selection(pending_run.session_id)
+                        _flash("success", f"Deleted saved selection for session '{pending_run.session_id}'.")
+                        st.rerun()
