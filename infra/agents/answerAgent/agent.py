@@ -7,9 +7,7 @@ from langchain_openai import ChatOpenAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-# ייבוא ה-AuditRecorder לתיעוד פעולות פנימיות
 from infra.agents.AuditRecorder import AuditRecorder
-
 from infra.listener.llm_listener import invoke_agent_with_listener
 # טעינת משתני סביבה
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
