@@ -9,6 +9,7 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from infra.agents.AuditRecorder import AuditRecorder
 from infra.listener.llm_listener import invoke_agent_with_listener
+
 # טעינת משתני סביבה
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 APP_ID = os.getenv("APP_ID", "id1512793879")
