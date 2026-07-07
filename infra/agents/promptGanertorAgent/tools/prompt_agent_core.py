@@ -12,7 +12,7 @@ llm = ChatOpenAI(
     api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"),
 )
 
-# תבנית מאוחדת עם דרישת פלט מחמירה ל-STATUS
+# תבנית מאוחדת ללא דרישת פלט STATUS
 unified_meta_prompt_template = PromptTemplate.from_template(
     "User goal: {goal}\n\n"
     "You are an expert technical prompt engineer. "
@@ -23,8 +23,6 @@ unified_meta_prompt_template = PromptTemplate.from_template(
     "The generated prompt MUST include platform={platform}.\n"
     "The generated prompt MUST include the project path: {app_path}.\n"
     "The generated prompt MUST instruct the assistant not to ask clarification questions and to proceed automatically.\n"
-    "OUTPUT REQUIREMENT: Every response from the AI coding assistant MUST end with the format: 'STATUS: [SUCCESS|FAILURE|QUESTION]'. "
-    "Do not provide any conversational text or explanation outside of the requested status format."
 )
 
 prompt_generator_chain = unified_meta_prompt_template | llm | StrOutputParser()
@@ -45,7 +43,7 @@ def prompt_agent_node(state: dict) -> dict:
     app_path = state.get("app_path")
     goal = state.get("prompt_goal")
 
-    # וולידציה גנרית (ללא הבחנה בין הפלטפורמות)
+    # וולידציה גנרית
     if not platform or platform not in ["android", "ios"]:
         raise ValueError(f"Invalid or missing platform: {platform}")
     
