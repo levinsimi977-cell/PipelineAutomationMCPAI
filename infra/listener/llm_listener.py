@@ -31,6 +31,49 @@ def _state_for_classifier(
         "last_agent_message": last_message,
         "agent_messages": agent_messages,
     }
+def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
+    """Convert one agent tool_call to validator call_log entry."""
+    if isinstance(tool_call, dict):
+        name = tool_call.get("name", "")
+        args = tool_call.get("args") or {}
+    else:
+        name = getattr(tool_call, "name", "")
+        args = getattr(tool_call, "args", {}) or {}
+
+    entry: Dict[str, Any] = {"tool": name}
+
+    # iOS verify — action חובה לפי הפורמט של הקולגה
+    if platform == "ios" and name == "verifyIosSdk":
+        action = args.get("action")
+        if action:
+            entry["action"] = action
+
+    return entry
+
+
+def _append_tool_calls(
+    call_log: List[Dict[str, Any]],
+    tool_calls: List[Any],
+    platform: str,
+) -> List[Dict[str, Any]]:
+    for tool_call in tool_calls:
+        call_log.append(_tool_call_to_log_entry(tool_call, platform))
+    return call_log
+
+
+def build_mcp_sequence_payload(state: dict, call_log: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Wrapper object for colleague's validator."""
+    platform = (state.get("platform") or "android").strip().lower()
+    return {
+        "platform": platform,
+        "call_log": list(call_log),
+    }
+
+
+def get_mcp_sequence_for_validator(state: dict) -> Dict[str, Any]:
+    """Return platform + ordered MCP tool call_log for sequence validation."""
+    return build_mcp_sequence_payload(state, state.get("call_log") or [])
+
 
 def listener_on_text(
     state: dict,
@@ -131,13 +174,18 @@ def invoke_agent_with_listener(
     state: dict,
     base_prompt: str,
     node_name: str,
+    run_mcp_tool: Callable[[str, Dict[str, Any]], str],
+    *,
+    is_done: Callable[[Any], bool],
 ) -> Tuple[Optional[Any], Dict[str, Any]]:
-    """Invoke tool-bound agent in a listener loop until tool_calls or FAIL."""
+    """Invoke tool-bound agent; listen continuously through tools until is_done or FAIL."""
     logs: List[Dict[str, Any]] = []
     installation_answers = list(state.get("installation_answers") or [])
     initial_answer_count = len(installation_answers)
     question_rounds = state.get("question_rounds", 0)
-
+    platform = (state.get("platform") or "android").strip().lower()
+    call_log = list(state.get("call_log") or [])
+    initial_call_count = len(call_log)
     current_prompt = base_prompt
     if installation_answers:
         current_prompt = build_prompt_with_answers(base_prompt, installation_answers)
@@ -146,14 +194,64 @@ def invoke_agent_with_listener(
         response = invoke_agent(current_prompt)
 
         if response.tool_calls:
+            call_log = _append_tool_calls(call_log, response.tool_calls, platform)
+            state["call_log"] = call_log
+
+            mcp_results: List[str] = []
+            updated_prompt: Optional[str] = None
+            for tool_call in response.tool_calls:
+                if isinstance(tool_call, dict):
+                    tool_name = tool_call.get("name", "")
+                    tool_args = dict(tool_call.get("args") or {})
+                else:
+                    tool_name = getattr(tool_call, "name", "")
+                    tool_args = dict(getattr(tool_call, "args", {}) or {})
+
+                mcp_text = run_mcp_tool(tool_name, tool_args)
+                mcp_results.append(f"[{tool_name}]\n{mcp_text}")
+
+                updated_prompt, listener_updates = listener_on_text(
+                    {
+                        **state,
+                        "installation_answers": installation_answers,
+                        "question_rounds": question_rounds,
+                    },
+                    node_name,
+                    mcp_text,
+                    base_prompt=base_prompt,
+                )
+                logs.extend(listener_updates.get("nodes_logs", []))
+                if listener_updates.get("test_status") == "FAIL":
+                    return response, {
+                        "nodes_logs": logs,
+                        "test_status": "FAIL",
+                        "question_rounds": listener_updates.get("question_rounds", question_rounds),
+                        "installation_answers": installation_answers[initial_answer_count:],
+                        "call_log": call_log[initial_call_count:],
+                        "mcp_sequence": build_mcp_sequence_payload(state, call_log),
+                    }
+                if listener_updates.get("question_rounds") is not None:
+                    question_rounds = listener_updates["question_rounds"]
+                for qa in listener_updates.get("installation_answers", []):
+                    installation_answers = _merge_answers(state, installation_answers, qa)
+
+            if updated_prompt is not None:
+                current_prompt = updated_prompt
+            else:
+                current_prompt = build_prompt_with_answers(base_prompt, installation_answers)
+            current_prompt += "\n\nMCP tool results:\n" + "\n\n".join(mcp_results)
+            current_prompt += "\n\nContinue the SDK installation. Call the next required MCP tool if needed."
+            continue
+
+        agent_text = agent_content_text(response.content).strip()
+        if is_done(response):
             return response, {
                 "nodes_logs": logs,
                 "question_rounds": question_rounds,
                 "installation_answers": installation_answers[initial_answer_count:],
+                "call_log": call_log[initial_call_count:],
+                "mcp_sequence": build_mcp_sequence_payload(state, call_log),
             }
-
-        agent_text = agent_content_text(response.content).strip()
-
         merged_state = _state_for_classifier(
             state,
             last_message=response,
@@ -191,6 +289,8 @@ def invoke_agent_with_listener(
                 "test_status": "FAIL",
                 "question_rounds": question_rounds,
                 "installation_answers": installation_answers[initial_answer_count:],
+                "call_log": call_log[initial_call_count:],
+                "mcp_sequence": build_mcp_sequence_payload(state, call_log),
             }
 
         # QUESTION
@@ -208,6 +308,8 @@ def invoke_agent_with_listener(
                 "test_status": "FAIL",
                 "question_rounds": question_rounds,
                 "installation_answers": installation_answers[initial_answer_count:],
+                "call_log": call_log[initial_call_count:],
+                "mcp_sequence": build_mcp_sequence_payload(state, call_log),
             }
 
         question = classification.get("question") or agent_text
@@ -320,7 +422,7 @@ def invoke_plain_llm_with_listener(
             }
 
         question = classification.get("question") or agent_text
-        answer = answer_question(state, question)
+        answer = answer_question(merged_state, question)
         category = classify_question(question)
         qa_entry = {
             "question": question[:500],
