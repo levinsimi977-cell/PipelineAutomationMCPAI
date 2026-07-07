@@ -64,7 +64,6 @@ async def create_sdk_integration_agent(
     })
 
     # 4. הגדרת כלי הקבצים (Custom Tools)
-
     @tool
     def list_project_files() -> str:
         """
