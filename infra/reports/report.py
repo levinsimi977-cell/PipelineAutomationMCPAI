@@ -69,6 +69,21 @@ class McpToolOrderValidator:
         if not call_log:
             return False, "Log is empty — no tools were invoked"
 
+        sdk_tool_names = [
+            entry["tool"]
+            for entry in call_log
+            if entry["tool"] not in self.independent_tools
+        ]
+        if sdk_tool_names and "integrateSdk" not in sdk_tool_names:
+            return False, "integrateSdk must be invoked before other SDK tools"
+
+        first_sdk_tool = next(
+            (entry["tool"] for entry in call_log if entry["tool"] not in self.independent_tools),
+            None,
+        )
+        if first_sdk_tool and first_sdk_tool != "integrateSdk":
+            return False, "integrateSdk must be the first SDK tool invoked"
+
         p = platform.lower()
         allowed = self.android_tools if p == "android" else self.ios_tools
         processed_log = [self._to_step_id(entry) for entry in call_log]
