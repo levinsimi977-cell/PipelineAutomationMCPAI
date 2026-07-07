@@ -5,10 +5,14 @@ Source: Android demo_project_android_groupe@feature-mcp-with-listener
         (responseAgent.py)
 T3 owns this file.
 
-Strategy (three layers):
-    1. Regex classification  → known category (platform, dev_key, …)
-    2. Deterministic answer  → from test policy (+ safe environment facts)
-    3. LLM fallback          → for unrecognised questions only
+Strategy:
+    1. Regex classification  → topic hint (not the final answer)
+    2. Deterministic answer  → cheap path for simple, unambiguous questions
+    3. LLM (when GEMINI_API_KEY set) → primary for context-heavy questions;
+       uses test policy + test prompt + environment scan + installation agent memory
+
+Answers must align with: answer_policy (test JSON), prompt_goal, and what the
+installation agent already reported doing in state (agent_messages / summaries).
 """
 from __future__ import annotations
 
@@ -17,12 +21,49 @@ import re
 import subprocess
 from typing import Any
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-
 import config
 from prompts.answer_templates import ANSWER_PROMPT, QUESTION_HINTS
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
+
+# Categories / phrasing where keyword matching is not enough — prefer LLM when API key exists.
+_LLM_PREFERRED_CATEGORIES = frozenset({
+    "general",
+    "onelink_deeplink",
+    "sdk_integrated",
+    "scene_delegate_exists",
+    "scene_delegate_deeplink",
+    "scene_delegate_integration",
+    "inapp_event",
+    "inapp_event_method",
+    "verify_logs",
+    "app_launched",
+    "deeplink_testing",
+    "environment",
+})
+
+_CONTEXT_MARKERS = (
+    "already",
+    "כבר",
+    "installed",
+    "מותקן",
+    "existing",
+    "have you",
+    "did you",
+    "is it",
+    "there too",
+    "or not",
+    "still",
+)
+
+
+class UnansweredQuestionError(Exception):
+    """Raised when neither policy nor environment can answer a question."""
+
+    def __init__(self, question: str, category: str = "general") -> None:
+        self.question = question
+        self.category = category
+        super().__init__(f"No deterministic answer for [{category}]: {(question or '')[:120]}")
 
 
 def _answer_policy(state: dict[str, Any]) -> dict[str, Any]:
@@ -35,20 +76,25 @@ def _answer_policy(state: dict[str, Any]) -> dict[str, Any]:
         "use_response_listener": policy.get("use_response_listener"),
         "use_deep_linking": policy.get("use_deep_linking"),
         "use_scene_delegate": policy.get("use_scene_delegate"),
+        "use_scene_delegate_deeplink": policy.get("use_scene_delegate_deeplink"),
         "use_att": policy.get("use_att"),
         "use_cuid": policy.get("use_cuid"),
         "dependency_manager": str(policy.get("dependency_manager") or "").strip().lower(),
         "sdk_already_integrated": policy.get("sdk_already_integrated"),
         "onelink_url": str(policy.get("onelink_url") or "").strip(),
+        "url_identifier": str(policy.get("url_identifier") or "").strip(),
+        "uri_scheme": str(policy.get("uri_scheme") or "").strip(),
         "use_custom_uri_scheme": policy.get("use_custom_uri_scheme"),
         "deeplink_test_type": str(policy.get("deeplink_test_type") or "").strip().lower(),
         "event_name": str(policy.get("event_name") or "").strip(),
         "event_params": str(policy.get("event_params") or "").strip(),
         "event_vertical": str(policy.get("event_vertical") or "").strip(),
+        "inapp_event_method": str(policy.get("inapp_event_method") or "").strip().lower(),
         "has_sha256": policy.get("has_sha256"),
         "sha256_fingerprint": str(policy.get("sha256_fingerprint") or "").strip(),
         "device_id": str(policy.get("device_id") or "").strip(),
         "verify_logs_ready": policy.get("verify_logs_ready"),
+        "app_launched": policy.get("app_launched"),
         "custom_answers": dict(policy.get("custom_answers") or {}),
         "prompt_goal": (state.get("prompt_goal") or policy.get("prompt_goal") or "").strip(),
     }
@@ -88,6 +134,8 @@ def _scan_environment_facts(app_path: str, platform: str = "") -> dict[str, str]
     for root, dirs, files in os.walk(app_path):
         dirs[:] = [d for d in dirs if not d.startswith(".") and d != "Pods"]
         for name in files:
+            if "SceneDelegate" in name and name.endswith(".swift"):
+                facts["has_scene_delegate_file"] = "true"
             if name.endswith(".xcodeproj"):
                 rel = os.path.relpath(os.path.join(root, name), app_path)
                 facts.setdefault("xcodeproj", rel.replace("\\", "/"))
@@ -199,24 +247,64 @@ def _format_test_decisions(state: dict[str, Any]) -> str:
         f"dev_key_configured: {bool(p['dev_key'])}",
         f"use_response_listener: {p['use_response_listener']}",
         f"use_scene_delegate: {p['use_scene_delegate']}",
+        f"use_scene_delegate_deeplink: {p['use_scene_delegate_deeplink']}",
         f"use_att: {p['use_att']}",
         f"use_cuid: {p['use_cuid']}",
         f"use_deep_linking: {p['use_deep_linking']}",
         f"dependency_manager: {p['dependency_manager'] or 'not set'}",
         f"sdk_already_integrated: {p['sdk_already_integrated']}",
         f"onelink_url: {p['onelink_url'] or 'not set'}",
+        f"url_identifier: {p['url_identifier'] or 'not set'}",
+        f"uri_scheme: {p['uri_scheme'] or 'not set'}",
         f"use_custom_uri_scheme: {p['use_custom_uri_scheme']}",
         f"deeplink_test_type: {p['deeplink_test_type'] or 'not set'}",
+        f"inapp_event_method: {p['inapp_event_method'] or 'not set'}",
         f"has_sha256: {p['has_sha256']}",
         f"sha256_configured: {bool(p['sha256_fingerprint'])}",
         f"device_id: {p['device_id'] or 'not set'}",
         f"event_name: {p['event_name'] or 'not set'}",
         f"event_params: {p['event_params'] or 'not set'}",
         f"verify_logs_ready: {p['verify_logs_ready']}",
+        f"app_launched: {p['app_launched']}",
     ]
-    if p["prompt_goal"]:
-        lines.append(f"test_goal: {p['prompt_goal']}")
     return "\n".join(lines)
+
+
+def _format_test_prompt(state: dict[str, Any]) -> str:
+    """Test prompt/goal and target app — what this run is trying to achieve."""
+    p = _answer_policy(state)
+    lines: list[str] = []
+    if p["prompt_goal"]:
+        lines.append(f"Goal: {p['prompt_goal']}")
+    app_path = (state.get("app_path") or "").strip()
+    if app_path:
+        lines.append(f"Target app_path: {app_path}")
+    if p["platform"]:
+        lines.append(f"Target platform: {p['platform']}")
+    base = state.get("base_prompt") or state.get("agent_prompt")
+    if base:
+        lines.append(f"Installation prompt excerpt: {str(base)[:800]}")
+    return "\n".join(lines) if lines else "No test prompt/goal configured."
+
+
+def _format_agent_work_summary(state: dict[str, Any]) -> str:
+    """What the installation LLM reported doing — from state node / agent memory."""
+    sections: list[str] = []
+    for key in (
+        "installation_agent_summary",
+        "agent_work_summary",
+        "agent_actions",
+        "installation_progress",
+    ):
+        value = state.get(key)
+        if value:
+            sections.append(f"{key}:\n{str(value)[:2000]}")
+
+    agent_context = _format_agent_context(state)
+    if agent_context != "No agent conversation context available.":
+        sections.append(f"agent_messages:\n{agent_context}")
+
+    return "\n\n".join(sections) if sections else "No installation agent work reported yet."
 
 
 def _format_prior_answers(state: dict[str, Any]) -> str:
@@ -246,7 +334,9 @@ def _format_agent_context(state: dict[str, Any]) -> str:
     return "No agent conversation context available."
 
 
-def _llm() -> ChatGoogleGenerativeAI:
+def _llm():
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
     return ChatGoogleGenerativeAI(
         model=config.GEMINI_MODEL,
         temperature=0.1,
@@ -258,6 +348,7 @@ def classify_question(question: str) -> str:
     """
     Match question text against QUESTION_HINTS regexes.
 
+    Returns a topic hint for routing / LLM context — not full intent understanding.
     Does NOT decide whether the message is a question (Dev 7 classifier).
     """
     lower = (question or "").lower()
@@ -267,15 +358,78 @@ def classify_question(question: str) -> str:
     return "general"
 
 
+def _should_use_llm_primary(category: str, question: str) -> bool:
+    """Use LLM first when API key exists and the question likely needs context."""
+    if not getattr(config, "GEMINI_API_KEY", ""):
+        return False
+    if category in _LLM_PREFERRED_CATEGORIES:
+        return True
+    q = (question or "").lower()
+    return any(marker in q for marker in _CONTEXT_MARKERS)
+
+
+def _deterministic_chain(
+    category: str,
+    question: str,
+    state: dict[str, Any],
+) -> str | None:
+    """Try all non-LLM answer paths in order."""
+    combined = _combined_ios_integrate_answer(question, state)
+    if combined:
+        return combined
+
+    deterministic = _deterministic_answer(category, question, state)
+    if deterministic:
+        return deterministic
+
+    return _environment_answer(question, state)
+
+
+def _scene_delegate_file_exists(state: dict[str, Any]) -> bool:
+    platform = (state.get("platform") or "").strip().lower()
+    facts = _scan_environment_facts((state.get("app_path") or "").strip(), platform)
+    return facts.get("has_scene_delegate_file") == "true"
+
+
+def _bool_answer(question: str, value: bool, *, yes_text: str, no_text: str) -> str:
+    q = (question or "").lower()
+    if _wants_boolean(q):
+        return _fmt_bool(value)
+    if _wants_yes_no(q):
+        return _fmt_yes_no(value)
+    return yes_text if value else no_text
+
+
+def _combined_ios_integrate_answer(question: str, state: dict[str, Any]) -> str | None:
+    """Answer multi-flag integrateSdk iOS questions in one shot."""
+    q = (question or "").lower()
+    markers = ("scene delegate", "response listener", "att", "cuid", "app tracking")
+    if sum(1 for marker in markers if marker in q) < 2 and "integrate for ios" not in q:
+        return None
+
+    p = _answer_policy(state)
+    parts: list[str] = []
+    if p["use_scene_delegate"] is not None and "scene delegate" in q:
+        parts.append(f"Scene Delegate: {_fmt_yes_no(bool(p['use_scene_delegate']))}")
+    if p["use_response_listener"] is not None and "response listener" in q:
+        parts.append(f"Response listener: {_fmt_yes_no(bool(p['use_response_listener']))}")
+    if p["use_att"] is not None and ("att" in q or "app tracking" in q):
+        parts.append(f"ATT: {_fmt_yes_no(bool(p['use_att']))}")
+    if p["use_cuid"] is not None and "cuid" in q:
+        parts.append(f"CUID: {_fmt_yes_no(bool(p['use_cuid']))}")
+    return ". ".join(parts) + "." if parts else None
+
+
 def _environment_answer(question: str, state: dict[str, Any]) -> str | None:
     """Answer tooling/environment questions from safe pre-existing project facts only."""
     q = (question or "").lower()
     platform = (state.get("platform") or "").strip().lower()
-    facts = _scan_environment_facts((state.get("app_path") or "").strip(), platform)
+    app_path = (state.get("app_path") or "").strip()
+    facts = _scan_environment_facts(app_path, platform)
 
     if "xcode" in q and facts.get("xcodeproj"):
         return facts["xcodeproj"]
-    if "swift" in q and facts.get("swift_version"):
+    if re.search(r"swift version|which swift|what swift", q) and facts.get("swift_version"):
         return facts["swift_version"]
     if any(k in q for k in ("deployment target", "minimum os", "minimum ios", "min ios")):
         return facts.get("ios_deployment_target") or facts.get("ios_minimum_os")
@@ -302,7 +456,7 @@ def _deterministic_answer(
     question: str,
     state: dict[str, Any],
 ) -> str | None:
-    """Return test-driven answer, or None → LLM/environment fallback."""
+    """Return test-driven answer, or None → environment fallback / fail."""
     p = _answer_policy(state)
     q = (question or "").lower()
 
@@ -313,49 +467,75 @@ def _deterministic_answer(
             return "Android only."
         return None
 
-    if category == "scene_delegate":
+    if category == "project_path":
+        app_path = (state.get("app_path") or "").strip()
+        if app_path:
+            return app_path
+        platform = (state.get("platform") or "").strip().lower()
+        facts = _scan_environment_facts(app_path, platform)
+        return facts.get("xcodeproj") or facts.get("xcworkspace")
+
+    if category == "scene_delegate_exists":
+        has_file = _scene_delegate_file_exists(state)
+        return _bool_answer(
+            question,
+            has_file,
+            yes_text="Yes, the app already uses SceneDelegate.",
+            no_text="No, the app does not use SceneDelegate.",
+        )
+
+    if category == "scene_delegate_deeplink":
+        use_deeplink = p["use_scene_delegate_deeplink"]
+        if use_deeplink is None:
+            use_deeplink = p["use_scene_delegate"]
+        if use_deeplink is None:
+            return None
+        return _bool_answer(
+            question,
+            bool(use_deeplink),
+            yes_text="Yes, add optional AppsFlyer deep linking support in SceneDelegate.",
+            no_text="No, do not add deep linking support in SceneDelegate.",
+        )
+
+    if category == "scene_delegate_integration":
         if p["use_scene_delegate"] is None:
             return None
-        if _wants_boolean(q):
-            return _fmt_bool(bool(p["use_scene_delegate"]))
-        if _wants_yes_no(q):
-            return _fmt_yes_no(bool(p["use_scene_delegate"]))
-        return (
-            "Yes, use Scene Delegate support."
-            if p["use_scene_delegate"]
-            else "No, I don't want Scene Delegate support."
+        return _bool_answer(
+            question,
+            bool(p["use_scene_delegate"]),
+            yes_text="Yes, use Scene Delegate support.",
+            no_text="No, I don't want Scene Delegate support.",
         )
 
     if category == "response_listener":
         if p["use_response_listener"] is None:
             return None
-        if _wants_boolean(q):
-            return _fmt_bool(bool(p["use_response_listener"]))
-        if _wants_yes_no(q):
-            return _fmt_yes_no(bool(p["use_response_listener"]))
-        return (
-            "Yes, use a response listener."
-            if p["use_response_listener"]
-            else "No response listener needed."
+        return _bool_answer(
+            question,
+            bool(p["use_response_listener"]),
+            yes_text="Yes, use a response listener.",
+            no_text="No response listener needed.",
         )
 
     if category == "att_tracking":
         if p["use_att"] is None:
             return None
-        if _wants_boolean(q):
-            return _fmt_bool(bool(p["use_att"]))
-        if _wants_yes_no(q):
-            return _fmt_yes_no(bool(p["use_att"]))
-        return "No ATT support needed." if not p["use_att"] else "Yes, enable ATT."
+        return _bool_answer(
+            question,
+            bool(p["use_att"]),
+            yes_text="Yes, enable ATT.",
+            no_text="No ATT support needed.",
+        )
 
     if category == "cuid":
         if p["use_cuid"] is None:
             return None
-        if _wants_boolean(q):
-            return _fmt_bool(bool(p["use_cuid"]))
-        if _wants_yes_no(q):
-            return _fmt_yes_no(bool(p["use_cuid"]))
-        return "No CUID needed." if not p["use_cuid"] else "Yes, use CUID."
+        return _bool_answer(
+            question,
+            bool(p["use_cuid"]),
+            yes_text="Yes, use CUID.",
+            no_text="No CUID needed.",
+        )
 
     if category == "dev_key":
         if p["dev_key"]:
@@ -373,15 +553,22 @@ def _deterministic_answer(
         if p["sdk_already_integrated"] is None:
             return None
         integrated = bool(p["sdk_already_integrated"])
-        if _wants_yes_no(q):
-            return _fmt_yes_no(integrated)
-        if _wants_boolean(q):
-            return _fmt_bool(integrated)
-        return (
-            "Yes, the AppsFlyer SDK is already integrated."
-            if integrated
-            else "No, the SDK is not integrated yet."
+        return _bool_answer(
+            question,
+            integrated,
+            yes_text="Yes, the AppsFlyer SDK is already integrated.",
+            no_text="No, the SDK is not integrated yet.",
         )
+
+    if category == "url_identifier":
+        if p["url_identifier"]:
+            return p["url_identifier"]
+        return None
+
+    if category == "uri_scheme_value":
+        if p["uri_scheme"]:
+            return p["uri_scheme"]
+        return None
 
     if category == "onelink_deeplink":
         if p["use_deep_linking"] is None:
@@ -391,25 +578,40 @@ def _deterministic_answer(
                 return _fmt_bool(False)
             if _wants_yes_no(q):
                 return _fmt_yes_no(False)
+            if "uri" in q and p["use_custom_uri_scheme"] is not None:
+                return _fmt_yes_no(bool(p["use_custom_uri_scheme"]))
             if "uri" in q:
                 return "No custom URI scheme."
             return None
         if p["onelink_url"] and "onelink" in q:
             return p["onelink_url"]
         if p["use_custom_uri_scheme"] is not None and "uri" in q:
-            if _wants_boolean(q):
-                return _fmt_bool(bool(p["use_custom_uri_scheme"]))
-            if _wants_yes_no(q):
-                return _fmt_yes_no(bool(p["use_custom_uri_scheme"]))
-            return _fmt_yes_no(bool(p["use_custom_uri_scheme"]))
+            return _bool_answer(
+                question,
+                bool(p["use_custom_uri_scheme"]),
+                yes_text="Yes, use a custom URI scheme.",
+                no_text="No custom URI scheme.",
+            )
         return None
 
     if category == "verify_logs":
         if p["verify_logs_ready"] is None:
             return None
         if p["verify_logs_ready"]:
+            if "confirmlogfileready" in q.replace(" ", ""):
+                return "confirmLogFileReady: true"
             return "Yes, the log file is ready for verification."
         return "No, the log file is not ready yet."
+
+    if category == "inapp_event_method":
+        method = p["inapp_event_method"]
+        if method == "manual":
+            return "I'll manually provide the event name and parameters."
+        if method in {"top", "predefined"}:
+            return "Use the top predefined in-app event."
+        if method == "vertical":
+            return p["event_vertical"] or "Use vertical-specific in-app events."
+        return None
 
     if category == "inapp_event":
         if p["event_vertical"] and "vertical" in q:
@@ -426,6 +628,16 @@ def _deterministic_answer(
             return "Guide me through testing a direct deep link."
         return None
 
+    if category == "app_launched":
+        if p["app_launched"] is None:
+            return None
+        return _bool_answer(
+            question,
+            bool(p["app_launched"]),
+            yes_text="Yes, the app has been launched.",
+            no_text="No, the app has not been launched yet.",
+        )
+
     if category == "device_id":
         if p["device_id"]:
             return f"Use device ID: {p['device_id']}."
@@ -435,15 +647,19 @@ def _deterministic_answer(
         if p["has_sha256"] is None:
             return None
         if not p["has_sha256"]:
-            if _wants_boolean(q):
-                return _fmt_bool(False)
-            if _wants_yes_no(q):
-                return _fmt_yes_no(False)
-            return "No, I don't have SHA256 yet."
-        if _wants_boolean(q):
-            return _fmt_bool(True)
-        if _wants_yes_no(q):
-            return _fmt_yes_no(True)
+            return _bool_answer(
+                question,
+                False,
+                yes_text="Yes, I already have SHA256.",
+                no_text="No, I don't have SHA256 yet.",
+            )
+        if _wants_boolean(q) or _wants_yes_no(q):
+            return _bool_answer(
+                question,
+                True,
+                yes_text="Yes, I already have SHA256.",
+                no_text="No, I don't have SHA256 yet.",
+            )
         if p["sha256_fingerprint"]:
             return p["sha256_fingerprint"]
         return "Yes, I already have SHA256."
@@ -459,43 +675,34 @@ def _deterministic_answer(
 
 
 def _project_context(state: dict[str, Any]) -> str:
-    """Context for LLM fallback: test policy + prior answers + agent memory + environment."""
+    """Legacy combined context block (kept for compatibility)."""
     return "\n\n".join([
+        "=== test prompt ===",
+        _format_test_prompt(state),
         "=== test decisions ===",
         _format_test_decisions(state),
-        "=== environment facts (pre-existing, not SDK install status) ===",
+        "=== environment facts ===",
         _format_environment_facts(state),
+        "=== installation agent work ===",
+        _format_agent_work_summary(state),
         "=== prior answers ===",
         _format_prior_answers(state),
-        "=== agent conversation ===",
-        _format_agent_context(state),
     ])
 
 
-def answer_question(state: dict[str, Any], question: str) -> str:
-    """
-    Produce an answer for an installation question.
+def _llm_answer(state: dict[str, Any], question: str, category: str) -> str | None:
+    """Primary LLM answer — uses test policy, prompt, environment, and agent memory."""
+    if not getattr(config, "GEMINI_API_KEY", ""):
+        return None
 
-    Order: deterministic (test policy) → environment facts → LLM fallback.
-    """
-    category = classify_question(question)
-
-    deterministic = _deterministic_answer(category, question, state)
-    if deterministic:
-        return deterministic
-
-    if category == "general":
-        env_answer = _environment_answer(question, state)
-        if env_answer:
-            return env_answer
-
-    if not config.GEMINI_API_KEY:
-        return "Use your best professional judgment and proceed."
-
+    category_hint = category if category != "general" else "general (no regex match)"
     prompt = ANSWER_PROMPT.format(
+        test_prompt=_format_test_prompt(state),
         test_decisions=_format_test_decisions(state),
+        environment_facts=_format_environment_facts(state),
+        agent_work_summary=_format_agent_work_summary(state),
         prior_answers=_format_prior_answers(state),
-        context=_project_context(state),
+        category_hint=category_hint,
         question=(question or "").strip(),
     )
     try:
@@ -505,9 +712,45 @@ def answer_question(state: dict[str, Any], question: str) -> str:
             content = " ".join(str(getattr(part, "text", part)) for part in content)
         answer = str(content or "").strip()
     except Exception:
-        answer = ""
+        return None
+    return answer or None
 
-    return answer or "Use your best professional judgment and proceed."
+
+def answer_question(state: dict[str, Any], question: str) -> str:
+    """
+    Produce an answer for an installation question.
+
+    Sources (in order of authority for the LLM):
+        - answer_policy / test JSON  → choices the test wants
+        - prompt_goal / base_prompt  → what the run must achieve
+        - agent memory in state      → what the install LLM said it did
+        - environment scan           → pre-existing project facts at app_path
+
+    Flow:
+        - Context-heavy question + API key → LLM first
+        - Simple question → deterministic first (cheaper), then LLM backup
+        - No API key → deterministic only → UnansweredQuestionError
+    """
+    category = classify_question(question)
+
+    if _should_use_llm_primary(category, question):
+        llm_answer = _llm_answer(state, question, category)
+        if llm_answer:
+            return llm_answer
+        fallback = _deterministic_chain(category, question, state)
+        if fallback:
+            return fallback
+        raise UnansweredQuestionError(question, category)
+
+    cheap = _deterministic_chain(category, question, state)
+    if cheap:
+        return cheap
+
+    llm_answer = _llm_answer(state, question, category)
+    if llm_answer:
+        return llm_answer
+
+    raise UnansweredQuestionError(question, category)
 
 def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
     """

@@ -3,10 +3,14 @@ Answer & classifier prompt templates + question-hint patterns.
 
 T3-03 (Developer 8):
     QUESTION_HINTS  → topic detection (regex on question text)
-    ANSWER_PROMPT   → LLM fallback only
+    ANSWER_PROMPT   → LLM fallback only (opt-in via config)
     CLASSIFY_PROMPT → exported for agents/classifier.py (Dev 7)
+
+Order matters: first matching category wins — put specific patterns before broad ones.
 """
 from __future__ import annotations
+
+
 
 from langchain_core.prompts import PromptTemplate
 
@@ -24,9 +28,45 @@ QUESTION_HINTS: dict[str, list[str]] = {
         r"identify the platform",
         r"פלטפורמה",
     ],
-    "scene_delegate": [
-        r"scene\s*delegate",
+    "project_path": [
+        r"projectpath",
+        r"project path",
+        r"provide.*path.*project",
+        r"path to (?:the )?(?:xcode|ios|android) project",
+    ],
+    "url_identifier": [
+        r"url identifier",
+        r"urlidentifier",
+        r"identifier in info\.plist",
+    ],
+    "uri_scheme_value": [
+        r"uri scheme should i add",
+        r"what unique uri scheme",
+        r"unique uri scheme",
+    ],
+    "scene_delegate_exists": [
+        r"already use a scenedelegate",
+        r"does your app.*scenedelegate",
+        r"already have a scenedelegate",
+    ],
+    "scene_delegate_deeplink": [
+        r"deep linking support there too",
+        r"optional appsflyer deep linking support",
+        r"deeplink.*scenedelegate",
+        r"scenedelegate.*deeplink",
+    ],
+    "onelink_deeplink": [
+        r"onelink",
+        r"deep\s*link",
+        r"deeplink",
+        r"custom uri scheme",
+        r"urischeme",
+    ],
+    "scene_delegate_integration": [
+        r"support scene\s*delegate",
+        r"want.*scene\s*delegate",
         r"isdelegate",
+        r"scene\s*delegate",
     ],
     "response_listener": [
         r"response\s*listener",
@@ -38,6 +78,7 @@ QUESTION_HINTS: dict[str, list[str]] = {
     "att_tracking": [
         r"\batt\b",
         r"apptrackingtransparency",
+        r"app tracking transparency",
         r"tracking transparency",
         r"isatt",
     ],
@@ -62,13 +103,6 @@ QUESTION_HINTS: dict[str, list[str]] = {
         r"podfile",
         r"package\.swift",
     ],
-    "onelink_deeplink": [
-        r"onelink",
-        r"deep\s*link",
-        r"deeplink",
-        r"custom uri scheme",
-        r"urischeme",
-    ],
     "sdk_integrated": [
         r"already integrated",
         r"sdk integrated",
@@ -80,6 +114,15 @@ QUESTION_HINTS: dict[str, list[str]] = {
         r"confirmlogfileready",
         r"confirm.*log",
         r"paste.*log",
+        r"rerun with confirmlogfileready",
+    ],
+    "inapp_event_method": [
+        r"three options",
+        r"which option would you like",
+        r"which option",
+        r"manually provide the event",
+        r"top predefined",
+        r"vertical specific",
     ],
     "inapp_event": [
         r"event name",
@@ -87,12 +130,19 @@ QUESTION_HINTS: dict[str, list[str]] = {
         r"event parameter",
         r"in.?app event",
         r"which vertical",
-        r"manually provide",
+        r"enter the event name",
     ],
     "deeplink_testing": [
         r"deferred or direct",
         r"completed the test",
         r"finished the test",
+    ],
+    "app_launched": [
+        r"launch the app",
+        r"launched the app",
+        r"did you run the app",
+        r"have you run the app",
+        r"run the app",
     ],
     "device_id": [
         r"device id",
@@ -110,6 +160,8 @@ QUESTION_HINTS: dict[str, list[str]] = {
         r"minimum os",
         r"minimum ios",
         r"swift version",
+        r"which swift",
+        r"what swift",
         r"gradle version",
         r"which gradle",
         r"jdk version",
@@ -143,18 +195,28 @@ CLASSIFY_PROMPT: PromptTemplate = PromptTemplate.from_template(
 ANSWER_PROMPT: PromptTemplate = PromptTemplate.from_template(
     "You answer AppsFlyer SDK installation questions on behalf of the developer.\n"
     "Be short, decisive, and technical. Return ONLY the answer text.\n\n"
-    "Developer decisions for THIS test run (do NOT guess beyond this):\n"
+    "=== TEST PROMPT / GOAL (what this run must achieve) ===\n"
+    "{test_prompt}\n\n"
+    "=== TEST DECISIONS (answer_policy — authoritative for choices) ===\n"
     "{test_decisions}\n\n"
-    "Previous answers you already gave in this test run:\n"
+    "=== ENVIRONMENT FACTS (pre-existing project at app_path, before install agent) ===\n"
+    "{environment_facts}\n\n"
+    "=== INSTALLATION AGENT WORK SO FAR (what the install LLM reported doing) ===\n"
+    "{agent_work_summary}\n\n"
+    "=== PRIOR Q&A IN THIS RUN ===\n"
     "{prior_answers}\n\n"
-    "Conversation context:\n"
-    "{context}\n\n"
-    "Question:\n{question}\n\n"
+    "=== DETECTED TOPIC (regex hint — always read full question for intent) ===\n"
+    "{category_hint}\n\n"
+    "=== QUESTION ===\n"
+    "{question}\n\n"
     "Rules:\n"
-    "- Answer ONLY according to the test decisions above.\n"
-    "- Stay consistent with your previous answers.\n"
-    "- Do NOT assume the SDK is installed unless the test says so.\n"
-    "- Do NOT mention AppsFlyer SDK install status from project files.\n"
-    "- If True/False or yes/no expected, reply with exactly that format.\n"
-    "- If the test does not cover this, say: Use your best professional judgment and proceed.\n"
+    "- CHOICES (ATT, CUID, deeplink setup, dependency manager, event method): follow TEST DECISIONS.\n"
+    "- PRE-EXISTING project structure (SceneDelegate file, Podfile, Swift version): use ENVIRONMENT FACTS.\n"
+    "- What was ALREADY DONE in this run (SDK step completed, deeplink added): use INSTALLATION AGENT WORK.\n"
+    "- Distinguish intent:\n"
+    "  * 'already installed / already use / already have / כבר מותקן' → agent work + policy sdk_already_integrated + environment\n"
+    "  * 'do you want / should I add / support / configure' → TEST DECISIONS\n"
+    "- Stay consistent with PRIOR Q&A.\n"
+    "- Do NOT infer AppsFlyer SDK install status from project file scan.\n"
+    "- If (yes/no) expected → reply yes or no only; if (true/false) → True or False only.\n"
 )
