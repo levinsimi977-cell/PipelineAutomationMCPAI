@@ -1,21 +1,19 @@
 """
-ולידטור סדר הפעלת כלי MCP.
+MCP tool-order validator.
 
-קלטים (חייבים להגיע מהקורא — המודול הזה לא שולף אותם בעצמו):
-  - platform: פלטפורמת הריצה, למשל "android" או "ios".
-              מקור צפוי: הגדרת use-case / קונפיג ריצה (למשל data/useCases/useCase.json)
-              או שכבת האורקסטרציה (infra/aplication/app.py).
-
-  - call_log: רשימה מסודרת של הפעלות כלי MCP מריצת ה-agent.
-              כל רשומה: {"tool": "<name>", "action": "<optional>"} לכלי iOS רב-שלביים.
-              מקור צפוי: פלט ה-SDK agent או trace של ס session MCP
-              (infra/agents/sdkAgent/tools/agent.py → עובר דרך app.py).
+Inputs:
+  - recorder: AuditRecorder instance (infra/agents/AuditRecorder.py).
+              call_log is fetched inside this module via recorder.mcp_tool_results().
+  - platform: run platform, e.g. "android" or "ios".
+              Expected source: use-case config or infra/aplication/app.py.
 """
+
+from infra.agents.AuditRecorder import AuditRecorder
 
 
 class McpToolOrderValidator:
     def __init__(self):
-        # כלים המותרים ברצף לפי פלטפורמה.
+        # Platform-specific tools allowed in a validated sequence.
         self.android_tools = {
             "integrateSdk", "verifySdk", "createDeepLink", "guideDeepLinkTesting",
             "verifyDeepLink", "createInAppEvent", "verifyInAppEvent",
@@ -25,18 +23,18 @@ class McpToolOrderValidator:
             "verifyIosDeepLink", "createIosInAppEvent", "verifyIosInAppEvent",
         }
 
-        # כלים עצמאיים — יכולים להופיע בכל מקום בלוג ללא בדיקת סדר.
+        # Independent tools — may appear anywhere in the log without order checks.
         self.independent_tools = {
             "getVersion", "fetchLogs", "getErrors", "getLaunchLogs",
             "getInAppLogs", "getConversionLogs", "getDeepLinkLogs",
         }
 
-        # כלי קטלוג אופציונליים; אם שימשו — חייבים להופיע לפני create-event.
+        # Optional catalog lookups; if used, they must appear before create-event tools.
         self.catalog_tools = {"getTopInAppEvents", "getInAppEventsByVertical"}
         self.create_event_tools = {"createInAppEvent", "createIosInAppEvent"}
 
-        # כללי תלות חובה: (pre, post) — post לא יופיע לפני pre.
-        # post הוא מזהה השלב ש-_to_step_id מחזיר (tool_action לכלי iOS רב-שלבי).
+        # Mandatory dependency rules: (pre, post) — post must not appear before pre.
+        # post is the step id returned by _to_step_id (tool_action for multi-step iOS tools).
         self.rules = [
             ("integrateSdk", "verifySdk"),
             ("integrateSdk", "verifyIosSdk_prepare"),
@@ -53,16 +51,23 @@ class McpToolOrderValidator:
             ("verifyIosInAppEvent_prepare", "verifyIosInAppEvent_verify"),
         ]
 
-    def validate_sequence(self, call_log, platform):
+    def validate_sequence(self, recorder: AuditRecorder, platform: str) -> tuple[bool, str]:
         """
-        בודק ש-call_log עומד בכללי הפלטפורמה ובסדר תלויות הכלים.
+        Validate MCP tool order for a run.
+
+        Fetches call_log from recorder.mcp_tool_results() (ordered tool payloads).
 
         Args:
-            call_log: הפעלות כלים לפי סדר — יש לשלוף מפלט agent/MCP (ראה docstring למעלה).
-            platform: "android" או "ios" — יש לשלוף מקונפיג use-case או מ-app.
+            recorder: AuditRecorder with MCP_TOOL_RESULT events from the agent run.
+            platform: "android" or "ios".
         """
+        call_log = recorder.mcp_tool_results()
+        return self._validate_call_log(call_log, platform)
+
+    def _validate_call_log(self, call_log, platform):
+        """Run order checks on an already-built call_log list."""
         if not call_log:
-            return True, "Log is empty"
+            return False, "Log is empty — no tools were invoked"
 
         p = platform.lower()
         allowed = self.android_tools if p == "android" else self.ios_tools
@@ -73,27 +78,27 @@ class McpToolOrderValidator:
             current_step = processed_log[i]
             prefix = processed_log[:i]
 
-            # כלים עצמאיים — מדלגים על בדיקת סדר.
+            # Independent tools — skip order validation.
             if tool_name in self.independent_tools:
                 continue
 
-            # דוחה כלים שלא שייכים לפלטפורמת הריצה.
+            # Reject tools that do not belong to the target platform.
             if tool_name not in allowed and tool_name not in self.catalog_tools:
                 return False, f"Tool '{tool_name}' not supported for '{p}'"
 
-            # guideDeepLinkTesting דורש לפחות כלי create אחד קודם בלוג.
+            # guideDeepLinkTesting requires at least one create tool earlier in the log.
             if tool_name == "guideDeepLinkTesting":
                 if not any(t in prefix for t in ("createDeepLink", "createIosDeepLink")):
                     return False, "Rule Violation: 'guideDeepLinkTesting' requires a 'create' tool first."
                 continue
 
-            # קטלוג אופציונלי — אם הופיע, חייב לבוא לפני create-event.
+            # Catalog is optional — if present, it must come before create-event tools.
             if tool_name in self.create_event_tools:
                 for cat in self.catalog_tools:
                     if cat in processed_log and cat not in prefix:
                         return False, f"Rule Violation: '{current_step}' before '{cat}'."
 
-            # אכיפת כללי תלות (pre, post).
+            # Enforce mandatory (pre, post) dependency rules.
             for pre, post in self.rules:
                 if current_step == post and pre not in prefix:
                     return False, f"Rule Violation ({p}): '{post}' requires '{pre}' first."
@@ -101,10 +106,11 @@ class McpToolOrderValidator:
         return True, "Sequence is valid"
 
     def _to_step_id(self, entry):
-        """מנרמל רשומת לוג למזהה שלב ייחודי, למשל verifyIosSdk_prepare."""
+        """Normalize a log entry to a unique step id, e.g. verifyIosSdk_prepare."""
         tool = entry["tool"]
         action = entry.get("action")
         return f"{tool}_{action}" if action else tool
+
 """Backward-compatible entrypoint for report generation."""
 
 from infra.user_interface_use_case.reports.reporter import (
@@ -112,5 +118,4 @@ from infra.user_interface_use_case.reports.reporter import (
     generate_html_report,
 )
 
-__all__ = ["ReportGenerator", "generate_html_report"]
-
+__all__ = ["McpToolOrderValidator", "ReportGenerator", "generate_html_report"]
