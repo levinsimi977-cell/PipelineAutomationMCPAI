@@ -1,4 +1,5 @@
 import shutil
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -14,11 +15,12 @@ def create_sandbox_app(original_app_path: str) -> str:
     Filters out unnecessary heavy files/metadata during directory duplication.
     """
     # Generate a unique timestamp for the individual pipeline execution run
+    unique_id = uuid.uuid4().hex[:8]
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    sandbox_root = Path("sandboxes").resolve() / f"run_{timestamp}"
     
     # Ensure the dynamic container folder physically exists on disk
-    sandbox_root.mkdir(parents=True, exist_ok=True)
+    sandbox_root = Path("sandboxes").resolve() / f"run_{timestamp}_{unique_id}"
+    
     
     original_path = Path(original_app_path)
     sandbox_app_path = sandbox_root / original_path.name
@@ -59,7 +61,8 @@ def extract_platform_from_json(state: dict) -> str:
 # ****helper function
 # =====================================================================
 # FUNCTION 2: Directory Mapping and Sandbox Routing
-# =====================================================================
+# =============================================
+# ========================
 def resolve_and_replicate_app(platform_name: str) -> str:
     """
     Maps the extracted platform name to the local directory structure 
@@ -114,3 +117,45 @@ def setup_environment(state: dict) -> dict:
             "test_status": "FAIL",
             "error_reason": f"Environment setup failed: {str(exc)}"
         }
+        
+def cleanup_environment(sandbox_path: str) -> dict:
+    """
+    Teardown Phase: Safely removes the allocated sandbox directory and its contents
+    to prevent local disk bloating after the UseCase execution completes.
+
+    Args:
+        sandbox_path (str): The absolute or relative path to the sandbox application directory.
+
+    Returns:
+        dict: A status dictionary indicating whether the cleanup was SUCCESS, SKIPPED, or FAILED.
+    """
+    try:
+        # Convert to an absolute Path object for reliable filesystem operations
+        app_path = Path(sandbox_path).resolve()
+        
+        # The actual container to delete is the unique run folder (the parent of the app directory)
+        run_folder = app_path.parent
+        
+        # Safety Check: Ensure the target exists, is a directory, and contains our dynamic "run_" prefix.
+        if run_folder.exists() and run_folder.is_dir() and "run_" in run_folder.name:
+            shutil.rmtree(run_folder)
+            print(f"🛡️ Cleanup Success: Fully deleted sandbox run environment at: {run_folder}")
+            return {"cleanup_status": "SUCCESS"}
+            
+        # Fallback: Safely delete the specific app path instead if the parent layout differs
+        elif app_path.exists():
+            if app_path.is_dir():
+                shutil.rmtree(app_path)
+            else:
+                app_path.unlink()
+            print(f"🛡️ Cleanup Success: Deleted atomic sandbox application target at: {app_path}")
+            return {"cleanup_status": "SUCCESS"}
+            
+        else:
+            print(f"⚠️ Cleanup Warning: Target path does not exist, skipping deletion: {sandbox_path}")
+            return {"cleanup_status": "SKIPPED", "reason": "Path not found"}
+            
+    except Exception as exc:
+        print(f"❌ Critical Error during environment cleanup: {exc}")
+        return {"cleanup_status": "FAILED", "error_reason": str(exc)}
+
