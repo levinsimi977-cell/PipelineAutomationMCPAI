@@ -752,15 +752,67 @@ def answer_question(state: dict[str, Any], question: str) -> str:
 
     raise UnansweredQuestionError(question, category)
 
-
 def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
     """
     LangGraph node: read state["incoming_question"], answer it, update state.
 
-    T3-04b (Developer 9) — not implemented here.
+    Wires state -> answer_question -> state return.
+    Stops after MAX_QUESTION_ROUNDS questions.
     """
-    ...
 
+    question = (state.get("incoming_question") or "").strip()
+    if not question:
+        return {
+            "nodes_logs": [
+                *(state.get("nodes_logs") or []),
+                {
+                    "node": "answer_question",
+                    "status": "SKIP",
+                    "message": "No incoming_question provided",
+                },
+            ],
+        }
+
+    question_rounds = state.get("question_rounds", 0) + 1
+
+    if question_rounds > MAX_QUESTION_ROUNDS:
+        return {
+            "question_rounds": question_rounds,
+            "test_status": "FAIL",
+            "nodes_logs": [
+                *(state.get("nodes_logs") or []),
+                {
+                    "node": "answer_question",
+                    "status": "FAIL",
+                    "message": (
+                        f"Maximum question limit ({MAX_QUESTION_ROUNDS}) exceeded."
+                    ),
+                },
+            ],
+        }
+
+    answer = answer_question(state, question)
+
+    qa_entry = {
+        "question": question,
+        "answer": answer,
+    }
+
+    return {
+        "question_rounds": question_rounds,
+        "installation_answers": [
+            *(state.get("installation_answers") or []),
+            qa_entry,
+        ],
+        "nodes_logs": [
+            *(state.get("nodes_logs") or []),
+            {
+                "node": "answer_question",
+                "status": "SUCCESS",
+                "message": f"Answered: {question}",
+            },
+        ],
+    }
 
 def build_prompt_with_answers(
     base_prompt: str,
