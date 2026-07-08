@@ -9,9 +9,10 @@ Both return the same `CompilationResult` shape, so the rest of the
 pipeline doesn't need to care which platform actually ran.
 
 `check_compilation(state)` is the pipeline entry point: it reads
-`state["platform"]` ("android" | "ios") and dispatches to the matching
-runner. Runs after `sdkAgent` applies the SDK changes and before the
-runtime verification step (`answer_agent` / verify_sdk log checks).
+`state["platform"]` ("android" | "ios", defaults to "ios" if absent) and
+dispatches to the matching runner. Runs after `sdkAgent` applies the SDK
+changes and before the runtime verification step (`answer_agent` /
+verify_sdk log checks).
 
 This module intentionally fixes the pitfalls that broke the reference
 implementation (see mcp_test_runner/android_project.py in the AppsFlyer MCP
@@ -32,14 +33,13 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import stat
 import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 DEFAULT_GRADLE_TASK = "assembleDebug"
 DEFAULT_IOS_CONFIGURATION = "Debug"
@@ -51,24 +51,27 @@ LOG_TAIL_CHARS = 4000
 # flexible on purpose: the pre-build pipeline state is a plain dict (not
 # the pydantic UseCaseContract yet), and different teams/stages may name
 # the working-copy path differently.
-APP_PATH_STATE_KEYS = ("sandbox_path", "app_path", "source_path", "project_path")
+APP_PATH_STATE_KEYS = ("sandbox_dir", "sandbox_path", "app_path", "source_path", "project_path")
 
 
 @dataclass
 class CompilationResult:
     """Structured, platform-agnostic outcome of a single compilation check run."""
 
-    success: bool
     status: str  # "PASSED" | "FAILED" | "TIMEOUT" | "SKIPPED" | "ERROR"
-    message: str
-    platform: str = "android"
-    build_target: str = ""  # gradle task (android) or scheme (ios)
+    platform: str
     return_code: Optional[int] = None
     duration_seconds: float = 0.0
     log_path: Optional[str] = None
+    scheme: Optional[str] = None  # Xcode scheme (ios) or Gradle task name (android)
+    detail: str = ""
     stdout_tail: str = ""
     stderr_tail: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def success(self) -> bool:
+        return self.status == "PASSED"
 
     def to_audit_event(self, source: str = "compilationAgent") -> dict[str, Any]:
         """
@@ -89,7 +92,7 @@ class CompilationResult:
             "event": f"{self.platform}_compilation",
             "phase": "Build",
             "status": status_map.get(self.status, "info"),
-            "details": self.message,
+            "details": self.detail,
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
 
@@ -102,8 +105,8 @@ def _resolve_app_path(state: dict[str, Any]) -> str:
     return ""
 
 
-def _write_log(project_root: Path, stdout: str, stderr: str, prefix: str) -> str:
-    log_dir = project_root / "compilation-logs"
+def _write_log(log_dir: str | Path, stdout: str, stderr: str, prefix: str) -> str:
+    log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     log_path.write_text(
@@ -222,18 +225,19 @@ def run_gradle_build(
 
     if not root.exists():
         return CompilationResult(
-            success=False, status="ERROR", platform="android",
-            message=f"app_path does not exist: {root}",
+            status="ERROR", platform="android",
+            detail=f"app_path does not exist: {root}",
         )
 
     gradlew = _find_gradle_wrapper(root)
     if gradlew is None:
         return CompilationResult(
-            success=False, status="SKIPPED", platform="android",
-            message=f"No Gradle wrapper (gradlew/gradlew.bat) found under {root}.",
+            status="SKIPPED", platform="android",
+            detail=f"No Gradle wrapper (gradlew/gradlew.bat) found under {root}.",
         )
 
     project_root = gradlew.parent
+    log_dir = project_root / "compilation-logs"
     try:
         _ensure_executable(gradlew)
         _ensure_android_sdk_location(project_root)
@@ -242,37 +246,36 @@ def run_gradle_build(
         )
     except subprocess.TimeoutExpired as exc:
         duration = time.monotonic() - started
-        log_path = _write_log(project_root, exc.stdout or "", exc.stderr or "", prefix="gradle_build")
+        log_path = _write_log(log_dir, exc.stdout or "", exc.stderr or "", prefix="gradle_build")
         return CompilationResult(
-            success=False, status="TIMEOUT", platform="android",
-            message=f"Gradle build exceeded the {timeout_seconds}s timeout.",
-            build_target=gradle_task, duration_seconds=duration, log_path=log_path,
+            status="TIMEOUT", platform="android", scheme=gradle_task,
+            duration_seconds=duration, log_path=log_path,
+            detail=f"Gradle build exceeded the {timeout_seconds}s timeout.",
             stdout_tail=(exc.stdout or "")[-LOG_TAIL_CHARS:],
             stderr_tail=(exc.stderr or "")[-LOG_TAIL_CHARS:],
         )
     except OSError as exc:
         return CompilationResult(
-            success=False, status="ERROR", platform="android",
-            message=f"Failed to launch Gradle wrapper: {exc}", build_target=gradle_task,
+            status="ERROR", platform="android", scheme=gradle_task,
+            detail=f"Failed to launch Gradle wrapper: {exc}",
         )
 
     duration = time.monotonic() - started
     success = result.returncode == 0
-    log_path = _write_log(project_root, result.stdout or "", result.stderr or "", prefix="gradle_build")
+    log_path = _write_log(log_dir, result.stdout or "", result.stderr or "", prefix="gradle_build")
 
     return CompilationResult(
-        success=success,
         status="PASSED" if success else "FAILED",
         platform="android",
-        message=(
+        scheme=gradle_task,
+        return_code=result.returncode,
+        duration_seconds=duration,
+        log_path=log_path,
+        detail=(
             f"`gradlew {gradle_task}` succeeded."
             if success
             else f"`gradlew {gradle_task}` failed with exit code {result.returncode}."
         ),
-        build_target=gradle_task,
-        return_code=result.returncode,
-        duration_seconds=duration,
-        log_path=log_path,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
     )
@@ -283,38 +286,51 @@ def run_gradle_build(
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def _find_ios_project(app_path: str | Path) -> Optional[tuple[Path, str]]:
+def _find_ios_project(app_path: str | Path) -> Dict[str, Optional[Path]]:
     """
-    Locate the Xcode project to build. Returns (path, "workspace"|"project").
-    Prefers `.xcworkspace` (needed whenever CocoaPods/SPM are used) over a
-    bare `.xcodeproj`, and looks one level deep too, mirroring
-    `_find_gradle_wrapper`'s "app_path may be a parent folder" behavior.
+    Locate the Xcode project to build directly under `app_path` (top level
+    only — a `.xcworkspace` nested inside a `.xcodeproj`, e.g. CocoaPods'
+    `project.xcworkspace`, must NOT be picked up).
+
+    Returns {"workspace": Path|None, "project": Path|None} so the caller can
+    prefer the workspace (needed whenever CocoaPods/SPM are used) while
+    still falling back to a bare `.xcodeproj`.
     """
     root = Path(app_path)
     if not root.is_dir():
+        return {"workspace": None, "project": None}
+
+    workspaces = sorted(root.glob("*.xcworkspace"))
+    projects = sorted(root.glob("*.xcodeproj"))
+    return {
+        "workspace": workspaces[0] if workspaces else None,
+        "project": projects[0] if projects else None,
+    }
+
+
+def _detect_scheme(workspace: Optional[Path], project: Optional[Path]) -> Optional[str]:
+    """
+    Ask xcodebuild which schemes exist and pick the best one: prefer a
+    scheme whose name matches the workspace/project name exactly, else the
+    first scheme that isn't a CocoaPods-generated `Pods-*` scheme (those
+    can't be built standalone), else whatever is left.
+    """
+    target = workspace or project
+    if target is None:
         return None
-    search_dirs = [root] + [p for p in root.iterdir() if p.is_dir()]
 
-    for directory in search_dirs:
-        workspaces = sorted(directory.glob("*.xcworkspace"))
-        if workspaces:
-            return workspaces[0], "workspace"
-    for directory in search_dirs:
-        projects = sorted(directory.glob("*.xcodeproj"))
-        if projects:
-            return projects[0], "project"
-    return None
-
-
-def _detect_scheme(project_file: Path, project_type: str) -> Optional[str]:
-    """Ask xcodebuild which schemes exist and pick the first one."""
-    flag = "-workspace" if project_type == "workspace" else "-project"
+    flag = "-workspace" if workspace is not None else "-project"
     try:
         result = subprocess.run(
-            ["xcodebuild", flag, str(project_file), "-list", "-json"],
-            capture_output=True, text=True, timeout=60, check=False,
+            ["xcodebuild", flag, str(target), "-list", "-json"],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    if result.returncode != 0:
         return None
 
     try:
@@ -324,11 +340,20 @@ def _detect_scheme(project_file: Path, project_type: str) -> Optional[str]:
 
     container = data.get("workspace") or data.get("project") or {}
     schemes = container.get("schemes") or []
-    return schemes[0] if schemes else None
+    if not schemes:
+        return None
+
+    name = container.get("name")
+    if name and name in schemes:
+        return name
+
+    non_pods_schemes = [s for s in schemes if not s.lower().startswith("pods-")]
+    return (non_pods_schemes or schemes)[0]
 
 
 def run_xcodebuild(
     app_path: str | Path,
+    log_dir: str | Path,
     scheme: Optional[str] = None,
     configuration: str = DEFAULT_IOS_CONFIGURATION,
     sdk: str = DEFAULT_IOS_SDK,
@@ -345,38 +370,26 @@ def run_xcodebuild(
     started = time.monotonic()
     root = Path(app_path)
 
-    if not root.exists():
+    located = _find_ios_project(root)
+    workspace, project = located["workspace"], located["project"]
+    if workspace is None and project is None:
         return CompilationResult(
-            success=False, status="ERROR", platform="ios",
-            message=f"app_path does not exist: {root}",
+            status="ERROR", platform="ios",
+            detail=f"No .xcworkspace/.xcodeproj found under {root}.",
         )
 
-    if shutil.which("xcodebuild") is None:
-        return CompilationResult(
-            success=False, status="SKIPPED", platform="ios",
-            message="xcodebuild is not available on this machine (requires macOS + Xcode).",
-        )
-
-    found = _find_ios_project(root)
-    if found is None:
-        return CompilationResult(
-            success=False, status="SKIPPED", platform="ios",
-            message=f"No .xcworkspace/.xcodeproj found under {root}.",
-        )
-    project_file, project_type = found
-
-    resolved_scheme = scheme or _detect_scheme(project_file, project_type)
+    resolved_scheme = scheme or _detect_scheme(workspace, project)
     if not resolved_scheme:
         return CompilationResult(
-            success=False, status="ERROR", platform="ios",
-            message="Could not determine an Xcode scheme to build (pass `scheme` explicitly).",
+            status="ERROR", platform="ios",
+            detail="Could not determine an Xcode scheme to build (pass `scheme` explicitly).",
         )
 
-    project_root = project_file.parent
-    flag = "-workspace" if project_type == "workspace" else "-project"
-    args = [
+    target = workspace or project
+    flag = "-workspace" if workspace is not None else "-project"
+    command = [
         "xcodebuild",
-        flag, str(project_file),
+        flag, str(target),
         "-scheme", resolved_scheme,
         "-configuration", configuration,
         "-sdk", sdk,
@@ -387,48 +400,42 @@ def run_xcodebuild(
 
     try:
         result = subprocess.run(
-            args,
-            cwd=str(project_root),
+            command,
+            cwd=str(target.parent),
             capture_output=True,
             text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout_seconds,
-            check=False,
         )
     except subprocess.TimeoutExpired as exc:
         duration = time.monotonic() - started
-        log_path = _write_log(project_root, exc.stdout or "", exc.stderr or "", prefix="xcodebuild")
+        log_path = _write_log(log_dir, exc.stdout or "", exc.stderr or "", prefix="xcodebuild")
         return CompilationResult(
-            success=False, status="TIMEOUT", platform="ios",
-            message=f"xcodebuild exceeded the {timeout_seconds}s timeout.",
-            build_target=resolved_scheme, duration_seconds=duration, log_path=log_path,
-            stdout_tail=(exc.stdout or "")[-LOG_TAIL_CHARS:],
-            stderr_tail=(exc.stderr or "")[-LOG_TAIL_CHARS:],
+            status="TIMEOUT", platform="ios", scheme=resolved_scheme,
+            duration_seconds=duration, log_path=log_path,
+            detail=f"xcodebuild exceeded the {timeout_seconds}s timeout.",
         )
     except OSError as exc:
         return CompilationResult(
-            success=False, status="ERROR", platform="ios",
-            message=f"Failed to launch xcodebuild: {exc}", build_target=resolved_scheme,
+            status="ERROR", platform="ios", scheme=resolved_scheme,
+            detail=f"Failed to launch xcodebuild: {exc}",
         )
 
     duration = time.monotonic() - started
     success = result.returncode == 0
-    log_path = _write_log(project_root, result.stdout or "", result.stderr or "", prefix="xcodebuild")
+    log_path = _write_log(log_dir, result.stdout or "", result.stderr or "", prefix="xcodebuild")
 
     return CompilationResult(
-        success=success,
         status="PASSED" if success else "FAILED",
         platform="ios",
-        message=(
+        scheme=resolved_scheme,
+        return_code=result.returncode,
+        duration_seconds=duration,
+        log_path=log_path,
+        detail=(
             f"`xcodebuild` succeeded for scheme {resolved_scheme!r}."
             if success
             else f"`xcodebuild` failed (exit code {result.returncode}) for scheme {resolved_scheme!r}."
         ),
-        build_target=resolved_scheme,
-        return_code=result.returncode,
-        duration_seconds=duration,
-        log_path=log_path,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
     )
@@ -441,9 +448,9 @@ def run_xcodebuild(
 
 def check_compilation(state: dict[str, Any]) -> dict[str, Any]:
     """
-    Pipeline node: read `state["platform"]` ("android" | "ios") + the
-    project path (`state["app_path"]`, or `sandbox_path`/`source_path`/
-    `project_path` if that's what an earlier node named it — see
+    Pipeline node: read `state["platform"]` ("android" | "ios", defaults to
+    "ios" if the key is absent) + the project path (`state["sandbox_dir"]`,
+    or `sandbox_path`/`app_path`/`source_path`/`project_path` — see
     APP_PATH_STATE_KEYS), run the matching compilation check, and return
     the state updates + a ready-to-use audit event.
 
@@ -453,30 +460,38 @@ def check_compilation(state: dict[str, Any]) -> dict[str, Any]:
       - "audit_events": list[dict]                  -> feed straight into
         infra/user_interface_use_case/reports/reporter.py's audit_events list
     """
-    platform = str(state.get("platform") or "").strip().lower()
-    app_path = _resolve_app_path(state)
+    platform = str(state.get("platform") or "ios").strip().lower()
+    project_path = _resolve_app_path(state)
     timeout_seconds = state.get("compilation_timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
 
-    if platform == "android":
+    if platform == "ios":
+        if not project_path:
+            result = CompilationResult(
+                status="ERROR", platform="ios",
+                detail="No project path found in state (expected 'sandbox_dir').",
+            )
+        else:
+            run_dir = state.get("run_dir") or project_path
+            log_dir = Path(run_dir) / "compilation-logs"
+            result = run_xcodebuild(
+                project_path,
+                log_dir=log_dir,
+                scheme=state.get("xcode_scheme"),
+                configuration=state.get("xcode_configuration", DEFAULT_IOS_CONFIGURATION),
+                sdk=state.get("xcode_sdk", DEFAULT_IOS_SDK),
+                timeout_seconds=timeout_seconds,
+            )
+    elif platform == "android":
         result = run_gradle_build(
-            app_path,
+            project_path,
             gradle_task=state.get("gradle_task", DEFAULT_GRADLE_TASK),
-            timeout_seconds=timeout_seconds,
-        )
-    elif platform == "ios":
-        result = run_xcodebuild(
-            app_path,
-            scheme=state.get("xcode_scheme"),
-            configuration=state.get("xcode_configuration", DEFAULT_IOS_CONFIGURATION),
-            sdk=state.get("xcode_sdk", DEFAULT_IOS_SDK),
             timeout_seconds=timeout_seconds,
         )
     else:
         result = CompilationResult(
-            success=False,
             status="ERROR",
-            platform=platform or "unknown",
-            message=f"Unsupported platform for compilation check: {platform!r} (expected 'android' or 'ios').",
+            platform=platform,
+            detail=f"Unsupported platform for compilation check: {platform!r} (expected 'android' or 'ios').",
         )
 
     return {
