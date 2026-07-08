@@ -1,0 +1,17 @@
+[theme]
+# Modern teal/slate palette — replaces Streamlit's default red accent on
+# selected tabs, checkboxes, radio buttons, sliders, and primary buttons.
+# Red stays reserved for st.error()/validation messages, which use
+# Streamlit's built-in semantic error color and are unaffected by this file.
+#
+# IMPORTANT: Streamlit resolves .streamlit/config.toml relative to the
+# directory `streamlit run` is invoked FROM, not relative to the app script.
+# Since this project is always launched with `cd ui && streamlit run app.py`,
+# this file must live at ui/.streamlit/config.toml (here), not at the
+# project root -- a copy at the root is silently ignored.
+base = "light"
+primaryColor = "#0D9488"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0FDFA"
+textColor = "#1E293B"
+font = "sans serif"
