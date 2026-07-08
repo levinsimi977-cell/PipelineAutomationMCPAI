@@ -55,7 +55,7 @@ _CONTEXT_MARKERS = (
     "or not",
     "still",
 )
-
+MAX_QUESTION_ROUNDS = 10
 
 class UnansweredQuestionError(Exception):
     """Raised when neither policy nor environment can answer a question."""
