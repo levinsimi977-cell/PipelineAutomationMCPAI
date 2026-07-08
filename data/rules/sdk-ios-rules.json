@@ -1,0 +1,17 @@
+{
+    "version": "1.0.0",
+    "scope": "ios",
+    "extends": "./sdk-generic-rules.json",
+    "rules": [
+      {
+        "id": "rule-ios-universal-link",
+        "description": "Validate Universal Link routing to in-app destination.",
+        "severity": "high"
+      },
+      {
+        "id": "rule-ios-permission-flow",
+        "description": "If permission popup appears, action must be logged explicitly.",
+        "severity": "medium"
+      }
+    ]
+  }
