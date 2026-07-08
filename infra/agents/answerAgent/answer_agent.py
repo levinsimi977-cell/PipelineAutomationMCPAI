@@ -11,6 +11,7 @@ can be done reliably on natural language.
 Raises UnansweredQuestionError if the LLM is unavailable or fails — no
 fallback guessing.
 """
+
 from __future__ import annotations
 
 import json
