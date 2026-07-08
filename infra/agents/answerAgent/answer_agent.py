@@ -20,6 +20,9 @@ import subprocess
 from typing import Any
 
 import config
+from infra.agents.answerAgent.answer_policy_repository import (
+    get_answer_policy_repository,
+)
 from prompts.answer_templates import ANSWER_PROMPT
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
@@ -159,7 +162,12 @@ def _format_test_decisions(state: dict[str, Any]) -> str:
     a new field. dev_key/app_id are run-level config, not part of the
     test's rules, so they're listed separately.
     """
-    policy = state.get("answer_policy") or {}
+    # TODO: `run_id` is not yet populated anywhere in the pipeline state —
+    # no node currently sets it. Do not invent a fallback; this call will
+    # raise until an upstream node adds run_id to state.
+    repo = get_answer_policy_repository()
+    run_id = state["run_id"]
+    policy = repo.get(run_id)
     policy_text = (
         json.dumps(policy, indent=2, ensure_ascii=False, default=str)
         if policy
