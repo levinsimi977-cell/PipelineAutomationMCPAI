@@ -11,3 +11,6 @@ __pycache__/
 # Local secrets -- see SETUP.md for what each of these needs to contain and
 # how to create them. Never committed, on purpose.
 infra/agents/answerAgent/config.py
+
+# Sandbox app replicas created at runtime during pipeline execution.
+sandboxes/

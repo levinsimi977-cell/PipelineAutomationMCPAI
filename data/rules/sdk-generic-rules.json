@@ -1,0 +1,26 @@
+{
+    "version": "1.0.0",
+    "scope": "common",
+    "rules": [
+      {
+        "id": "rule-use-allowed-tools-only",
+        "description": "Only tools from data/toolsList.json are allowed.",
+        "severity": "critical"
+      },
+      {
+        "id": "rule-no-hardcoded-secrets",
+        "description": "Do not require hardcoded dev key or app id in generic tests.",
+        "severity": "critical"
+      },
+      {
+        "id": "rule-mcp-listener-before-actions",
+        "description": "MCP listener must start before Appium actions.",
+        "severity": "high"
+      },
+      {
+        "id": "rule-audit-record-required",
+        "description": "Every run must end with audit record, success or failure.",
+        "severity": "high"
+      }
+    ]
+  }
