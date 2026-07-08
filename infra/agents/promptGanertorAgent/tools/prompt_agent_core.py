@@ -15,13 +15,16 @@ llm = ChatOpenAI(
 unified_meta_prompt_template = PromptTemplate.from_template(
     "User goal: {goal}\n\n"
     "You are an expert technical prompt engineer. "
-    "Your task is to convert the user's goal into a single, concise, and direct instructional prompt for an AI coding assistant.\n"
-    "The prompt should be highly technical, straight to the point, and written in English.\n"
-    "The generated prompt MUST preserve the AppsFlyer MCP flow: the assistant must call the AppsFlyer MCP tool `integrateSdk`, not answer from memory.\n"
-    "The generated prompt MUST explicitly target {platform} integration.\n"
-    "The generated prompt MUST include platform={platform}.\n"
-    "The generated prompt MUST include the project path: {app_path}.\n"
-    "The generated prompt MUST instruct the assistant not to ask clarification questions and to proceed automatically.\n"
+    "Create the final execution prompt for an AI SDK integration agent.\n"
+    "The output must be written in English and must be direct, technical, and executable.\n\n"
+    "Non-negotiable MCP requirements:\n"
+    "- The agent MUST use the AppsFlyer MCP tool `integrateSdk` for SDK integration.\n"
+    "- The agent MUST NOT answer from memory instead of calling MCP tools.\n"
+    "- The agent MUST NOT invent AppsFlyer SDK setup steps that are not returned by MCP.\n"
+    "- If the MCP tool is unavailable or fails, the agent must report failure instead of guessing.\n"
+    "- The agent must target platform={platform}.\n"
+    "- The app path is: {app_path}.\n\n"
+    "Use case details:\n{goal}\n"
 )
 
 prompt_generator_chain = unified_meta_prompt_template | llm | StrOutputParser()
@@ -41,7 +44,7 @@ def prompt_agent_node(state: dict) -> dict:
         
     # 3. חילוץ המידע מה-Use Case הראשון ברשימה
     first_case = data.get("useCases", [])[0]
-    raw_goal = first_case.get("prompt", "")
+    raw_goal = first_case.get("prompt") or first_case.get("prompt_goal") or ""
     platform = first_case.get("platform", "android")
 
     # 4. הפעלת ה-Chain עם המבנה המדויק שביקשת
