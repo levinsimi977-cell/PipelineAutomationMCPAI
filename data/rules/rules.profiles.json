@@ -1,0 +1,22 @@
+{
+    "version": "1.0.0",
+    "profiles": {
+      "common": {
+        "rule_files": ["sdk-generic-rules.json"]
+      },
+      "ios": {
+        "rule_files": ["sdk-generic-rules.json", "sdk-ios-rules.json"]
+      },
+      "android": {
+        "rule_files": ["sdk-generic-rules.json", "sdk-android-rules.json"]
+      },
+      "strict": {
+        "rule_ids": [
+          "rule-use-allowed-tools-only",
+          "rule-no-hardcoded-secrets",
+          "rule-mcp-listener-before-actions",
+          "rule-audit-record-required"
+        ]
+      }
+    }
+  }

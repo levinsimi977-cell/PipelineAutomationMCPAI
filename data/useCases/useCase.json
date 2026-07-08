@@ -2,6 +2,11 @@
   "app_path": "data/application/banana.app",
   "platform": "ios",
   "prompt_goal": "Validate SDK integration and deep link flow in a resilient way.",
+  "rules_policy": {
+  "default_profiles": ["common"],
+  "allow_user_override": true,
+  "allowed_profiles": ["common", "ios", "android", "strict"]
+  },
   "answer_policy": {
     "ios_minimal": {
       "use_att": true,
