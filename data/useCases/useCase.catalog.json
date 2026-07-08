@@ -52,6 +52,14 @@
       "type": "custom",
       "enabled": true,
       "source": "custom"
+    },
+    {
+      "id": "custom-1233",
+      "platform": "ios",
+      "path": "./custom/custom-1233.json",
+      "type": "custom",
+      "enabled": true,
+      "source": "custom"
     }
   ]
 }
