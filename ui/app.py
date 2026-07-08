@@ -90,6 +90,29 @@ _CUSTOM_CSS = """
         display: none;
     }
 
+    /* ---- Platform sub-tabs (Existing use cases) --------------------------- */
+    div[role="radiogroup"][aria-label="__platform_tabs__"] {
+        display: flex;
+        gap: 1.25rem;
+        border-bottom: 1px solid #E2E8F0;
+        margin-bottom: 0.75rem;
+    }
+    div[role="radiogroup"][aria-label="__platform_tabs__"] label {
+        margin: 0 !important;
+        padding: 0 0 0.6rem 0 !important;
+        border-bottom: 2px solid transparent;
+        font-weight: 500;
+        color: #64748B;
+        transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    div[role="radiogroup"][aria-label="__platform_tabs__"] label:has(input:checked) {
+        color: #0F172A;
+        border-bottom-color: #0D9488;
+    }
+    div[role="radiogroup"][aria-label="__platform_tabs__"] input {
+        display: none;
+    }
+
     /* ---- Cards / containers ------------------------------------------------ */
     div[data-testid="stExpander"] {
         border: 1px solid #E2E8F0 !important;
@@ -371,12 +394,22 @@ def render_use_case_form(
             )
 
         prompt_goal = st.text_area(
-            "Prompt goal *", value=(prefill.prompt_goal if prefill else ""), height=150
+            "Prompt goal *",
+            value=(prefill.prompt_goal if prefill else ""),
+            height=150,
+            placeholder="Anything else you want the agent to do...",
         )
         installation_agent_summary = st.text_area(
             "Installation agent summary *",
             value=(prefill.installation_agent_summary if prefill else ""),
             height=80,
+            placeholder="e.g. SDK integrated via CocoaPods, ATT and deep linking configured, app builds and launches cleanly.",
+            help=(
+                "A short recap of what the installation agent already did to this app "
+                "(SDK integration, config, deep link setup, etc.) before this test runs. "
+                "The answer agent uses it as context so it knows what's already in place "
+                "instead of guessing from scratch."
+            ),
         )
         default_llm = prefill.llm_model if prefill else DEFAULT_LLM_MODEL
         llm_model = st.selectbox(
@@ -717,6 +750,19 @@ def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
                 if conflict:
                     st.write("")
                     st.error(conflict)
+                elif is_selected:
+                    # Show a confirmation in place instead of collapsing the panel
+                    # right after a successful selection — snapping should_expand
+                    # back to False here (by clearing choose_key) collapsed this
+                    # whole card the instant it succeeded, which reads as the page
+                    # abruptly jumping/flashing and looks like nothing happened.
+                    # Leaving it open and swapping in this confirmation keeps the
+                    # result visible until the user deliberately closes it.
+                    st.write("")
+                    st.success(f"✓ '{entry.id}' is selected for this run.")
+                    if st.button("Close", key=f"close_choose_{entry.id}", use_container_width=True):
+                        st.session_state[choose_key] = False
+                        st.rerun()
                 else:
                     st.write("")
                     st.markdown("**Use this use case** — requires your credentials for this run")
@@ -736,7 +782,10 @@ def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
                                 "contract": resolved,
                                 "catalog_platform": entry.platform,
                             }
-                            st.session_state[choose_key] = False
+                            # choose_key deliberately stays True so should_expand
+                            # keeps this card open on the rerun below — it'll now
+                            # take the is_selected branch above and show the
+                            # confirmation instead of collapsing away.
                             _flash("success", f"'{entry.id}' added to this run's selection.")
                             st.rerun()
 
@@ -759,12 +808,32 @@ def render_existing_tab() -> None:
         st.info("No use cases found yet.")
         return
 
-    tab_labels = [f"{platform_labels[p]} ({len(g)})" for p, g in groups]
-    for tab, (_platform_group, group) in zip(st.tabs(tab_labels), groups):
-        with tab:
-            st.write("")
-            for entry in group:
-                _render_use_case_entry(entry)
+    # A session-state-backed selector (rather than st.tabs) for the same
+    # reason the top-level nav above uses one: st.tabs always snaps back to
+    # its first tab on any rerun that wasn't itself a tab click — and every
+    # Preview/Edit/Delete/Choose button inside a use case card triggers
+    # exactly that kind of rerun. With native tabs, choosing e.g. an Android
+    # use case would immediately bounce the view back to iOS.
+    group_by_platform = dict(groups)
+    platform_codes = list(group_by_platform.keys())
+    group_labels = {p: f"{platform_labels[p]} ({len(g)})" for p, g in groups}
+
+    state_key = "existing_tab_platform"
+    if st.session_state.get(state_key) not in platform_codes:
+        st.session_state[state_key] = platform_codes[0]
+
+    selected_platform = st.radio(
+        "__platform_tabs__",
+        platform_codes,
+        format_func=lambda p: group_labels[p],
+        key=state_key,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    st.write("")
+    for entry in group_by_platform[selected_platform]:
+        _render_use_case_entry(entry)
 
 
 st.set_page_config(page_title="Use Case Builder", page_icon="🧪", layout="centered")

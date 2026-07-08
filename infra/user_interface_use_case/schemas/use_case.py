@@ -45,7 +45,13 @@ class UseCaseContract(BaseContract):
 
     app_path: str
     platform: Platform
-    prompt_goal: str
+    prompt_goal: str = Field(
+        ...,
+        description=(
+            "The testing goal for this use case, in your own words — e.g. what to "
+            "verify plus anything else you want the agent to do."
+        ),
+    )
     answer_policy: AnswerPolicy
     installation_answers: List[Dict[str, Any]] = Field(default_factory=list)
     agent_messages: List[str] = Field(default_factory=list)

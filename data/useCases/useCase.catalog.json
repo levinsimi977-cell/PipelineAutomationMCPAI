@@ -44,6 +44,14 @@
       "type": "critical",
       "enabled": true,
       "source": "seed"
+    },
+    {
+      "id": "custom-chani",
+      "platform": "android",
+      "path": "./custom/custom-chani.json",
+      "type": "custom",
+      "enabled": true,
+      "source": "custom"
     }
   ]
 }
