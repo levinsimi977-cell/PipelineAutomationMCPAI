@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 
 # הגדרת המודל - שימוש במשתני סביבה לאבטחה
 llm = ChatOpenAI(
-    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    model=os.getenv("OPENAI_MODEL", "gpt-5.1"),
     temperature=0.1,
     api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"),
 )
