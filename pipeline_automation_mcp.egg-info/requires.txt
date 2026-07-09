@@ -1,12 +1,3 @@
-<<<<<<< HEAD
-langchain>=1.3.12
-langchain-core>=1.4.9
-langchain-mcp-adapters>=0.3.0
-langchain-openai>=1.3.4
-langgraph>=1.2.8
-python-dotenv>=1.2.2
-=======
->>>>>>> 7d1420bd5bd7a0639a10cb2fb5f0928060e705f7
 
 [dev]
 pytest>=8.0

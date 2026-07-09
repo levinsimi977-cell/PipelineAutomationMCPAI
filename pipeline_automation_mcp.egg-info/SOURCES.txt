@@ -1,33 +1,9 @@
 pyproject.toml
-<<<<<<< HEAD
-infra/__init__.py
-infra/useCase_schemas.py
-infra/agents/AuditRecorder.py
-infra/agents/answerAgent/agent.py
-infra/agents/answerAgent/answer_agent.py
-infra/agents/answerAgent/prompts/answer_templates.py
-infra/agents/promptGanertorAgent/tools/agent.py
-infra/agents/sdkAgent/tools/agent.py
-infra/aplication/app.py
-infra/listener/llm_listener.py
-infra/reports/__init__.py
-infra/reports/report.py
-infra/user_interface_use_case/__init__.py
-infra/user_interface_use_case/builders/__init__.py
-infra/user_interface_use_case/builders/use_case_builder.py
-infra/user_interface_use_case/reports/__init__.py
-infra/user_interface_use_case/reports/reporter.py
-infra/user_interface_use_case/schemas/__init__.py
-infra/user_interface_use_case/schemas/base.py
-infra/user_interface_use_case/schemas/policies.py
-infra/user_interface_use_case/schemas/use_case.py
-=======
 infra/agents/answerAgent/agent.py
 infra/agents/promptGanertorAgent/tools/agent.py
 infra/agents/sdkAgent/tools/agent.py
 infra/aplication/app.py
 infra/reports/report.py
->>>>>>> 7d1420bd5bd7a0639a10cb2fb5f0928060e705f7
 pipeline_automation_mcp.egg-info/PKG-INFO
 pipeline_automation_mcp.egg-info/SOURCES.txt
 pipeline_automation_mcp.egg-info/dependency_links.txt

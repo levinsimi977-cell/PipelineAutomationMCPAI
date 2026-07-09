@@ -11,7 +11,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from infra.agents.AuditRecorder import AuditRecorder
 # Classifies each finished turn's Memory (SUCCESS/FAIL/QUESTION), answers
 # questions, and records everything to AuditRecorder. See llm_listener.py.
-from infra.listener.llm_listener import listener_on_agent_turn
+from infra.agents.Listeners.llm_listener import listener_on_agent_turn
 # Loads API keys from the .env file located next to this module
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 APP_ID = os.getenv("APP_ID", "id1512793879")
