@@ -4,7 +4,7 @@
       "alwaysIncludePlatform": "common",
       "alsoIncludeSelectedPlatform": true
     },
-    "useCases": [
+    "useCases": [  
       {
         "id": "common-basic-launch-navigation",
         "platform": "common",
