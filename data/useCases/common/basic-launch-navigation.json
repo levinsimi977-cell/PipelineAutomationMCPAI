@@ -1,0 +1,37 @@
+{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "Launch app and validate basic navigation stability.",
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "deeplink": {
+      "use_deep_linking": false,
+      "onelink_url": null,
+      "url_identifier": null,
+      "uri_scheme": null,
+      "use_custom_uri_scheme": false
+    },
+    "in_app_event": {
+      "inapp_event_method": "none",
+      "event_name": null,
+      "event_params": {}
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "android": null
+  },
+  "installation_answers": [],
+  "agent_messages": [
+    "Smoke flow started",
+    "Navigation checks done"
+  ],
+  "installation_agent_summary": "Basic launch and navigation passed."
+}
+
