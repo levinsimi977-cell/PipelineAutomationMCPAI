@@ -128,12 +128,19 @@ def _find_gradle_wrapper(app_path: str | Path) -> Optional[Path]:
     subdirectories, since `app_path` may point at a folder that merely
     *contains* the Android project (e.g. an unzipped sandbox) rather than
     the Gradle project root itself.
+
+    Real-world repos routinely commit *both* `gradlew` and `gradlew.bat`
+    (cross-platform support) — the OS-appropriate one must be preferred,
+    or we'd try to execute a Windows `.bat` file on macOS/Linux (and fail
+    with "Exec format error") even though the correct POSIX wrapper sits
+    right next to it.
     """
+    names = ("gradlew.bat", "gradlew") if os.name == "nt" else ("gradlew", "gradlew.bat")
     root = Path(app_path)
     candidates = [root] + ([p for p in root.iterdir() if p.is_dir()] if root.is_dir() else [])
 
     for candidate in candidates:
-        for name in ("gradlew.bat", "gradlew"):
+        for name in names:
             wrapper = candidate / name
             if wrapper.is_file():
                 return wrapper

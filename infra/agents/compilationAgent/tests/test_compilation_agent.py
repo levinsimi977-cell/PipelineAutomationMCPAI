@@ -388,6 +388,22 @@ def test_finds_wrapper_in_nested_project_dir(tmp_path: Path):
 
 
 @POSIX_ONLY
+def test_prefers_posix_wrapper_when_both_exist(tmp_path: Path):
+    """
+    Regression test: real repos routinely commit both `gradlew` and
+    `gradlew.bat` (cross-platform support). On macOS/Linux the POSIX
+    script must be picked — picking `.bat` here fails with "Exec format
+    error" (found while running this module against a real cloned repo).
+    """
+    _make_fake_gradlew(tmp_path, exit_code=0, stdout="BUILD SUCCESSFUL")
+    (tmp_path / "gradlew.bat").write_text("@echo off\r\nexit /b 0\r\n", encoding="utf-8")
+
+    wrapper = ca._find_gradle_wrapper(tmp_path)
+
+    assert wrapper.name == "gradlew"
+
+
+@POSIX_ONLY
 def test_check_compilation_node_android(tmp_path: Path):
     _make_fake_gradlew(tmp_path, exit_code=0, stdout="BUILD SUCCESSFUL")
     state = {"platform": "android", "app_path": str(tmp_path)}
