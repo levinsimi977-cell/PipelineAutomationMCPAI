@@ -28,6 +28,7 @@ from prompts.answer_templates import ANSWER_PROMPT
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
+MAX_QUESTION_ROUNDS = 10
 
 class UnansweredQuestionError(Exception):
     """Raised when the LLM can't produce an answer (no API key, or the call failed)."""
