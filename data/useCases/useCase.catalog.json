@@ -1,9 +1,10 @@
 {
-    "version": "1.0.0",
-    "selectionStrategy": {
-      "alwaysIncludePlatform": "common",
-      "alsoIncludeSelectedPlatform": true
-    },
+  "version": "1.0.0",
+  "selectionStrategy": {
+    "alwaysIncludePlatform": "common",
+    "alsoIncludeSelectedPlatform": true
+  },
+
     "useCases": [  
       {
         "id": "common-basic-launch-navigation",

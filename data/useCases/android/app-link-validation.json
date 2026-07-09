@@ -1,5 +1,5 @@
 {
-  "app_path": "data/application/banana.app",
+  "app_path": "data/application/banana.apk",
   "platform": "android",
   "prompt_goal": "Validate Android app link intent resolution and destination routing.",
   "rules_policy": {
