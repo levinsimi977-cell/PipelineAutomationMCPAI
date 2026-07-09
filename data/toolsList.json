@@ -1,0 +1,18 @@
+{
+    "version": "1.0.0",
+    "tools": [
+      "simulator.start",
+      "app.install",
+      "app.launch",
+      "appium.tap",
+      "appium.type",
+      "appium.swipe",
+      "appium.waitFor",
+      "appium.getCurrentScreen",
+      "deepLink.trigger",
+      "mcp.listener.start",
+      "mcp.listener.stop",
+      "sdk.verifyIntegration",
+      "audit.createRecord"
+    ]
+  }
