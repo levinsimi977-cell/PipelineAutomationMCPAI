@@ -34,12 +34,16 @@ you're about to commit, stop and double-check you're not about to leak a key.
 
 This holds the use-case selections saved from the UI's "Save selection for
 this run" button (see `infra/user_interface_use_case/repositories/run_repository.py`).
-It's gitignored because each saved file embeds that run's resolved AppsFlyer
-credentials. You don't need to create this folder or put anything in it —
-it's created automatically the first time anyone saves a selection, and
-entries are meant to be deleted again once a run's result has been reported
-(see that module's docstring for the full lifecycle). If it's empty or
-missing on a fresh clone, that's expected, not a bug.
+Each selected use case is written as its own file directly inside `data/runs/`
+(named `{session_id}__{use_case_id}.json`), so pulling everything chosen for
+a run is just "grab every file in this folder" — no per-session subfolders
+or aggregate manifest to parse. It's gitignored because each saved file
+embeds that run's resolved AppsFlyer credentials. You don't need to create
+this folder or put anything in it — it's created automatically the first
+time anyone saves a selection, and files are meant to be deleted again once
+a run's result has been reported (see that module's docstring for the full
+lifecycle). If it's empty or missing on a fresh clone, that's expected, not
+a bug.
 
 ## 3. Known gap (not yet fixed): `data/useCases/custom/`
 

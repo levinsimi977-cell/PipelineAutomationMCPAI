@@ -901,11 +901,12 @@ if selected_map:
             except run_repo.RunRepositoryError as exc:
                 _flash("error", str(exc))
             else:
-                relative_path = saved.file_path.relative_to(_PROJECT_ROOT)
+                relative_dir = run_repo.RUNS_DIR.relative_to(_PROJECT_ROOT)
                 _flash(
                     "success",
-                    f"Saved {saved.use_case_count} use case(s) for this session "
-                    f"to {relative_path}. Saving again will overwrite this same file.",
+                    f"Saved {saved.use_case_count} use case(s) for this session as "
+                    f"{saved.use_case_count} file(s) in {relative_dir}/. Saving again "
+                    f"will overwrite just this session's files.",
                 )
             st.rerun()
 
