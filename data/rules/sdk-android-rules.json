@@ -1,0 +1,17 @@
+{
+    "version": "1.0.0",
+    "scope": "android",
+    "extends": "./sdk-generic-rules.json",
+    "rules": [
+      {
+        "id": "rule-android-app-link",
+        "description": "Validate Android App Link resolution and destination.",
+        "severity": "high"
+      },
+      {
+        "id": "rule-android-intent-handler",
+        "description": "Validate expected package handles intent when chooser appears.",
+        "severity": "medium"
+      }
+    ]
+  }
