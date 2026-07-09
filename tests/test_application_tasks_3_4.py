@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from infra.aplication.app_validator import validate_application, detect_platform
+from infra.application.app_validator import validate_application, detect_platform
 
 
 def test_detect_ios_project(tmp_path: Path):
