@@ -1,15 +1,8 @@
-from __future__ import annotations
+import json
+import os
+from pathlib import Path
 
-from typing import Literal, TypedDict
-
-PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
-
-
-class PipelineState(TypedDict):
-    """Shared state threaded through every node of the workflow graph."""
-
-    visited_user_actions: bool
-    last_prompt_type: PromptType
+from infra.application.app import run_tasks_3_and_4, setup_environment
 
 
 def json_use_case_input_node(state: PipelineState) -> PipelineState:
@@ -22,9 +15,69 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     return state
 
 
-def environment_setup_node(state: PipelineState) -> PipelineState:
-    """Node 3: Environment Setup — Sandbox + MCP health check (G1)"""
-    return state
+async def environment_setup_node(state: PipelineState) -> PipelineState:
+    """
+    Node 3: Environment Setup — Sandbox + MCP health check (G1)
+
+    Responsibilities:
+    1. Create an isolated sandbox copy of the selected application.
+    2. Check that the AppsFlyer MCP server is alive.
+    3. Validate that the sandbox contains a valid mobile application.
+    4. Save all results back into the pipeline state.
+    """
+
+    # Step 1: Create the sandbox environment
+    environment_result = setup_environment(dict(state))
+
+    if environment_result.get("test_status") == "FAIL":
+        return {
+            **state,
+            **environment_result,
+            "environment_setup_status": "FAILED",
+        }
+
+    sandbox_path = environment_result.get("sandbox_path")
+
+    if not sandbox_path:
+        return {
+            **state,
+            **environment_result,
+            "test_status": "FAIL",
+            "environment_setup_status": "FAILED",
+            "error_reason": "Environment setup did not return a sandbox_path.",
+        }
+
+    # Step 2: MCP check + application validation
+    checks_result = await run_tasks_3_and_4(
+        app_path=Path(sandbox_path),
+        workdir=Path(sandbox_path),
+        run_build_check=bool(state.get("run_build_check", False)),
+    )
+
+    # Step 3: Determine final status
+    checks_succeeded = checks_result.get("status") == "OK"
+
+    final_test_status = "READY" if checks_succeeded else "FAIL"
+    environment_setup_status = "OK" if checks_succeeded else "FAILED"
+
+    # Step 4: Merge everything into the existing state
+    return {
+        **state,
+        **environment_result,
+
+        "app_path": sandbox_path,
+        "sandbox_path": sandbox_path,
+
+        "environment_setup_status": environment_setup_status,
+        "test_status": final_test_status,
+
+        "task_3_mcp_alive": checks_result.get("task_3_mcp_alive"),
+        "task_4_application_validation": checks_result.get(
+            "task_4_application_validation"
+        ),
+
+        "environment_setup_result": checks_result,
+    }
 
 
 def prompt_agent_node(state: PipelineState) -> PipelineState:
@@ -32,15 +85,8 @@ def prompt_agent_node(state: PipelineState) -> PipelineState:
     return state
 
 
-def sdk_agent_node(state: PipelineState) -> PipelineState:
-    """Node 5: SDK Agent — single node, revisited on every loop of the
-    workflow (integration / event / verify passes).
-
-    `state["last_prompt_type"]` tells this node which prompt is being sent
-    for the current pass; `route_from_sdk_agent` reads it right after this
-    node runs to decide whether to go build+run again or jump to the final
-    test run.
-    """
+def sdk_agent_integration_node(state: PipelineState) -> PipelineState:
+    """Node 5: SDK Agent #1 — Integration via MCP tools (G3)"""
     return state
 
 
@@ -56,7 +102,6 @@ def emulator_node(state: PipelineState) -> PipelineState:
 
 def user_actions_node(state: PipelineState) -> PipelineState:
     """Node 8: User Actions — simulated taps on screen (G5)"""
-    state["visited_user_actions"] = True
     return state
 
 
@@ -65,34 +110,12 @@ def deep_link_node(state: PipelineState) -> PipelineState:
     return state
 
 
+
 def test_runner_node(state: PipelineState) -> PipelineState:
-    """Node 10: Test Runner — full test suite execution (G2)"""
+    """Node 11: Test Runner — full test suite execution (G2)"""
     return state
 
 
 def visual_report_node(state: PipelineState) -> PipelineState:
-    """Node 11: Visual Report — HTML audit dashboard (G2/4)"""
+    """Node 12: Visual Report — HTML audit dashboard (G2/4)"""
     return state
-
-
-def route_from_sdk_agent(state: PipelineState) -> str:
-    """Conditional edge out of `sdk_agent`.
-
-    - last_prompt_type == "verify_prompt"                     -> test_runner
-    - last_prompt_type in {"integrate_prompt", "event_prompt"} -> compilation_check
-    """
-    if state["last_prompt_type"] == "verify_prompt":
-        return "test_runner"
-    return "compilation_check"
-
-
-def route_from_emulator(state: PipelineState) -> str:
-    """Conditional edge out of `emulator`.
-
-    - last_prompt_type == "integrate_prompt"                       -> sdk_agent
-    - last_prompt_type == "event_prompt" and visited_user_actions  -> sdk_agent
-    - last_prompt_type == "event_prompt" and not visited_user_actions -> user_actions
-    """
-    if state["last_prompt_type"] == "event_prompt" and not state["visited_user_actions"]:
-        return "user_actions"
-    return "sdk_agent"
