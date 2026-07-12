@@ -1,6 +1,6 @@
 .env
 sandboxes/
-.env 
+
 # Saved run selections contain resolved per-run credentials (app_id/dev_key,
 # base64-obfuscated but not encrypted -- see infra/user_interface_use_case/utils/secrets.py).
 # They must never be committed.
