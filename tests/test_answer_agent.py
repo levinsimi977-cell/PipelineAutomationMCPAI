@@ -492,7 +492,7 @@ class TestAnswerQuestion:
 class TestAnswerQuestionNode:
     def test_no_incoming_question_skips(self):
         result = answer_question_node({})
-        logs = result["nodes_logs"]
+        logs = result["nodes_log"]
         assert logs[-1]["node"] == "answer_question"
         assert logs[-1]["status"] == "SKIP"
         # Nothing else should be mutated on a skip.
@@ -507,7 +507,7 @@ class TestAnswerQuestionNode:
         assert result["installation_answers"] == [
             {"question": "How?", "answer": "mocked answer"}
         ]
-        assert result["nodes_logs"][-1]["status"] == "SUCCESS"
+        assert result["nodes_log"][-1]["status"] == "SUCCESS"
 
     def test_installation_answers_are_appended(self, monkeypatch):
         monkeypatch.setattr(answer_agent, "answer_question", lambda state, q: "A2")
@@ -526,12 +526,12 @@ class TestAnswerQuestionNode:
         result = answer_question_node({"incoming_question": "Q", "question_rounds": 3})
         assert result["question_rounds"] == 4
 
-    def test_nodes_logs_are_preserved(self, monkeypatch):
+    def test_nodes_log_are_preserved(self, monkeypatch):
         monkeypatch.setattr(answer_agent, "answer_question", lambda state, q: "ok")
         prior = [{"node": "other", "status": "SUCCESS", "message": "prev"}]
-        result = answer_question_node({"incoming_question": "Q", "nodes_logs": prior})
-        assert result["nodes_logs"][0] == prior[0]
-        assert result["nodes_logs"][-1]["node"] == "answer_question"
+        result = answer_question_node({"incoming_question": "Q", "nodes_log": prior})
+        assert result["nodes_log"][0] == prior[0]
+        assert result["nodes_log"][-1]["node"] == "answer_question"
 
     def test_maximum_question_limit_returns_fail(self, monkeypatch):
         # Guard: answer_question must NOT be called once the limit is exceeded.
@@ -544,7 +544,7 @@ class TestAnswerQuestionNode:
 
         assert result["test_status"] == "FAIL"
         assert result["question_rounds"] == MAX_QUESTION_ROUNDS + 1
-        assert result["nodes_logs"][-1]["status"] == "FAIL"
+        assert result["nodes_log"][-1]["status"] == "FAIL"
 
 
 # ===========================================================================

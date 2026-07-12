@@ -170,11 +170,5 @@ def prompt_agent_node(state: dict) -> dict:
     # החזרת הנתונים ל-Pipeline
     return {
         "agent_prompts": generated_prompts,
-        # Backward compatibility for code that still expects one base prompt.
-        "agent_base_prompt": generated_prompts["integrate_prompt"],
-        "integrate_prompt": generated_prompts["integrate_prompt"],
-        "event_prompt": generated_prompts["event_prompt"],
-        "verify_prompt": generated_prompts["verify_prompt"],
-        "prompt_platform": platform,
-        "raw_goal": raw_goal,
+        "platform": platform,
     }

@@ -303,8 +303,8 @@ def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
     question = (state.get("incoming_question") or "").strip()
     if not question:
         return {
-            "nodes_logs": [
-                *(state.get("nodes_logs") or []),
+            "nodes_log": [
+                *(state.get("nodes_log") or []),
                 {
                     "node": "answer_question",
                     "status": "SKIP",
@@ -319,8 +319,8 @@ def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
         return {
             "question_rounds": question_rounds,
             "test_status": "FAIL",
-            "nodes_logs": [
-                *(state.get("nodes_logs") or []),
+            "nodes_log": [
+                *(state.get("nodes_log") or []),
                 {
                     "node": "answer_question",
                     "status": "FAIL",
@@ -344,8 +344,8 @@ def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
             *(state.get("installation_answers") or []),
             qa_entry,
         ],
-        "nodes_logs": [
-            *(state.get("nodes_logs") or []),
+        "nodes_log": [
+            *(state.get("nodes_log") or []),
             {
                 "node": "answer_question",
                 "status": "SUCCESS",

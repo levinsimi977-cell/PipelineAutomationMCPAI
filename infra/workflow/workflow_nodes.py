@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Literal, Optional, TypedDict
+from typing import Literal, Optional, TypedDict, get_args
 
-from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
-    prompt_agent_node as build_prompts,
-)
+
 
 PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
 
@@ -23,14 +21,6 @@ class PipelineState(TypedDict, total=False):
     use_cases_dir: str
     current_use_case_path: Optional[str]
     current_use_case: dict
-    selected_use_cases_path: str
-    agent_prompts: dict[str, str]
-    agent_base_prompt: str
-    integrate_prompt: str
-    event_prompt: str
-    verify_prompt: str
-    prompt_platform: str
-    raw_goal: str
 
 
 def json_use_case_input_node(state: PipelineState) -> PipelineState:
@@ -81,15 +71,6 @@ def environment_setup_node(state: PipelineState) -> PipelineState:
     return state
 
 
-def prompt_agent_node(state: PipelineState) -> PipelineState:
-    """Node 4: Prompt Agent — enriched structured prompt (G3)"""
-    current_path = state.get("current_use_case_path")
-    if current_path:
-        state["selected_use_cases_path"] = current_path
-
-    updates = build_prompts(state)
-    state.update(updates)
-    return state
 
 
 def sdk_agent_node(state: PipelineState) -> PipelineState:
