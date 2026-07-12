@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "id": "87deaf50-0772-4079-a3d6-d80a7358ae4f",
+    "timestamp": "2026-07-08T07:19:07.365083Z",
+    "schema_version": "1.0.0"
+  },
+  "app_path": "data/application/banana.apk",
+  "platform": "android",
+  "prompt_goal": "add deap linking also add an app event and add eny usefull stuf",
+  "answer_policy": {
+    "metadata": {
+      "id": "254a1f17-e57c-4b39-85e9-2de5b8b02c44",
+      "timestamp": "2026-07-08T07:19:07.365024Z",
+      "schema_version": "1.0.0"
+    },
+    "verify_sdk": {
+      "metadata": {
+        "id": "688ad9a6-31a4-411b-b11c-d0219c55fb19",
+        "timestamp": "2026-07-08T07:19:07.364832Z",
+        "schema_version": "1.0.0"
+      },
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "android": {
+      "metadata": {
+        "id": "413892b1-910d-44f1-858f-1be90044dd22",
+        "timestamp": "2026-07-08T07:19:07.364924Z",
+        "schema_version": "1.0.0"
+      },
+      "has_sha256": false
+    }
+  },
+  "installation_answers": [],
+  "agent_messages": [],
+  "installation_agent_summary": "sdk inntegrated",
+  "llm_model": "claude-sonnet-5-thinking-high",
+  "app_id": "12345673",
+  "dev_key": "c2ZiM3Q1NnZmZTQ="
+}
