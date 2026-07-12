@@ -14,3 +14,4 @@ infra/agents/answerAgent/config.py
 
 # Sandbox app replicas created at runtime during pipeline execution.
 sandboxes/
+.env 
