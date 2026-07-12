@@ -513,6 +513,33 @@ def render_use_case_form(
             inapp_event_method = "none"
             event_name = None
 
+        existing_integration_policy = prefill.answer_policy.integration_policy if prefill else None
+        integration_policy = st.text_area(
+            "Integration Policy",
+            value=existing_integration_policy or "",
+            height=100,
+            placeholder=(
+                "e.g., Specify required SDK versions, initialization constraints, "
+                "or authentication rules..."
+            ),
+            help=(
+                "Any important notes or requirements regarding the SDK integration."
+            ),
+        )
+        existing_app_event_policy = prefill.answer_policy.app_event_policy if prefill else None
+        app_event_policy = st.text_area(
+            "AppEvent Policy",
+            value=existing_app_event_policy or "",
+            height=100,
+            placeholder=(
+                "e.g., Define custom parameters to track, triggers, or specific "
+                "naming conventions..."
+            ),
+            help=(
+                "Any specific requests or configurations concerning the AppEvents."
+            ),
+        )
+
         existing_verify = prefill.answer_policy.verify_sdk if prefill else None
         verify_logs_ready = st.checkbox(
             "Verify logs ready", value=existing_verify.verify_logs_ready if existing_verify else True
@@ -569,6 +596,8 @@ def render_use_case_form(
             )
             .with_llm_model(llm_model)
             .with_verify_sdk(verify_logs_ready=verify_logs_ready, app_launched=app_launched)
+            .with_integration_policy(integration_policy.strip() or None)
+            .with_app_event_policy(app_event_policy.strip() or None)
         )
         if platform == "ios":
             builder = builder.with_ios_minimal(
