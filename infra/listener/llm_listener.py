@@ -4,10 +4,11 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_agent import (
     answer_question,
     build_prompt_with_answers,
-    classify_question,
 )
+from infra.agents.answerAgent.classification import Classification, classify_llm_output
 
 MAX_QUESTION_ROUNDS = 10
+
 
 def _merge_answers(
     
@@ -107,11 +108,14 @@ def listener_on_text(
     text: str,
     base_prompt: Optional[str] = None,
 ) -> Tuple[Optional[str], Dict[str, Any]]:
-    """Classify existing text (no new LLM call). Returns (updated_prompt|None, state_updates).
+    """Pass agent text to Classifier and act on the result.
 
-    SUCCESS  → log only, caller continues node operation from the same place.
-    FAIL     → test_status FAIL.
-    QUESTION → answer, append to installation_answers; if base_prompt given, return updated prompt.
+    Listener does not classify — it puts the AI message in state and calls
+    classify_llm_output (Classifier teammate).
+
+    SUCCESS  → log only, caller continues.
+    FAILURE  → test_status FAIL.
+    QUESTION → forward to answer_agent, return updated prompt if base_prompt set.
     """
     updates: Dict[str, Any] = {"nodes_logs": []}
     agent_text = (text or "").strip()
@@ -127,32 +131,41 @@ def listener_on_text(
         installation_answers=installation_answers,
         question_rounds=question_rounds,
     )
-    classification = classify_agent_response(merged_state, agent_text)
-    label = classification["label"]
-    reason = classification.get("reason", "")
 
-    if label == "SUCCESS":
+    try:
+        status = classify_llm_output(merged_state)
+    except ValueError as exc:
         updates["nodes_logs"].append({
             "node": node_name,
-            "listener": "SUCCESS",
+            "listener": "UNCLASSIFIED",
             "status": "INFO",
-            "message": reason or "Agent reported success; continuing node operation.",
+            "message": str(exc),
             "text_preview": agent_text[:200],
         })
         return None, updates
 
-    if label == "FAIL":
+    if status == Classification.SUCCESS:
+        updates["nodes_logs"].append({
+            "node": node_name,
+            "listener": "SUCCESS",
+            "status": "INFO",
+            "message": "Classifier reported SUCCESS; continuing node operation.",
+            "text_preview": agent_text[:200],
+        })
+        return None, updates
+
+    if status == Classification.FAILURE:
         updates["nodes_logs"].append({
             "node": node_name,
             "listener": "FAIL",
             "status": "FAIL",
-            "reason": reason or "Listener classified response as failure.",
+            "reason": "Classifier reported FAILURE.",
             "text_preview": agent_text[:200],
         })
         updates["test_status"] = "FAIL"
         return None, updates
 
-    # QUESTION
+    # QUESTION — Classifier teammate decided; listener forwards to answer_agent.
     question_rounds = merged_state["question_rounds"] + 1
     if question_rounds > MAX_QUESTION_ROUNDS:
         updates["nodes_logs"].append({
@@ -166,14 +179,12 @@ def listener_on_text(
         updates["question_rounds"] = question_rounds
         return None, updates
 
-    question = classification.get("question") or agent_text
-    answer = answer_question(merged_state, question)  # לא state
-    category = classify_question(question)
+    question = agent_text
+    answer = answer_question(merged_state, question)
     installation_answers = list(state.get("installation_answers") or [])
     qa_entry = {
         "question": question[:500],
         "answer": answer,
-        "category": category,
         "round": question_rounds,
     }
     installation_answers = _merge_answers(state, installation_answers, qa_entry)
@@ -183,7 +194,6 @@ def listener_on_text(
         "listener": "QUESTION",
         "status": "SUCCESS",
         "message": f"Answered question (round {question_rounds}).",
-        "category": category,
         "question_preview": question[:200],
         "answer": answer,
     })
@@ -281,86 +291,31 @@ def listener_on_agent_response(
         updates["mcp_sequence"] = build_mcp_sequence_payload(state, call_log)
         return "done", None, updates
 
-    merged_state = _state_for_classifier(
-        state,
-        last_message=response,
-        installation_answers=installation_answers,
-        question_rounds=question_rounds,
+    updated_prompt, listener_updates = listener_on_text(
+        state, node_name, agent_text, base_prompt=base_prompt
     )
-    classification = classify_agent_response(merged_state, agent_text)
-    label = classification["label"]
-    reason = classification.get("reason", "")
-
-    if label == "SUCCESS":
-        updates["nodes_logs"].append({
-            "node": node_name,
-            "listener": "SUCCESS",
-            "status": "INFO",
-            "message": reason or "Agent reported success; continuing.",
-            "text_preview": agent_text[:200],
-        })
-        next_prompt = build_prompt_with_answers(
-            base_prompt,
-            installation_answers,
-        ) + "\n\nProceed with your task now. If SDK integration requires it, call the integrateSdk tool."
-        updates["question_rounds"] = question_rounds
-        updates["installation_answers"] = installation_answers[initial_answer_count:]
-        updates["mcp_sequence"] = build_mcp_sequence_payload(state, call_log)
-        return "continue", next_prompt, updates
-
-    if label == "FAIL":
-        updates["nodes_logs"].append({
-            "node": node_name,
-            "listener": "FAIL",
-            "status": "FAIL",
-            "reason": reason or "Listener classified response as failure.",
-            "text_preview": agent_text[:200],
-        })
+    updates["nodes_logs"].extend(listener_updates.get("nodes_logs", []))
+    if listener_updates.get("test_status") == "FAIL":
         updates["test_status"] = "FAIL"
-        updates["question_rounds"] = question_rounds
+        updates["question_rounds"] = listener_updates.get("question_rounds", question_rounds)
         updates["installation_answers"] = installation_answers[initial_answer_count:]
         updates["call_log"] = call_log[initial_call_count:]
         updates["mcp_sequence"] = build_mcp_sequence_payload(state, call_log)
         return "fail", None, updates
-
-    question_rounds += 1
-    if question_rounds > MAX_QUESTION_ROUNDS:
-        updates["nodes_logs"].append({
-            "node": node_name,
-            "listener": "QUESTION",
-            "status": "FAIL",
-            "reason": f"Exceeded max question rounds ({MAX_QUESTION_ROUNDS}).",
-            "question_rounds": question_rounds,
-        })
-        updates["test_status"] = "FAIL"
-        updates["question_rounds"] = question_rounds
+    if updated_prompt is not None:
+        updates["question_rounds"] = listener_updates.get("question_rounds", question_rounds)
         updates["installation_answers"] = installation_answers[initial_answer_count:]
-        updates["call_log"] = call_log[initial_call_count:]
+        if listener_updates.get("installation_answers"):
+            updates["installation_answers"] = listener_updates["installation_answers"]
         updates["mcp_sequence"] = build_mcp_sequence_payload(state, call_log)
-        return "fail", None, updates
+        return "continue", updated_prompt, updates
 
-    question = classification.get("question") or agent_text
-    answer = answer_question(merged_state, question)
-    category = classify_question(question)
-    qa_entry = {
-        "question": question[:500],
-        "answer": answer,
-        "category": category,
-        "round": question_rounds,
-    }
-    installation_answers = _merge_answers(state, installation_answers, qa_entry)
-    updates["nodes_logs"].append({
-        "node": node_name,
-        "listener": "QUESTION",
-        "status": "SUCCESS",
-        "message": f"Answered question (round {question_rounds}).",
-        "category": category,
-        "question_preview": question[:200],
-        "answer": answer,
-    })
-    next_prompt = build_prompt_with_answers(base_prompt, installation_answers)
-    updates["question_rounds"] = question_rounds
+    updates["question_rounds"] = listener_updates.get("question_rounds", question_rounds)
     updates["installation_answers"] = installation_answers[initial_answer_count:]
+    next_prompt = build_prompt_with_answers(
+        base_prompt,
+        installation_answers,
+    ) + "\n\nProceed with your task now. If SDK integration requires it, call the integrateSdk tool."
     updates["mcp_sequence"] = build_mcp_sequence_payload(state, call_log)
     return "continue", next_prompt, updates
 
@@ -465,7 +420,6 @@ def _record_listener_updates_to_audit(
             audit_recorder.write("SIMULATED_USER_REPLY", {
                 "question": log.get("question_preview"),
                 "answer": log.get("answer"),
-                "category": log.get("category"),
             })
 
     for qa_entry in updates.get("installation_answers", []):
@@ -520,7 +474,7 @@ def listener_on_agent_turn(
     Listener responsibilities:
       1. Receive memory messages from sdkAgent
       2. Record to Audit (if audit_recorder passed)
-      3. Classify LLM text via classify_agent_response (classifier teammate)
+      3. Classify LLM text via classify_llm_output (classifier teammate)
       4. Answer QUESTION via answer_agent
       5. Return action + next_prompt + updates to sdkAgent
 
@@ -634,76 +588,31 @@ def invoke_plain_llm_with_listener(
         agent_text = _agent_content_text(
             response.content if hasattr(response, "content") else response
         ).strip()
-        merged_state = _state_for_classifier(
-            state,
-            last_message=response,
-            installation_answers=installation_answers,
-            question_rounds=question_rounds,
+        updated_prompt, listener_updates = listener_on_text(
+            {
+                **state,
+                "installation_answers": installation_answers,
+                "question_rounds": question_rounds,
+            },
+            node_name,
+            agent_text,
+            base_prompt=base_prompt,
         )
-        classification = classify_agent_response(merged_state, agent_text)
-        label = classification["label"]
-        reason = classification.get("reason", "")
-
-        if label == "SUCCESS":
-            logs.append({
-                "node": node_name,
-                "listener": "SUCCESS",
-                "status": "INFO",
-                "message": reason or "Model reported success; continuing.",
-                "text_preview": agent_text[:200],
-            })
-            current_prompt = build_prompt_with_answers(base_prompt, installation_answers)
-            current_prompt += "\n\nReturn the required output now."
+        logs.extend(listener_updates.get("nodes_logs", []))
+        if listener_updates.get("test_status") == "FAIL":
+            return response, {
+                "nodes_logs": logs,
+                "test_status": "FAIL",
+                "question_rounds": listener_updates.get("question_rounds", question_rounds),
+                "installation_answers": installation_answers[initial_answer_count:],
+            }
+        if listener_updates.get("question_rounds") is not None:
+            question_rounds = listener_updates["question_rounds"]
+        for qa in listener_updates.get("installation_answers", []):
+            installation_answers = _merge_answers(state, installation_answers, qa)
+        if updated_prompt is not None:
+            current_prompt = updated_prompt
             continue
-
-        if label == "FAIL":
-            logs.append({
-                "node": node_name,
-                "listener": "FAIL",
-                "status": "FAIL",
-                "reason": reason or "Listener classified response as failure.",
-                "text_preview": agent_text[:200],
-            })
-            return response, {
-                "nodes_logs": logs,
-                "test_status": "FAIL",
-                "question_rounds": question_rounds,
-                "installation_answers": installation_answers[initial_answer_count:],
-            }
-
-        question_rounds += 1
-        if question_rounds > MAX_QUESTION_ROUNDS:
-            logs.append({
-                "node": node_name,
-                "listener": "QUESTION",
-                "status": "FAIL",
-                "reason": f"Exceeded max question rounds ({MAX_QUESTION_ROUNDS}).",
-                "question_rounds": question_rounds,
-            })
-            return response, {
-                "nodes_logs": logs,
-                "test_status": "FAIL",
-                "question_rounds": question_rounds,
-                "installation_answers": installation_answers[initial_answer_count:],
-            }
-
-        question = classification.get("question") or agent_text
-        answer = answer_question(merged_state, question)
-        category = classify_question(question)
-        qa_entry = {
-            "question": question[:500],
-            "answer": answer,
-            "category": category,
-            "round": question_rounds,
-        }
-        installation_answers = _merge_answers(state, installation_answers, qa_entry)
-        logs.append({
-            "node": node_name,
-            "listener": "QUESTION",
-            "status": "SUCCESS",
-            "message": f"Answered question (round {question_rounds}).",
-            "category": category,
-            "question_preview": question[:200],
-            "answer": answer,
-        })
         current_prompt = build_prompt_with_answers(base_prompt, installation_answers)
+        current_prompt += "\n\nReturn the required output now."
+        continue
