@@ -1,44 +1,65 @@
 {
-    "version": "1.0.0",
-    "selectionStrategy": {
-      "alwaysIncludePlatform": "common",
-      "alsoIncludeSelectedPlatform": true
+  "version": "1.0.0",
+  "selectionStrategy": {
+    "alwaysIncludePlatform": "common",
+    "alsoIncludeSelectedPlatform": true
+  },
+  "useCases": [
+    {
+      "id": "common-basic-launch-navigation",
+      "platform": "common",
+      "path": "./common/basic-launch-navigation.json",
+      "type": "smoke",
+      "enabled": true,
+      "source": "seed"
     },
-    "useCases": [
-      {
-        "id": "common-basic-launch-navigation",
-        "platform": "common",
-        "path": "./common/basic-launch-navigation.json",
-        "type": "smoke",
-        "enabled": true
-      },
-      {
-        "id": "common-deeplink-smoke",
-        "platform": "common",
-        "path": "./common/deeplink-smoke.json",
-        "type": "smoke",
-        "enabled": true
-      },
-      {
-        "id": "common-first-open-sdk-presence",
-        "platform": "common",
-        "path": "./common/first-open-sdk-presence.json",
-        "type": "regression",
-        "enabled": true
-      },
-      {
-        "id": "ios-universal-link-validation",
-        "platform": "ios",
-        "path": "./ios/universal-link-validation.json",
-        "type": "critical",
-        "enabled": true
-      },
-      {
-        "id": "android-app-link-validation",
-        "platform": "android",
-        "path": "./android/app-link-validation.json",
-        "type": "critical",
-        "enabled": true
-      }
-    ]
-  }
+    {
+      "id": "common-deeplink-smoke",
+      "platform": "common",
+      "path": "./common/deeplink-smoke.json",
+      "type": "smoke",
+      "enabled": true,
+      "source": "seed"
+    },
+    {
+      "id": "common-first-open-sdk-presence",
+      "platform": "common",
+      "path": "./common/first-open-sdk-presence.json",
+      "type": "regression",
+      "enabled": true,
+      "source": "seed"
+    },
+    {
+      "id": "ios-universal-link-validation",
+      "platform": "ios",
+      "path": "./ios/universal-link-validation.json",
+      "type": "critical",
+      "enabled": true,
+      "source": "seed"
+    },
+    {
+      "id": "android-app-link-validation",
+      "platform": "android",
+      "path": "./android/app-link-validation.json",
+      "type": "critical",
+      "enabled": true,
+      "source": "seed"
+    },
+    {
+      "id": "custom-chani",
+      "platform": "android",
+      "path": "./custom/custom-chani.json",
+      "type": "custom",
+      "enabled": true,
+      "source": "custom"
+    },
+    {
+      "id": "custom-1233",
+      "platform": "ios",
+      "path": "./custom/custom-1233.json",
+      "type": "custom",
+      "enabled": true,
+      "source": "custom"
+    }
+  ]
+}
