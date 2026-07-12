@@ -1,0 +1,17 @@
+{
+  "call_log_android_example": [
+    { "tool": "integrateSdk" },
+    { "tool": "createDeepLink" },
+    { "tool": "guideDeepLinkTesting" },
+    { "tool": "verifyDeepLink" }
+  ],
+  "call_log_ios_example": [
+    { "tool": "integrateSdk" },
+    { "tool": "verifyIosSdk", "action": "prepare" },
+    { "tool": "verifyIosSdk", "action": "verify" }
+  ],
+  "notes": {
+    "format": "Ordered list of objects. Each object must have 'tool'. iOS multi-step tools also need 'action': 'prepare' or 'verify'.",
+    "source": "Returned by recorder.mcp_tool_results() after each MCP tool is written as MCP_TOOL_RESULT."
+  }
+}
