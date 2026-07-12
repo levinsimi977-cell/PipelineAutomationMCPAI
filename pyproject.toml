@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 
 # ── הוסיפי כאן את הספריות שהפרויקט צריך ──
 dependencies = [
-    "Appium-Python-Client>=3.1",
+    "Appium-Python-Client>=3.1.0",
     # דוגמאות נפוצות - הוסיפי / הסירי לפי הצורך:
     # "requests>=2.31",
     # "pydantic>=2.0",
