@@ -1,17 +1,26 @@
-# Saved run selections contain resolved per-run credentials (app_id/dev_key,
-# base64-obfuscated but not encrypted -- see infra/user_interface_use_case/utils/secrets.py).
-# They must never be committed.
-data/runs/
-
-# Compiled Python bytecode caches -- always regenerated automatically, never
-# meant to be kept or committed.
+# Python bytecode / cache
 __pycache__/
 *.pyc
+*.pyo
 
-# Local secrets -- see SETUP.md for what each of these needs to contain and
-# how to create them. Never committed, on purpose.
-infra/agents/answerAgent/config.py
+# Virtual environments
+.venv/
+venv/
+env/
 
-# Sandbox app replicas created at runtime during pipeline execution.
-sandboxes/
-.env 
+# Packaging / distribution
+*.egg-info/
+dist/
+build/
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Streamlit
+.streamlit/secrets.toml
