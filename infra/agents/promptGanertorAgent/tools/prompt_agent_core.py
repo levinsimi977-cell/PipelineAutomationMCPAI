@@ -119,6 +119,9 @@ def _load_first_use_case(selected_cases_path: str) -> dict:
     with selected_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
+    if isinstance(data, dict) and not data.get("useCases"):
+        return data
+
     use_cases = data.get("useCases") if isinstance(data, dict) else data
     if not use_cases:
         raise ValueError(f"No use cases found in: {selected_cases_path}")
