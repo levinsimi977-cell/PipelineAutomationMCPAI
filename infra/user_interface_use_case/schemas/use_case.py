@@ -36,6 +36,20 @@ class AnswerPolicy(BaseContract):
     in_app_event: Optional[InAppEventPolicy] = None
     verify_sdk: VerifySDKPolicy = Field(default_factory=VerifySDKPolicy)
     android: Optional[AndroidPolicy] = None
+    integration_policy: Optional[str] = Field(
+        default=None,
+        description=(
+            "Free-form notes/requirements regarding the SDK integration itself "
+            "(e.g. required SDK versions, initialization constraints, auth rules)."
+        ),
+    )
+    app_event_policy: Optional[str] = Field(
+        default=None,
+        description=(
+            "Free-form notes/requirements regarding AppEvents (e.g. custom "
+            "parameters to track, triggers, or naming conventions)."
+        ),
+    )
 
 
 class UseCaseContract(BaseContract):

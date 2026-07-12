@@ -43,6 +43,8 @@ class UseCaseBuilder:
         self._in_app_event: Optional[InAppEventPolicy] = None
         self._verify_sdk: VerifySDKPolicy = VerifySDKPolicy()
         self._android: Optional[AndroidPolicy] = None
+        self._integration_policy: Optional[str] = None
+        self._app_event_policy: Optional[str] = None
         return self
 
     def with_core(
@@ -150,6 +152,16 @@ class UseCaseBuilder:
         )
         return self
 
+    def with_integration_policy(self, notes: Optional[str] = None) -> "UseCaseBuilder":
+        """Attach free-form SDK integration notes/requirements."""
+        self._integration_policy = notes
+        return self
+
+    def with_app_event_policy(self, notes: Optional[str] = None) -> "UseCaseBuilder":
+        """Attach free-form AppEvents notes/requirements."""
+        self._app_event_policy = notes
+        return self
+
     def with_installation_answers(
         self, installation_answers: List[Dict[str, Any]]
     ) -> "UseCaseBuilder":
@@ -170,6 +182,8 @@ class UseCaseBuilder:
             in_app_event=self._in_app_event,
             verify_sdk=self._verify_sdk,
             android=self._android,
+            integration_policy=self._integration_policy,
+            app_event_policy=self._app_event_policy,
         )
 
         return UseCaseContract(
