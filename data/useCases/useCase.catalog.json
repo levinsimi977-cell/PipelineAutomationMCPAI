@@ -46,17 +46,9 @@
       "source": "seed"
     },
     {
-      "id": "custom-chani",
-      "platform": "android",
-      "path": "./custom/custom-chani.json",
-      "type": "custom",
-      "enabled": true,
-      "source": "custom"
-    },
-    {
-      "id": "custom-1233",
+      "id": "custom-chani-bananni",
       "platform": "ios",
-      "path": "./custom/custom-1233.json",
+      "path": "./custom/custom-chani-bananni.json",
       "type": "custom",
       "enabled": true,
       "source": "custom"
