@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Literal, Optional, TypedDict
+from typing import Literal, Optional, TypedDict, get_args
+
+
 
 PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
 
@@ -69,9 +71,6 @@ def environment_setup_node(state: PipelineState) -> PipelineState:
     return state
 
 
-def prompt_agent_node(state: PipelineState) -> PipelineState:
-    """Node 4: Prompt Agent — enriched structured prompt (G3)"""
-    return state
 
 
 def sdk_agent_node(state: PipelineState) -> PipelineState:
