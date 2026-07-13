@@ -20,11 +20,22 @@ import re
 import subprocess
 from typing import Any
 
-import config
+from dotenv import load_dotenv
+
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
 from prompts.answer_templates import ANSWER_PROMPT
+
+# Config comes straight from the environment / project .env — no separate
+# config.py module. `load_dotenv()` is a no-op if the vars are already set
+# (e.g. in CI), and just fills them in from .env for local runs.
+load_dotenv()
+
+APP_ID = os.getenv("APP_ID", "")
+DEV_KEY = os.getenv("DEV_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
@@ -176,8 +187,8 @@ def _format_test_decisions(state: dict[str, Any]) -> str:
         else "No answer_policy configured."
     )
     return (
-        f"app_id: {config.APP_ID or 'not set'}\n"
-        f"dev_key: {config.DEV_KEY or 'not set'}\n"
+        f"app_id: {APP_ID or 'not set'}\n"
+        f"dev_key: {DEV_KEY or 'not set'}\n"
         f"answer_policy:\n{policy_text}"
     )
 
@@ -251,16 +262,16 @@ def _llm():
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     return ChatGoogleGenerativeAI(
-        model=config.GEMINI_MODEL,
+        model=GEMINI_MODEL,
         temperature=0.1,
-        google_api_key=config.GEMINI_API_KEY,
+        google_api_key=GEMINI_API_KEY,
     )
 
 
 def _llm_answer(state: dict[str, Any], question: str) -> str | None:
     """Send one ANSWER_PROMPT call to the LLM. None on any failure (no API
     key, network/API error, empty reply) — caller raises UnansweredQuestionError."""
-    if not getattr(config, "GEMINI_API_KEY", ""):
+    if not GEMINI_API_KEY:
         return None
 
     prompt = ANSWER_PROMPT.format(
