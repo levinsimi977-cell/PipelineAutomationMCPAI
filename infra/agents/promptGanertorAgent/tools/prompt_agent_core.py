@@ -138,19 +138,20 @@ def _load_first_use_case(selected_cases_path: str) -> dict:
 
 
 def prompt_agent_node(state: dict) -> dict:
-    # 1. קבלת הנתיב לקובץ ה-Use Cases מה-state
-    # ה-Pipeline מספק נתיב מלא, או run_id שממנו נבנה data/runs/<run_id>/selected_use_cases.json
-    selected_cases_path = _resolve_selected_cases_path(state)
-    
-    if not os.path.exists(selected_cases_path):
-        raise FileNotFoundError(f"Configuration file not found at: {selected_cases_path}")
+    # 1. ה-Artifact Generator טוען את ה-Use Case ל-state.
+    # אם מריצים את ה-Prompt Agent לבד, עדיין אפשר לטעון מהנתיב כ-fallback.
+    first_case = state.get("current_use_case")
+    if not first_case:
+        selected_cases_path = _resolve_selected_cases_path(state)
+        if not os.path.exists(selected_cases_path):
+            raise FileNotFoundError(f"Configuration file not found at: {selected_cases_path}")
+        first_case = _load_first_use_case(str(selected_cases_path))
 
-    # 2. קריאת ה-Use Case הראשון שנבחר
-    first_case = _load_first_use_case(str(selected_cases_path))
+    # 2. חילוץ הנתונים הנצרכים מה-Use Case
     raw_goal = first_case.get("prompt") or first_case.get("prompt_goal") or ""
-    platform = first_case.get("platform", "android")
+    platform = state.get("platform") or first_case.get("platform", "android")
     app_path = state.get("app_path") or first_case.get("app_path")
-    answer_policy = first_case.get("answer_policy") or {}
+    answer_policy = state.get("answer_policy") or first_case.get("answer_policy") or {}
 
     prompt_generator_chain = BASE_PROMPT_TEMPLATE | llm | StrOutputParser()
     generated_prompts = {}
