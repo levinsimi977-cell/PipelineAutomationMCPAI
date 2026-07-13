@@ -1,19 +1,43 @@
+ Python bytecode / cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
 .env
 sandboxes/
 
+# Packaging / distribution
+*.egg-info/
+dist/
+build/
 # Saved run selections contain resolved per-run credentials (app_id/dev_key,
 # base64-obfuscated but not encrypted -- see infra/user_interface_use_case/utils/secrets.py).
 # They must never be committed.
 data/runs/
 
+# Environment variables / secrets
+.env
+sandboxes/
+data/runs/
+.env.*
 # Compiled Python bytecode caches -- always regenerated automatically, never
 # meant to be kept or committed.
 __pycache__/
 *.pyc
 
+# Editor / OS cruft
+.DS_Store
+.vscode/
+.idea/
 # Local secrets -- see SETUP.md for what each of these needs to contain and
 # how to create them. Never committed, on purpose.
 infra/agents/answerAgent/config.py
 
+# Streamlit
+.streamlit/secrets.toml
 # Sandbox app replicas created at runtime during pipeline execution.
 sandboxes/
