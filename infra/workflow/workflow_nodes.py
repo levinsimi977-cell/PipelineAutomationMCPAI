@@ -3,9 +3,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Literal, Optional, TypedDict
+from typing import Literal, Optional, TypedDict, get_args
 
 from infra.application.app import run_tasks_3_and_4, setup_environment
+from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
+    prompt_agent_node as build_prompts,
+)
+from infra.agents.compilationAgent.compilation_agent import check_compilation
 
 PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
 
@@ -134,6 +138,51 @@ async def environment_setup_node(state: PipelineState) -> PipelineState:
 
 def prompt_agent_node(state: PipelineState) -> PipelineState:
     """Node 4: Prompt Agent — enriched structured prompt (G3)"""
+    state["prompt_agent_node_status"] = "RUNNING"
+
+    try:
+        current_path = state.get("current_use_case_path")
+        if current_path:
+            state["selected_use_cases_path"] = current_path
+
+        updates = build_prompts(state)
+        state.update(updates)
+
+        missing = []
+        agent_prompts = state.get("agent_prompts") or {}
+
+        for prompt_name in get_args(PromptType):
+            prompt_value = agent_prompts.get(prompt_name)
+            if not isinstance(prompt_value, str) or not prompt_value.strip():
+                missing.append(f"agent_prompts.{prompt_name}")
+
+        platform = state.get("platform")
+        if not isinstance(platform, str) or not platform.strip():
+            missing.append("platform")
+
+        if missing:
+            state["prompt_agent_node_status"] = "FAIL"
+            state["prompt_agent_node_error"] = (
+                "Prompt Agent did not save required fields: " + ", ".join(missing)
+            )
+        else:
+            state["prompt_agent_node_status"] = "SUCCESS"
+            state.pop("prompt_agent_node_error", None)
+    except Exception as exc:
+        state["prompt_agent_node_status"] = "FAIL"
+        state["prompt_agent_node_error"] = str(exc)
+
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "prompt_agent",
+            "status": state["prompt_agent_node_status"],
+            "message": state.get(
+                "prompt_agent_node_error",
+                "Prompt Agent generated and saved all required prompts.",
+            ),
+        },
+    ]
     return state
 
 
@@ -150,7 +199,27 @@ def sdk_agent_node(state: PipelineState) -> PipelineState:
 
 
 def compilation_check_node(state: PipelineState) -> PipelineState:
-    """Node 6: Compilation Check — build validation before run (G4)"""
+    """Node 6: Compilation Check — build validation before run (G4)
+
+    Wrapper around `check_compilation` (compilation_agent.py): builds the
+    sandboxed app copy (xcodebuild/gradlew) and merges compilation_passed /
+    compilation_result / audit_events back into state, plus the standard
+    per-node bookkeeping (current_node, next_node, visited_*, nodes_log).
+    """
+    platform = state.get("platform") or state.get("prompt_platform")
+    result = check_compilation({**state, "platform": platform})
+    state.update(result)
+
+    state["current_node"] = "compilation_check"
+    state["next_node"] = "emulator"
+    state["visited_compilation_check"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "compilation_check",
+            "status": "SUCCESS" if result.get("compilation_passed") else "FAIL",
+        },
+    ]
     return state
 
 
