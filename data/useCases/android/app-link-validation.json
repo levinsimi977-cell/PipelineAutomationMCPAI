@@ -2,6 +2,11 @@
   "app_path": "data/application/banana.apk",
   "platform": "android",
   "prompt_goal": "Validate Android app link intent resolution and destination routing.",
+  "rules_policy": {
+  "default_profiles": ["common", "android"],
+  "allow_user_override": true,
+  "allowed_profiles": ["common", "android", "strict"]
+  },
   "answer_policy": {
     "ios_minimal": null,
     "deeplink": {

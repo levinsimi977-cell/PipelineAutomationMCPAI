@@ -16,10 +16,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from infra.user_interface_use_case.builders.use_case_builder import UseCaseBuilder
-from infra.user_interface_use_case.repositories import run_repository as run_repo
-from infra.user_interface_use_case.repositories import use_case_repository as repo
-from infra.user_interface_use_case.schemas import DEFAULT_LLM_MODEL, LlmModel, UseCaseContract
+from infra.use_case_service.builder import UseCaseBuilder
+from infra.use_case_service.repositories import run_repository as run_repo
+from infra.use_case_service.repositories import use_case_repository as repo
+from infra.use_case_service.schemas import DEFAULT_LLM_MODEL, LlmModel, UseCaseContract
 
 # get_args() reads the literal string values out of the LlmModel type at
 # runtime, so this dropdown always matches whatever the schema currently
