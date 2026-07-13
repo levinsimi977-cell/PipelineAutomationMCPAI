@@ -9,7 +9,10 @@ import asyncio
 from typing import Any, Literal, NotRequired, TypedDict
 
 from infra.agents.AuditRecorder import AuditRecorder
-from infra.agents.sdkAgent.tools.agent import run_sdk_integration_agent
+from infra.agents.sdkAgent.tools.agent import (
+    close_sdk_integration_agent,
+    run_sdk_integration_agent,
+)
 
 PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
 
@@ -46,6 +49,7 @@ class PipelineState(TypedDict, total=False):
     platform: str
     audit_recorder: AuditRecorder
     run_id: str
+    agent_id: Any  # 0 = no sdk_agent conversation yet; set/read by run_sdk_integration_agent
     fail_reason: NotRequired[Any]
     nodes_logs: list[dict[str, Any]]
 
@@ -123,17 +127,16 @@ def sdk_agent_node(state: PipelineState) -> PipelineState:
     sandbox_path = state["sandbox_path"]
     platform = state["platform"]
     audit_recorder = state["audit_recorder"]
-    run_id = state["run_id"]
 
     user_prompt = agent_prompts[current_prompt_type]
 
     result = asyncio.run(
         run_sdk_integration_agent(
+            state=state,
             project_root_str=sandbox_path,
             platform=platform,
             user_prompt=user_prompt,
             audit_recorder=audit_recorder,
-            run_id=run_id,
         )
     )
 
@@ -162,6 +165,12 @@ def sdk_agent_node(state: PipelineState) -> PipelineState:
         next_prompt_type = _next_prompt_type(current_prompt_type)
         if next_prompt_type is not None:
             state["last_prompt_type"] = next_prompt_type
+
+    # verify_prompt is the last of the 3 sdk_agent passes (see
+    # _PROMPT_SEQUENCE) - once it has run, the conversation is done, so free
+    # the agent/tools/checkpointer instead of leaving them alive forever.
+    if current_prompt_type == "verify_prompt":
+        close_sdk_integration_agent(state, audit_recorder)
 
     return state
 

@@ -2,7 +2,7 @@ import os
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -257,3 +257,19 @@ async def run_sdk_integration_agent(
     audit_recorder.write("INSTALLATION_TIMEOUT", {"max_turns": MAX_TURNS})
     inner_state["status"] = "FAIL"
     return {"status": "FAIL", "agent_id": agent_id, "reason": f"Exceeded max turns ({MAX_TURNS})"}
+# ============================================================================
+# Step C - Teardown (call once the conversation is truly finished, e.g.
+# after the verify_prompt pass, so the session doesn't stay alive forever)
+# ============================================================================
+def close_sdk_integration_agent(state: Dict[str, Any], audit_recorder: Optional[AuditRecorder] = None) -> None:
+    """Frees the session (agent, tools, checkpointer memory) held for
+    state["agent_id"] - same state-based lookup as run_sdk_integration_agent.
+
+    Safe to call even if agent_id is 0/None or already closed - it is then
+    simply a no-op. Only removes the entry from _AGENT_SESSIONS; does not
+    clear state["agent_id"] (the caller may still want it around for logging).
+    """
+    agent_id = state.get("agent_id", 0)
+    session = _AGENT_SESSIONS.pop(agent_id, None)
+    if session is not None and audit_recorder is not None:
+        audit_recorder.write("AGENT_SESSION_CLOSED", {"agent_id": agent_id})
