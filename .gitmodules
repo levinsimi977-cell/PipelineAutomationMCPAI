@@ -1,0 +1,6 @@
+[submodule "data/application/appsflyer-onelink-android-sample-apps"]
+	path = data/application/appsflyer-onelink-android-sample-apps
+	url = https://github.com/AppsFlyerSDK/appsflyer-onelink-android-sample-apps.git
+[submodule "data/application/appsflyer-onelink-ios-sample-apps"]
+	path = data/application/appsflyer-onelink-ios-sample-apps
+	url = https://github.com/AppsFlyerSDK/appsflyer-onelink-ios-sample-apps.git
