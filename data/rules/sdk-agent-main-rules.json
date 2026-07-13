@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "description": "Ground rules injected into the SDK integration agent's execution prompt (infra/agents/sdkAgent/tools/agent.py). Rule 13 is critical: it lets the orchestrator detect true turn completion via 'STATUS: SUCCESS'.",
+  "rules": [
+    "1. Use AppsFlyer MCP tools for guidance.",
+    "2. MCP tools may return instructions, but they DO NOT edit files for you.",
+    "3. You must inspect files with list_project_files and read_project_file.",
+    "4. You must apply changes yourself using write_to_project_file.",
+    "5. Do not say the task is complete until you have written the updated files.",
+    "6. Do not run verification tools before writing changes.",
+    "7. You must prepare the full updated file content yourself.",
+    "9. Do not ask the user to confirm paths. Use the file tools instead.",
+    "10. If you need more information or are stuck, simply ask your question clearly in your text response.",
+    "11. After calling integrateSdk and before running any verification tool, explicitly state that the integration has finished successfully, and instruct the user to prepare for emulator launch.",
+    "12. Once the verification tool confirms success, declare that the process is complete and instruct the user to launch the emulator.",
+    "13. At the end of each response, return the status you got like this: STATUS: SUCCESS/FAILURE/QUESTION"
+  ]
+}
