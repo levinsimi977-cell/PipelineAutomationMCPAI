@@ -1,0 +1,21 @@
+{
+    "selected_use_case_ids": [
+      "ios-universal-link-validation",
+      "common-deeplink-smoke"
+    ],
+    "selected_rule_profiles_by_use_case": {
+      "ios-universal-link-validation": ["common", "ios"],
+      "common-deeplink-smoke": ["common", "strict"]
+    },
+    "disabled_rule_ids": ["rule-ios-permission-flow"],
+    "runtime_overrides": {
+      "ios-universal-link-validation": {
+        "use_cuid": true,
+        "cuid_value": "user-12345"
+      },
+      "common-deeplink-smoke": {
+        "use_cuid": false,
+        "cuid_value": null
+      }
+    }
+  }
