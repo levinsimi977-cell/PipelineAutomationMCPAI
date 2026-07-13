@@ -1,7 +1,12 @@
 {
   "app_path": "data/application/banana.app",
-  "platform": "ios",
+  "platform": "common",
   "prompt_goal": "Launch app and validate basic navigation stability.",
+  "rules_policy": {
+  "default_profiles": ["common"],
+  "allow_user_override": true,
+  "allowed_profiles": ["common", "strict"]
+  },
   "answer_policy": {
     "ios_minimal": {
       "use_att": true,
