@@ -13,6 +13,7 @@ from infra.workflow.workflow_nodes import (
     prompt_agent_node,
     route_from_emulator,
     route_from_sdk_agent,
+    route_from_visual_report,
     sdk_agent_node,
     test_runner_node,
     user_actions_node,
@@ -46,7 +47,6 @@ def build_workflow():
     graph.add_edge("user_actions", "deep_link")
     graph.add_edge("deep_link", "sdk_agent")
     graph.add_edge("test_runner", "visual_report")
-    graph.add_edge("visual_report", END)
 
     # Conditional edges — driven by PipelineState (last_prompt_type / visited_user_actions)
     graph.add_conditional_edges(
@@ -63,6 +63,14 @@ def build_workflow():
         {
             "sdk_agent": "sdk_agent",
             "user_actions": "user_actions",
+        },
+    )
+    graph.add_conditional_edges(
+        "visual_report",
+        route_from_visual_report,
+        {
+            "artifact_generator": "artifact_generator",
+            "end": END,
         },
     )
 

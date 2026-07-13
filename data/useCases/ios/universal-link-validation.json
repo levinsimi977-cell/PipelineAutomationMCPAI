@@ -2,6 +2,11 @@
   "app_path": "data/application/banana.app",
   "platform": "ios",
   "prompt_goal": "Validate iOS universal link routing and app open behavior.",
+  "rules_policy": {
+  "default_profiles": ["common", "ios"],
+  "allow_user_override": true,
+  "allowed_profiles": ["common", "ios", "strict"]
+  },
   "answer_policy": {
     "ios_minimal": {
       "use_att": true,
