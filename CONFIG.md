@@ -377,7 +377,7 @@ No pydantic `BaseSettings` are used — configuration is plain dataclasses,
 | `last_prompt_type`, `visited_user_actions` | workflow routing (`workflow_builder.py`) |
 | `call_log`, `mcp_sequence` | MCP call-sequence validation |
 | `run_id`, `use_case_id`, `status`, `started_at`, `ended_at` | report generator |
-| `incoming_question`, `question_rounds`, `nodes_logs` | answer/listener nodes |
+| `incoming_question`, `question_rounds`, `nodes_log` | answer/listener nodes |
 
 ---
 
