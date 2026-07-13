@@ -53,6 +53,13 @@ class PipelineState(TypedDict, total=False):
     """Shared state threaded through every node of the workflow graph."""
 
     visited_user_actions: bool
+    last_prompt_type: PromptType
+    current_node: str
+    next_node: str
+    nodes_log: list
+    incoming_question: str | None
+    audit_path: str
+    platform: str
     last_prompt_type: PromptType | None
     prompt_just_run: PromptType
     type_agent: str
@@ -267,12 +274,6 @@ def emulator_node(state: PipelineState) -> dict:
         "execution_result": "\n".join(steps),
         "driver": driver_instance,
     }
-
-
-def user_actions_node(state: PipelineState) -> PipelineState:
-    """Node 8: User Actions — simulated taps on screen (G5)"""
-    state["visited_user_actions"] = True
-    return state
 
 
 def deep_link_node(state: PipelineState) -> PipelineState:
