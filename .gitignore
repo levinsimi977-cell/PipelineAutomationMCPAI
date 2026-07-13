@@ -6,6 +6,11 @@ sandboxes/
 # They must never be committed.
 data/runs/
 
+# Environment variables / secrets
+.env
+sandboxes/
+data/runs/
+.env.*
 # Compiled Python bytecode caches -- always regenerated automatically, never
 # meant to be kept or committed.
 __pycache__/
