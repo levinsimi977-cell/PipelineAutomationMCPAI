@@ -117,7 +117,7 @@ def listener_on_text(
     FAILURE  → test_status FAIL.
     QUESTION → forward to answer_agent, return updated prompt if base_prompt set.
     """
-    updates: Dict[str, Any] = {"nodes_logs": []}
+    updates: Dict[str, Any] = {"nodes_log": []}
     agent_text = (text or "").strip()
     if not agent_text:
         return None, updates
@@ -168,7 +168,7 @@ def listener_on_text(
     # QUESTION — Classifier teammate decided; listener forwards to answer_agent.
     question_rounds = merged_state["question_rounds"] + 1
     if question_rounds > MAX_QUESTION_ROUNDS:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "QUESTION",
             "status": "FAIL",
@@ -189,7 +189,7 @@ def listener_on_text(
     }
     installation_answers = _merge_answers(state, installation_answers, qa_entry)
 
-    updates["nodes_logs"].append({
+    updates["nodes_log"].append({
         "node": node_name,
         "listener": "QUESTION",
         "status": "SUCCESS",
@@ -220,9 +220,9 @@ def listener_on_agent_response(
     Returns:
         action: "continue" | "done" | "fail"
         next_prompt: prompt for the next agent.invoke (None when done/fail)
-        updates: nodes_logs, call_log delta, installation_answers delta, etc.
+        updates: nodes_log, call_log delta, installation_answers delta, etc.
     """
-    updates: Dict[str, Any] = {"nodes_logs": []}
+    updates: Dict[str, Any] = {"nodes_log": []}
     installation_answers = list(state.get("installation_answers") or [])
     initial_answer_count = len(installation_answers)
     question_rounds = state.get("question_rounds", 0)
@@ -259,7 +259,7 @@ def listener_on_agent_response(
                 mcp_text,
                 base_prompt=base_prompt,
             )
-            updates["nodes_logs"].extend(listener_updates.get("nodes_logs", []))
+            updates["nodes_log"].extend(listener_updates.get("nodes_log", []))
             if listener_updates.get("test_status") == "FAIL":
                 updates["test_status"] = "FAIL"
                 updates["question_rounds"] = listener_updates.get("question_rounds", question_rounds)
@@ -414,7 +414,7 @@ def _record_listener_updates_to_audit(
     if updates.get("mcp_sequence"):
         audit_recorder.write("MCP_SEQUENCE", updates["mcp_sequence"])
 
-    for log in updates.get("nodes_logs", []):
+    for log in updates.get("nodes_log", []):
         audit_recorder.write("LISTENER_DECISION", log)
         if log.get("listener") == "QUESTION" and log.get("answer"):
             audit_recorder.write("SIMULATED_USER_REPLY", {
@@ -481,9 +481,9 @@ def listener_on_agent_turn(
     Returns:
         action: "continue" | "done" | "fail"
         next_prompt: prompt for next ainvoke (None when done/fail)
-        updates: nodes_logs, call_log, mcp_sequence, etc.
+        updates: nodes_log, call_log, mcp_sequence, etc.
     """
-    updates: Dict[str, Any] = {"nodes_logs": []}
+    updates: Dict[str, Any] = {"nodes_log": []}
     platform = (state.get("platform") or "android").strip().lower()
 
     turn_messages = _current_turn_messages(messages)
@@ -511,7 +511,7 @@ def listener_on_agent_turn(
     updated_prompt, listener_updates = listener_on_text(
         state, node_name, final_text, base_prompt=base_prompt
     )
-    updates["nodes_logs"].extend(listener_updates.get("nodes_logs", []))
+    updates["nodes_log"].extend(listener_updates.get("nodes_log", []))
     if "question_rounds" in listener_updates:
         updates["question_rounds"] = listener_updates["question_rounds"]
     if listener_updates.get("installation_answers"):
@@ -580,7 +580,7 @@ def invoke_plain_llm_with_listener(
 
         if is_done(response):
             return response, {
-                "nodes_logs": logs,
+                "nodes_log": logs,
                 "question_rounds": question_rounds,
                 "installation_answers": installation_answers[initial_answer_count:],
             }
