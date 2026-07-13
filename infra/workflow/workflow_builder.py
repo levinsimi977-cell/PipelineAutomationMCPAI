@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
+from infra.agents.userActions.node import user_actions_node
 from infra.workflow.workflow_nodes import (
     PipelineState,
     artifact_generator_node,
@@ -16,7 +17,6 @@ from infra.workflow.workflow_nodes import (
     route_from_visual_report,
     sdk_agent_node,
     test_runner_node,
-    user_actions_node,
     visual_report_node,
 )
 
