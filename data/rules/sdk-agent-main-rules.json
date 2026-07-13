@@ -119,5 +119,32 @@
         "note": "Record these inside the audit event `details` field (JSON recommended)."
       }
     ]
+  },
+
+  "tool_execution_and_state_management": {
+    "title": "Tool Execution & State Management Instructions",
+    "sections": [
+      {
+        "id": "detect_link_creation_tool_execution",
+        "heading": "Detect Link Creation Tool Execution",
+        "number": 1,
+        "description": "Every time you execute or invoke either of the following tools:",
+        "tools": [
+          "createDeepLink",
+          "createIosDeepLink"
+        ]
+      },
+      {
+        "id": "state_update_save_to_state",
+        "heading": "State Update (Save to State)",
+        "number": 2,
+        "description": "Immediately after receiving the response from the tool and generating the link, you must perform the following action before or during your response back to the user:",
+        "rules": [
+          "Save the generated URL into the agent/conversation state under the specific key: `deep_link_url`.",
+          "Ensure the state is accurately updated with the exact link returned by the tool."
+        ],
+        "state_key": "deep_link_url"
+      }
+    ]
   }
 }

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from appium_runner import build_driver, run_discovered_events
-from discover_events import discover
-from user_actions_validators import validate_discovery, validate_taps
+from infra.agents.userActions.appium_runner import build_driver, run_discovered_events
+from infra.agents.userActions.discover_events import discover
+from infra.agents.userActions.validators import validate_discovery, validate_taps
 
 
 def run_user_actions_pipeline(

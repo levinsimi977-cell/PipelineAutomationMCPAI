@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from user_actions_core import run_user_actions_pipeline
+from infra.agents.userActions.core import run_user_actions_pipeline
+from infra.workflow.workflow_nodes import PipelineState
 
 NODE_NAME = "user_actions"
 NEXT_NODE = "deep_link"
 
 
-def user_actions_node(state: dict) -> dict:
+def user_actions_node(state: PipelineState) -> PipelineState:
     state["current_node"] = NODE_NAME
 
     if state.get("incoming_question"):
@@ -34,7 +35,7 @@ def user_actions_node(state: dict) -> dict:
         only_event=state.get("only_event"),
     )
 
-    state["visited_compilation_check"] = True
+    state["visited_user_actions"] = True
     state["next_node"] = NEXT_NODE if result["status"] == "Success" else NODE_NAME
     state.setdefault("nodes_log", []).append({
         "node": NODE_NAME,

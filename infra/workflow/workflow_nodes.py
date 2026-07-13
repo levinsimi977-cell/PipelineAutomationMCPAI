@@ -33,6 +33,12 @@ class PipelineState(TypedDict, total=False):
 
     visited_user_actions: bool
     last_prompt_type: PromptType
+    current_node: str
+    next_node: str
+    nodes_log: list
+    incoming_question: str | None
+    audit_path: str
+    platform: str
 
     # Use-case queue (json_use_case_input -> artifact_generator <-> visual_report loop)
     run_id: str
@@ -186,12 +192,6 @@ def emulator_node(state: PipelineState) -> dict:
         "execution_result": "\n".join(steps),
         "driver": driver_instance,
     }
-
-
-def user_actions_node(state: PipelineState) -> PipelineState:
-    """Node 8: User Actions — simulated taps on screen (G5)"""
-    state["visited_user_actions"] = True
-    return state
 
 
 def deep_link_node(state: PipelineState) -> PipelineState:
