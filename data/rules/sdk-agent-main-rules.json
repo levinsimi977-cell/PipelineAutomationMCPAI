@@ -116,8 +116,17 @@
           "triggerId",
           "layout/view file (when known)"
         ],
-        "note": "Record these inside the audit event `details` field (JSON recommended)."
+        "note": "Call write_events_manifest with eventName, triggerId, and layoutFile for each wired event."
       }
+    ]
+  },
+
+  "events_manifest": {
+    "title": "Events manifest for Appium",
+    "rules": [
+      "After wiring each event UI, call write_events_manifest.",
+      "triggerId must be af_trigger_{eventName}.",
+      "Do not finish event_prompt until write_events_manifest returns OK."
     ]
   },
 
