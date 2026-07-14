@@ -129,8 +129,37 @@ async def create_sdk_integration_agent(
             return json.dumps({"status": "WRITTEN" if changed else "NO_CHANGES", "file_path": file_path}, indent=2)
         except Exception as e:
             return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+
+    @tool
+    def write_events_manifest(manifest_json: str) -> str:
+        """After wiring in-app event UI, write events.wired.json in the project for Appium."""
+        try:
+            data = json.loads(manifest_json)
+            events = data.get("events") or []
+            if data.get("platform") != platform_lower or not events:
+                raise ValueError("platform must match and events must not be empty")
+            for event in events:
+                name = event.get("eventName", "")
+                trigger_id = event.get("triggerId", "")
+                if not name.startswith("af_") or trigger_id != f"af_trigger_{name}":
+                    raise ValueError(f"invalid event wiring for {name}")
+            if platform_lower == "android" and not (data.get("appPackage") and data.get("mainActivity")):
+                raise ValueError("android requires appPackage and mainActivity")
+            if platform_lower == "ios" and not data.get("bundleId"):
+                raise ValueError("ios requires bundleId")
+            manifest_path = safe_project_path(project_root, "events.wired.json")
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return json.dumps({
+                "status": "OK",
+                "file_path": "events.wired.json",
+                "event_count": len(events),
+            }, indent=2)
+        except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+
     # All tools (MCP + files) together - these are the tools registered to the agent
-    agent_tools = [*mcp_tools, list_project_files, read_project_file, write_to_project_file]
+    agent_tools = [*mcp_tools, list_project_files, read_project_file, write_to_project_file, write_events_manifest]
     # --------------------------------------------------------------------
     # Ground rules for the agent. Rule 13 is critical: it lets the
     # orchestrator below detect true turn completion via "STATUS: SUCCESS".
@@ -155,6 +184,8 @@ async def create_sdk_integration_agent(
         f"11. After calling integrateSdk and before running any verification tool, explicitly state that the integration has finished successfully, and instruct the user to prepare for emulator launch.\n"
         f"12. Once the verification tool confirms success, declare that the process is complete and instruct the user to launch the emulator.\n"
         f"13. At the end of each response, return the status you got like this: STATUS: SUCCESS/FAILURE/QUESTION\n"
+        f"14. When creating in-app events: wire triggerId in UI (Android contentDescription / iOS accessibilityIdentifier), "
+        f"then call write_events_manifest before finishing.\n"
     )
     audit_recorder.write("AGENT_PROMPT_GENERATED", {"prompt": final_execution_prompt})
     # The checkpointer is the agent's memory: it lets repeated .ainvoke()
