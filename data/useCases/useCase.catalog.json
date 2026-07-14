@@ -4,47 +4,54 @@
     "alwaysIncludePlatform": "common",
     "alsoIncludeSelectedPlatform": true
   },
-
-    "useCases": [  
-      {
-        "id": "common-basic-launch-navigation",
-        "platform": "common",
-        "path": "./common/basic-launch-navigation.json",
-        "type": "smoke",
-        "enabled": true,
-        "supports_rule_override": true
-      },
-      {
-        "id": "common-deeplink-smoke",
-        "platform": "common",
-        "path": "./common/deeplink-smoke.json",
-        "type": "smoke",
-        "enabled": true,
-        "supports_rule_override": true
-      },
-      {
-        "id": "common-first-open-sdk-presence",
-        "platform": "common",
-        "path": "./common/first-open-sdk-presence.json",
-        "type": "regression",
-        "enabled": true,
-        "supports_rule_override": true
-      },
-      {
-        "id": "ios-universal-link-validation",
-        "platform": "ios",
-        "path": "./ios/universal-link-validation.json",
-        "type": "critical",
-        "enabled": true,
-        "supports_rule_override": true
-      },
-      {
-        "id": "android-app-link-validation",
-        "platform": "android",
-        "path": "./android/app-link-validation.json",
-        "type": "critical",
-        "enabled": true,
-        "supports_rule_override": true
-      }
-    ]
-  }
+  "useCases": [
+    {
+      "id": "common-basic-launch-navigation",
+      "platform": "common",
+      "path": "./common/basic-launch-navigation.json",
+      "type": "smoke",
+      "enabled": true,
+      "supports_rule_override": true
+    },
+    {
+      "id": "common-deeplink-smoke",
+      "platform": "common",
+      "path": "./common/deeplink-smoke.json",
+      "type": "smoke",
+      "enabled": true,
+      "supports_rule_override": true
+    },
+    {
+      "id": "common-first-open-sdk-presence",
+      "platform": "common",
+      "path": "./common/first-open-sdk-presence.json",
+      "type": "regression",
+      "enabled": true,
+      "supports_rule_override": true
+    },
+    {
+      "id": "ios-universal-link-validation",
+      "platform": "ios",
+      "path": "./ios/universal-link-validation.json",
+      "type": "critical",
+      "enabled": true,
+      "supports_rule_override": true
+    },
+    {
+      "id": "android-app-link-validation",
+      "platform": "android",
+      "path": "./android/app-link-validation.json",
+      "type": "critical",
+      "enabled": true,
+      "supports_rule_override": true
+    },
+    {
+      "id": "custom-intigrate-sdk",
+      "platform": "ios",
+      "path": "./custom/custom-intigrate-sdk.json",
+      "type": "custom",
+      "enabled": true,
+      "supports_rule_override": true
+    }
+  ]
+}
