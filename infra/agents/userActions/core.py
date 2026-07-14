@@ -1,21 +1,28 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from infra.agents.userActions.appium_runner import build_driver, run_discovered_events
-from infra.agents.userActions.discover_events import discover
 from infra.agents.userActions.validators import validate_discovery, validate_taps
+
+
+def load_events_manifest(manifest_path: Path) -> dict:
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for event in data.get("events", []):
+        event.setdefault("source", ["manifest"])
+    return data
 
 
 def run_user_actions_pipeline(
     *,
-    audit_path: Path,
+    manifest_path: Path,
     platform: str,
     appium_url: str = "http://127.0.0.1:4723",
     wait_seconds: float = 2.0,
     only_event: str | None = None,
 ) -> dict:
-    discovered = discover(audit_path=audit_path, platform=platform)
+    discovered = load_events_manifest(manifest_path)
     discovery_validation = validate_discovery(discovered)
     if not discovery_validation["passed"]:
         return {
