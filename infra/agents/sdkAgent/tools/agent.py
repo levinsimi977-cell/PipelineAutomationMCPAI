@@ -1,0 +1,275 @@
+import os
+import json
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Optional
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+from langgraph.checkpoint.memory import MemorySaver
+from infra.agents.AuditRecorder import AuditRecorder
+# Classifies each finished turn's Memory (SUCCESS/FAIL/QUESTION), answers
+# questions, and records everything to AuditRecorder. See llm_listener.py.
+from infra.listener.llm_listener import listener_on_agent_turn
+# Loads API keys from the .env file located next to this module
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+APP_ID = os.getenv("APP_ID", "id1512793879")
+# Safety net: caps how many sdk_agent.ainvoke() turns a single call to
+# run_sdk_integration_agent() may take before giving up.
+MAX_TURNS = 15
+# infra/agents/sdkAgent/tools/agent.py -> project root is 4 levels up
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_MAIN_RULES_PATH = _PROJECT_ROOT / "data" / "rules" / "sdk-agent-main-rules.json"
+def _load_agent_rules_text() -> str:
+    """Loads the agent's ground rules from data/rules/sdk-agent-main-rules.json
+    and joins them into the exact block that used to be hardcoded inline in
+    final_execution_prompt.
+    """
+    with open(_MAIN_RULES_PATH, "r", encoding="utf-8") as f:
+        rules_data = json.load(f)
+    return "\n".join(rules_data["rules"])
+def safe_project_path(project_root: Path, requested_path: str) -> Path:
+    """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
+    Raises:
+        ValueError: If the resolved path is outside project_root.
+    """
+    requested = Path(requested_path)
+    resolved = (
+        requested.resolve()
+        if requested.is_absolute()
+        else (project_root / requested).resolve()
+    )
+    if not str(resolved).startswith(str(project_root.resolve())):
+        raise ValueError(
+            f"Blocked unsafe file path outside project root: {requested_path}"
+        )
+    return resolved
+# ============================================================================
+# Session registry: agent_id -> {agent, tools, state, turn_offset}.
+# Keeps the built agent (and its in-memory checkpointer) alive across
+# separate calls, so a repeated agent_id resumes instead of starting fresh.
+# agent_id has no relation to the pipeline run_id or the sandbox path -- it
+# identifies only "which agent conversation", nothing else.
+# Limitation: in-process only, lost on restart (swap for a DB-backed
+# checkpointer + registry if persistence across restarts is ever needed).
+# ============================================================================
+_AGENT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+# ============================================================================
+# Step A - Build only (Setup)
+# ============================================================================
+async def create_sdk_integration_agent(
+    project_root_str: str,        # Path to the project's Sandbox directory (as a string)
+    platform: str,                 # 'ios' or 'android'
+    user_prompt: str,               # The original user request (e.g. "install the SDK")
+    audit_recorder: AuditRecorder,  # The audit object - every step here is recorded to it
+) -> Dict[str, Any]:
+    """Builds (but does not run) the SDK integration agent: loads API keys,
+    connects to the AppsFlyer MCP server, registers file tools, builds the
+    execution prompt, and wires up a checkpointer for multi-turn memory.
+    Returns:
+        dict with "agent", "tools", and "initial_prompt".
+    """
+    project_root = Path(project_root_str)
+    platform_lower = platform.lower()
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    dev_key = os.getenv("APPSFLYER_DEV_KEY")
+    if not openai_api_key or not dev_key:
+        raise RuntimeError("Missing OPENAI_API_KEY or APPSFLYER_DEV_KEY in .env")
+    model = ChatOpenAI(
+        model="gpt-5.1",
+        api_key=openai_api_key,
+        temperature=1.5,
+    )
+    # Runs AppsFlyer's MCP server as a child process over stdio;
+    # get_tools() is async because it talks to that external process.
+    mcp_client = MultiServerMCPClient({
+        "appsflyer-sdk-mcp": {
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "@appsflyer/sdk-mcp-server"],
+            "env": {"APP_ID": APP_ID, "DEV_KEY": dev_key},
+        }
+    })
+    mcp_tools = await mcp_client.get_tools()
+    audit_recorder.write("TOOLS_DISCOVERED", {
+        "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
+    })
+    # --------------------------------------------------------------------
+    # Custom (non-MCP) file tools, letting the agent read/write files
+    # itself inside the isolated Sandbox.
+    # --------------------------------------------------------------------
+    @tool
+    def list_project_files() -> str:
+        """List relevant editable files in the project. Use this before deciding which file to read or edit."""
+        if platform_lower == 'ios':
+            allowed_suffixes = {".swift", ".plist", ".podspec", ".pbxproj", ".xcodeproj", ".xcworkspace"}
+            allowed_names = {"Podfile", "Package.swift"}
+        elif platform_lower == 'android':
+            allowed_suffixes = {".java", ".kt", ".xml", ".gradle", ".kts", ".properties"}
+            allowed_names = {"AndroidManifest.xml"}
+        else:
+            return json.dumps({"error": f"Unsupported platform: {platform_lower}"})
+        files = [
+            str(p.relative_to(project_root)) for p in project_root.rglob("*")
+            if p.is_file() and (p.name in allowed_names or p.suffix in allowed_suffixes)
+        ]
+        return json.dumps({"project_root": str(project_root), "files": files}, ensure_ascii=False, indent=2)
+    @tool
+    def read_project_file(file_path: str) -> str:
+        """Read a project file (relative to project root)."""
+        try:
+            path = safe_project_path(project_root, file_path)  # Sandbox guard
+            if not path.is_file():
+                return json.dumps({"status": "FAILED", "reason": "Not a file or does not exist"}, indent=2)
+            return json.dumps({"status": "OK", "content": path.read_text(encoding="utf-8")}, indent=2)
+        except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+    @tool
+    def write_to_project_file(file_path: str, content: str) -> str:
+        """Write exact content to a project file. You must prepare the full updated file content yourself."""
+        try:
+            path = safe_project_path(project_root, file_path)  # Sandbox guard
+            path.parent.mkdir(parents=True, exist_ok=True)
+            old_content = path.read_text(encoding="utf-8") if path.is_file() else ""
+            path.write_text(content, encoding="utf-8")
+            changed = old_content != content
+            # Recorded immediately, not at end-of-turn, since a file write
+            # is a sensitive action worth auditing the moment it happens.
+            audit_recorder.write("PROJECT_FILE_WRITTEN", {
+                "file_path": file_path,
+                "changed": changed,
+            })
+            return json.dumps({"status": "WRITTEN" if changed else "NO_CHANGES", "file_path": file_path}, indent=2)
+        except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+    # All tools (MCP + files) together - these are the tools registered to the agent
+    agent_tools = [*mcp_tools, list_project_files, read_project_file, write_to_project_file]
+    # --------------------------------------------------------------------
+    # Ground rules for the agent. Rule 13 is critical: it lets the
+    # orchestrator below detect true turn completion via "STATUS: SUCCESS".
+    # --------------------------------------------------------------------
+    final_execution_prompt = (
+        f"User Request:\n"
+        f"\"\"\"{user_prompt}\"\"\"\n\n"
+        f"Project path: {project_root}\n"
+        f"Platform: {platform.upper()}\n"
+        f"Make sure to use the correct MCP tools and edit the correct files for {platform.upper()}.\n\n"
+        f"You are connected directly to the AppsFlyer MCP tools, and you have generic file tools.\n\n"
+        f"Important rules:\n"
+        f"{_load_agent_rules_text()}\n"
+    )
+    audit_recorder.write("AGENT_PROMPT_GENERATED", {"prompt": final_execution_prompt})
+    # The checkpointer is the agent's memory: it lets repeated .ainvoke()
+    # calls with the same thread_id continue one conversation instead of
+    # each call starting fresh. Kept alive across calls via _AGENT_SESSIONS.
+    checkpointer = MemorySaver()
+    sdk_agent = create_agent(model=model, tools=agent_tools, checkpointer=checkpointer)
+    return {
+        "agent": sdk_agent,
+        "tools": agent_tools,
+        "initial_prompt": final_execution_prompt,
+    }
+# ============================================================================
+# Step B - The Orchestrator (this is the single entry point external code calls!)
+# ============================================================================
+async def run_sdk_integration_agent(
+    state: Dict[str, Any],      # The workflow's PipelineState - agent_id is read from/written to it directly
+    project_root_str: str,
+    platform: str,
+    user_prompt: str,
+    audit_recorder: AuditRecorder,
+) -> Dict[str, Any]:
+    """Orchestrates the SDK installation.
+    agent_id lives in state["agent_id"] (initialized to 0 by the workflow) and
+    has no relation to the pipeline run_id or the sandbox path:
+    - state["agent_id"] == 0  -> no agent exists yet for this use case; build
+      one, mint a fresh agent_id, and write it back into state["agent_id"] so
+      later calls (verify pass, etc.) can resume this same conversation.
+    - state["agent_id"] != 0  -> an agent is expected to already exist; look
+      it up in _AGENT_SESSIONS. If it is missing (e.g. process restarted and
+      the in-memory registry was lost), fail explicitly instead of silently
+      starting a new, unrelated conversation under the old id.
+    Loops turns via sdk_agent.ainvoke(), delegating classification/audit to
+    listener_on_agent_turn, until it returns "done" or "fail".
+    Returns:
+        dict with "status" ("SUCCESS"/"FAIL"), "agent_id", "turns", and
+        "reason" (always a string) on failure.
+    """
+    agent_id = state.get("agent_id", 0)
+    if agent_id == 0:
+        # No agent yet for this use case: build one and mint its id now.
+        agent_id = str(uuid.uuid4())
+        setup = await create_sdk_integration_agent(
+            project_root_str, platform, user_prompt, audit_recorder
+        )
+        session = {
+            "agent": setup["agent"],
+            "tools": setup["tools"],
+            "state": {"platform": platform},
+            "turn_offset": 0,   # Keeps turn_index continuous across separate calls
+        }
+        _AGENT_SESSIONS[agent_id] = session
+        state["agent_id"] = agent_id  # Write back so the workflow can resume this conversation later
+        prompt = setup["initial_prompt"]
+    else:
+        # agent_id is expected to point at an existing conversation.
+        session = _AGENT_SESSIONS.get(agent_id)
+        if session is None:
+            audit_recorder.write("AGENT_SESSION_LOST", {"agent_id": agent_id})
+            return {
+                "status": "FAIL",
+                "agent_id": agent_id,
+                "reason": f"Conversation for agent_id={agent_id} no longer exists (session lost).",
+            }
+        prompt = user_prompt
+    sdk_agent = session["agent"]
+    # Named inner_state (not state) on purpose: state is this function's
+    # PipelineState parameter above - reusing the name would silently shadow it.
+    inner_state = session["state"]
+    # Fixed thread_id for this agent_id's lifetime, so the checkpointer
+    # recognizes all calls below as belonging to the same conversation.
+    config = {"configurable": {"thread_id": f"sdk_agent_{agent_id}"}}
+    for i in range(MAX_TURNS):
+        turn_index = session["turn_offset"] + i
+        # One turn: awaits until the LLM stops requesting tools.
+        result = await sdk_agent.ainvoke(
+            {"messages": [("user", prompt)]}, config=config
+        )
+        all_messages = result["messages"]  # Full accumulated Memory, including prior turns
+        # Listener classifies the turn, answers questions if needed, and audits it.
+        action, next_prompt, updates = listener_on_agent_turn(
+            inner_state, "sdk_agent", prompt, all_messages, audit_recorder,
+        )
+        if action == "done":
+            session["turn_offset"] = turn_index + 1
+            inner_state["status"] = "SUCCESS"
+            return {"status": "SUCCESS", "agent_id": agent_id, "turns": turn_index + 1}
+        if action == "fail":
+            session["turn_offset"] = turn_index + 1
+            inner_state["status"] = "FAIL"
+            return {"status": "FAIL", "agent_id": agent_id, "turns": turn_index + 1, "reason": str(updates)}
+        # "continue": either a question was answered (answer is in next_prompt) or we just proceed.
+        prompt = next_prompt
+    # Hit MAX_TURNS without done/fail: stop instead of looping forever.
+    session["turn_offset"] += MAX_TURNS
+    audit_recorder.write("INSTALLATION_TIMEOUT", {"max_turns": MAX_TURNS})
+    inner_state["status"] = "FAIL"
+    return {"status": "FAIL", "agent_id": agent_id, "reason": f"Exceeded max turns ({MAX_TURNS})"}
+# ============================================================================
+# Step C - Teardown (call once the conversation is truly finished, e.g.
+# after the verify_prompt pass, so the session doesn't stay alive forever)
+# ============================================================================
+def close_sdk_integration_agent(state: Dict[str, Any], audit_recorder: Optional[AuditRecorder] = None) -> None:
+    """Frees the session (agent, tools, checkpointer memory) held for
+    state["agent_id"] - same state-based lookup as run_sdk_integration_agent.
+
+    Safe to call even if agent_id is 0/None or already closed - it is then
+    simply a no-op. Only removes the entry from _AGENT_SESSIONS; does not
+    clear state["agent_id"] (the caller may still want it around for logging).
+    """
+    agent_id = state.get("agent_id", 0)
+    session = _AGENT_SESSIONS.pop(agent_id, None)
+    if session is not None and audit_recorder is not None:
+        audit_recorder.write("AGENT_SESSION_CLOSED", {"agent_id": agent_id})
