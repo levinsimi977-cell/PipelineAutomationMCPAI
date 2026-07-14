@@ -93,7 +93,12 @@ def _resolve_selected_cases_path(state: dict) -> Path:
     )
 
 
-def _stage_use_case_data(prompt_type: str, first_case: dict, answer_policy: dict, platform: str) -> str:
+def _stage_use_case_data(
+    prompt_type: str,
+    answer_policy: dict,
+    platform: str,
+    prompt_goal: str = "",
+) -> str:
     config = STAGE_CONFIG[prompt_type]
     selected_policy = {
         key: answer_policy.get(key)
@@ -109,14 +114,14 @@ def _stage_use_case_data(prompt_type: str, first_case: dict, answer_policy: dict
         }
 
     return _json_text({
-        "prompt_goal": first_case.get("prompt") or first_case.get("prompt_goal"),
+        "prompt_goal": prompt_goal,
         "answer_policy": selected_policy,
     })
 
 
-def _load_first_use_case(selected_cases_path: str) -> dict:
-    selected_path = Path(selected_cases_path)
-    with selected_path.open("r", encoding="utf-8") as f:
+def _load_use_case_from_path(file_path: str) -> dict:
+    path = Path(file_path)
+    with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
     if isinstance(data, dict) and not data.get("useCases"):
@@ -124,34 +129,53 @@ def _load_first_use_case(selected_cases_path: str) -> dict:
 
     use_cases = data.get("useCases") if isinstance(data, dict) else data
     if not use_cases:
-        raise ValueError(f"No use cases found in: {selected_cases_path}")
+        raise ValueError(f"No use cases found in: {file_path}")
 
     first_case = use_cases[0]
 
     # Some selected files may contain catalog entries that point to the real use case.
     if isinstance(first_case, dict) and first_case.get("path") and not first_case.get("prompt_goal"):
-        case_path = (selected_path.parent / first_case["path"]).resolve()
+        case_path = (path.parent / first_case["path"]).resolve()
         with case_path.open("r", encoding="utf-8") as f:
             return json.load(f)
 
     return first_case
 
 
-def prompt_agent_node(state: dict) -> dict:
-    # 1. ה-Artifact Generator טוען את ה-Use Case ל-state.
-    # אם מריצים את ה-Prompt Agent לבד, עדיין אפשר לטעון מהנתיב כ-fallback.
-    first_case = state.get("current_use_case")
-    if not first_case:
-        selected_cases_path = _resolve_selected_cases_path(state)
-        if not os.path.exists(selected_cases_path):
-            raise FileNotFoundError(f"Configuration file not found at: {selected_cases_path}")
-        first_case = _load_first_use_case(str(selected_cases_path))
+def _load_fallback_use_case(state: dict) -> dict:
+    """Load JSON only when required fields are missing from state.
 
-    # 2. חילוץ הנתונים הנצרכים מה-Use Case
-    raw_goal = first_case.get("prompt") or first_case.get("prompt_goal") or ""
-    platform = state.get("platform") or first_case.get("platform", "android")
-    app_path = state.get("app_path") or first_case.get("app_path")
-    answer_policy = state.get("answer_policy") or first_case.get("answer_policy") or {}
+    Uses only existing state paths:
+    - current_use_case_path
+    - selected_use_cases_path / run_id -> selected_use_cases.json
+    """
+    current_path = state.get("current_use_case_path")
+    if current_path and os.path.exists(current_path):
+        return _load_use_case_from_path(str(current_path))
+
+    selected_cases_path = _resolve_selected_cases_path(state)
+    if not os.path.exists(selected_cases_path):
+        raise FileNotFoundError(f"Configuration file not found at: {selected_cases_path}")
+    return _load_use_case_from_path(str(selected_cases_path))
+
+
+def prompt_agent_node(state: dict) -> dict:
+    # 1. קודם שולפים מה-state (החברה שמה שם את השדות).
+    platform = state.get("platform")
+    app_path = state.get("app_path")
+    answer_policy = state.get("answer_policy")
+    raw_goal = state.get("prompt_goal") or state.get("prompt")
+
+    # 2. אם חסר משהו ב-state — טוענים מקובץ לפי current_use_case_path / selected_use_cases_path
+    if not all([platform, app_path, answer_policy is not None, raw_goal]):
+        file_case = _load_fallback_use_case(state)
+        raw_goal = raw_goal or file_case.get("prompt") or file_case.get("prompt_goal") or ""
+        platform = platform or file_case.get("platform", "android")
+        app_path = app_path or file_case.get("app_path")
+        answer_policy = answer_policy if answer_policy is not None else (file_case.get("answer_policy") or {})
+    else:
+        answer_policy = answer_policy or {}
+        raw_goal = raw_goal or ""
 
     prompt_generator_chain = BASE_PROMPT_TEMPLATE | llm | StrOutputParser()
     generated_prompts = {}
@@ -164,7 +188,12 @@ def prompt_agent_node(state: dict) -> dict:
             "goal": raw_goal,
             "platform": platform,
             "app_path": app_path,
-            "use_case_data": _stage_use_case_data(prompt_type, first_case, answer_policy, platform),
+            "use_case_data": _stage_use_case_data(
+                prompt_type,
+                answer_policy,
+                platform,
+                prompt_goal=raw_goal,
+            ),
             "stage_instructions": stage_config["instructions"],
         })
 
