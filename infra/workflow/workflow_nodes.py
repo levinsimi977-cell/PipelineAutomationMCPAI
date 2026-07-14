@@ -1,12 +1,32 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+from pathlib import Path
+from typing import Any, Literal, Optional, TypedDict, get_args
+
+from infra.application.app import run_tasks_3_and_4, setup_environment
+from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
+    prompt_agent_node as build_prompts,
+)
+from infra.agents.compilationAgent.compilation_agent import check_compilation
+from infra.agents.sdkAgent.tools.agent import run_sdk_integration_agent
+
+from infra.agents.answerAgent.answer_policy_repository import (
+get_answer_policy_repository,
+)   
+PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
+
+_PROMPT_SEQUENCE: tuple[PromptType, ...] = get_args(PromptType)
 
 import sys
 import asyncio
 from infra.agents.AuditRecorder import AuditRecorder
-from infra.agents.sdkAgent.tools.agent import run_sdk_integration_agent
+from infra.agents.sdkAgent.tools.agent import (
+    close_sdk_integration_agent,
+    run_sdk_integration_agent,
+)
 
 from typing import Any, Literal, Optional, TypedDict,get_args
 
@@ -30,7 +50,15 @@ from emulator import (
     launch_app_on_device,
 )
 
-PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
+def _next_prompt_type(current: PromptType) -> Optional[PromptType]:
+    """Returns the prompt type that follows `current` in the
+    integrate_prompt -> event_prompt -> verify_prompt sequence, or None if
+    `current` is already the last one.
+    """
+    index = _PROMPT_SEQUENCE.index(current)
+    if index + 1 < len(_PROMPT_SEQUENCE):
+        return _PROMPT_SEQUENCE[index + 1]
+    return None
 
 _PROMPT_SEQUENCE: list[PromptType] = [
     "integrate_prompt",
@@ -72,6 +100,7 @@ class PipelineState(TypedDict, total=False):
     platform: str
     audit_recorder: AuditRecorder
     run_id: str
+    agent_id: Any  # 0 = no sdk_agent conversation yet; set/read by run_sdk_integration_agent
     fail_reason: NotRequired[Any]
     nodes_logs: list[dict[str, Any]]
 
@@ -131,18 +160,140 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     `visual_report_node` on every following loop) into `current_use_case`
     so the rest of the pipeline works off the active case's data.
     """
-    current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        with open(current_path, "r", encoding="utf-8") as f:
-            state["current_use_case"] = json.load(f)
+    
+    current_path = state.get("current_use_case_path")
+    if current_path and os.path.exists(current_path):
+        with open(current_path, "r", encoding="utf-8") as f:
+            current_use_case = json.load(f)
+
+        state["current_use_case"] = current_use_case
+        state["selected_use_cases_path"] = current_path
+        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
+        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
+        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+
+        if current_use_case.get("answer_policy"):
+            run_id = state.get("run_id", "run")
+            repo = get_answer_policy_repository()
+            repo.load_from_use_case(run_id, current_use_case)
+
+    return state
+
+
+
+async def environment_setup_node(state: PipelineState) -> PipelineState:
+    """
+    Node 3: Environment Setup — Sandbox + MCP health check (G1)
+
+    Responsibilities:
+    1. Create an isolated sandbox copy of the selected application.
+    2. Check that the AppsFlyer MCP server is alive.
+    3. Validate that the sandbox contains a valid mobile application.
+    4. Save all results back into the pipeline state.
+    """
+
+    # Step 1: Create the sandbox environment
+    environment_result = setup_environment(dict(state))
+
+    if environment_result.get("test_status") == "FAIL":
+        return {
+            **state,
+            **environment_result,
+            "environment_setup_status": "FAILED",
+        }
+
+    sandbox_path = environment_result.get("sandbox_path")
+
+    if not sandbox_path:
+        return {
+            **state,
+            **environment_result,
+            "test_status": "FAIL",
+            "environment_setup_status": "FAILED",
+            "error_reason": "Environment setup did not return a sandbox_path.",
+        }
+
+    # Step 2: MCP check + application validation
+    checks_result = await run_tasks_3_and_4(
+        app_path=Path(sandbox_path),
+        workdir=Path(sandbox_path),
+        run_build_check=bool(state.get("run_build_check", False)),
+    )
+
+    # Step 3: Determine final status
+    checks_succeeded = checks_result.get("status") == "OK"
+
+    final_test_status = "READY" if checks_succeeded else "FAIL"
+    environment_setup_status = "OK" if checks_succeeded else "FAILED"
+
+    # Step 4: Merge everything into the existing state
+    return {
+        **state,
+        **environment_result,
+
+        "app_path": sandbox_path,
+        "sandbox_path": sandbox_path,
+
+        "environment_setup_status": environment_setup_status,
+        "test_status": final_test_status,
+
+        "task_3_mcp_alive": checks_result.get("task_3_mcp_alive"),
+        "task_4_application_validation": checks_result.get(
+            "task_4_application_validation"
+        ),
+
+        "environment_setup_result": checks_result,
+    }
+
+
+def prompt_agent_node(state: PipelineState) -> PipelineState:
+    """Node 4: Prompt Agent — enriched structured prompt (G3)"""
+    state["prompt_agent_node_status"] = "RUNNING"
+
+    try:
+        current_path = state.get("current_use_case_path")
+        if current_path:
+            state["selected_use_cases_path"] = current_path
+
+        updates = build_prompts(state)
+        state.update(updates)
+
+        missing = []
+        agent_prompts = state.get("agent_prompts") or {}
+
+        for prompt_name in get_args(PromptType):
+            prompt_value = agent_prompts.get(prompt_name)
+            if not isinstance(prompt_value, str) or not prompt_value.strip():
+                missing.append(f"agent_prompts.{prompt_name}")
+
+        platform = state.get("platform")
+        if not isinstance(platform, str) or not platform.strip():
+            missing.append("platform")
+
+        if missing:
+            state["prompt_agent_node_status"] = "FAIL"
+            state["prompt_agent_node_error"] = (
+                "Prompt Agent did not save required fields: " + ", ".join(missing)
+            )
+        else:
+            state["prompt_agent_node_status"] = "SUCCESS"
+            state.pop("prompt_agent_node_error", None)
+    except Exception as exc:
+        state["prompt_agent_node_status"] = "FAIL"
+        state["prompt_agent_node_error"] = str(exc)
+
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "prompt_agent",
+            "status": state["prompt_agent_node_status"],
+            "message": state.get(
+                "prompt_agent_node_error",
+                "Prompt Agent generated and saved all required prompts.",
+            ),
+        },
+    ]
     return state
-
-
-def environment_setup_node(state: PipelineState) -> PipelineState:
-    """Node 3: Environment Setup — Sandbox + MCP health check (G1)"""
-    return state
-
-
 
 
 def sdk_agent_node(state: PipelineState) -> PipelineState:
@@ -161,17 +312,16 @@ def sdk_agent_node(state: PipelineState) -> PipelineState:
     sandbox_path = state["sandbox_path"]
     platform = state["platform"]
     audit_recorder = state["audit_recorder"]
-    run_id = state["run_id"]
 
     user_prompt = agent_prompts[current_prompt_type]
 
     result = asyncio.run(
         run_sdk_integration_agent(
+            state=state,
             project_root_str=sandbox_path,
             platform=platform,
             user_prompt=user_prompt,
             audit_recorder=audit_recorder,
-            run_id=run_id,
         )
     )
 
@@ -190,7 +340,8 @@ def sdk_agent_node(state: PipelineState) -> PipelineState:
 
     nodes_logs = list(state.get("nodes_logs") or [])
     nodes_logs.append(node_log)
-    state["nodes_logs"] = nodes_logs
+    state["nodes_log"] = [*(state.get("nodes_log") or []), node_log]
+
 
     if not node_succeeded:
         state["test_status"] = "FAIL"
@@ -201,11 +352,37 @@ def sdk_agent_node(state: PipelineState) -> PipelineState:
         if next_prompt_type is not None:
             state["last_prompt_type"] = next_prompt_type
 
+    # verify_prompt is the last of the 3 sdk_agent passes (see
+    # _PROMPT_SEQUENCE) - once it has run, the conversation is done, so free
+    # the agent/tools/checkpointer instead of leaving them alive forever.
+    if current_prompt_type == "verify_prompt":
+        close_sdk_integration_agent(state, audit_recorder)
+
     return state
 
 
 def compilation_check_node(state: PipelineState) -> PipelineState:
-    """Node 6: Compilation Check — build validation before run (G4)"""
+    """Node 6: Compilation Check — build validation before run (G4)
+
+    Wrapper around `check_compilation` (compilation_agent.py): builds the
+    sandboxed app copy (xcodebuild/gradlew) and merges compilation_passed /
+    compilation_result / audit_events back into state, plus the standard
+    per-node bookkeeping (current_node, next_node, visited_*, nodes_log).
+    """
+    platform = state.get("platform") or state.get("prompt_platform")
+    result = check_compilation({**state, "platform": platform})
+    state.update(result)
+
+    state["current_node"] = "compilation_check"
+    state["next_node"] = "emulator"
+    state["visited_compilation_check"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "compilation_check",
+            "status": "SUCCESS" if result.get("compilation_passed") else "FAIL",
+        },
+    ]
     return state
 
 
