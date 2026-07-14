@@ -924,20 +924,30 @@ if selected_map:
                 st.json(json.loads(contract.to_pretty_json()))
 
         st.write("")
-        if st.button("💾 Save selection for this run", use_container_width=True, type="primary"):
+        if st.button("🚀 Save and run tests", use_container_width=True, type="primary"):
             try:
-                saved = run_repo.save_selected_use_cases(_session_id(), selected_map)
+                run_repo.save_selected_use_cases(_session_id(), selected_map)
             except run_repo.RunRepositoryError as exc:
                 _flash("error", str(exc))
             else:
-                relative_dir = run_repo.RUNS_DIR.relative_to(_PROJECT_ROOT)
-                _flash(
-                    "success",
-                    f"Saved {saved.use_case_count} use case(s) for this session as "
-                    f"{saved.use_case_count} file(s) in {relative_dir}/. Saving again "
-                    f"will overwrite just this session's files.",
-                )
+                from infra.workflow import run_launcher
+
+                with st.spinner("Running the workflow..."):
+                    try:
+                        final_state = run_launcher.start_workflow(_session_id())
+                    except run_repo.RunRepositoryError as exc:
+                        _flash("error", str(exc))
+                    except Exception as exc:  # noqa: BLE001 - surface any node failure to the user
+                        _flash("error", f"Workflow failed: {exc}")
+                    else:
+                        st.session_state["_last_workflow_result"] = final_state
+                        _flash("success", "Workflow finished running.")
             st.rerun()
+
+        last_result = st.session_state.get("_last_workflow_result")
+        if last_result:
+            with st.expander("Last workflow run — nodes_log", expanded=False):
+                st.json(last_result.get("nodes_log", []))
 
 pending_runs = run_repo.list_pending_run_selections()
 
