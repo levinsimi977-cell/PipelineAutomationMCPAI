@@ -157,23 +157,23 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     so the rest of the pipeline works off the active case's data.
     """
     
-    current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        with open(current_path, "r", encoding="utf-8") as f:
-            current_use_case = json.load(f)
+    current_path = state.get("current_use_case_path")
+    if current_path and os.path.exists(current_path):
+        with open(current_path, "r", encoding="utf-8") as f:
+            current_use_case = json.load(f)
 
-        state["current_use_case"] = current_use_case
-        state["selected_use_cases_path"] = current_path
-        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
-        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
-        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        state["current_use_case"] = current_use_case
+        state["selected_use_cases_path"] = current_path
+        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
+        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
+        state["answer_policy"] = current_use_case.get("answer_policy") or {}
 
-        if current_use_case.get("answer_policy"):
-            run_id = state.get("run_id", "run")
-            repo = get_answer_policy_repository()
-            repo.load_from_use_case(run_id, current_use_case)
+        if current_use_case.get("answer_policy"):
+            run_id = state.get("run_id", "run")
+            repo = get_answer_policy_repository()
+            repo.load_from_use_case(run_id, current_use_case)
 
-    return state
+    return state
 
 
 
