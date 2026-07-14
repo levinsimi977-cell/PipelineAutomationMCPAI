@@ -1,0 +1,37 @@
+{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "intigrate appsflyer sdk",
+  "rules_policy": {
+    "default_profiles": [
+      "common"
+    ],
+    "allow_user_override": true,
+    "allowed_profiles": [
+      "common",
+      "ios",
+      "android",
+      "strict"
+    ]
+  },
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": false
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "integration_policy": "appsflyer sdk 0.1.1",
+    "app_event_policy": "dont add appEvent"
+  },
+  "installation_answers": [],
+  "agent_messages": [],
+  "installation_agent_summary": "nothing happend yet",
+  "app_id": "123456",
+  "dev_key": "sdffhjkl;",
+  "llm_model": "claude-3-5-sonnet"
+}
