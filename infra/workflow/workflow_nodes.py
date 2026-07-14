@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+
 import sys
-from typing import Any, Literal, Optional, TypedDict
+import asyncio
+from infra.agents.AuditRecorder import AuditRecorder
+from infra.agents.sdkAgent.tools.agent import run_sdk_integration_agent
+
+from typing import Any, Literal, Optional, TypedDict,get_args
 
 # Resolve the emulator tools directory relative to this file so the import
 # works regardless of the working directory the process was launched from.
@@ -27,12 +32,48 @@ from emulator import (
 
 PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
 
+_PROMPT_SEQUENCE: list[PromptType] = [
+    "integrate_prompt",
+    "event_prompt",
+    "verify_prompt",
+]
+
+
+def _next_prompt_type(current: PromptType) -> PromptType | None:
+    """Return the next prompt type in the pipeline, or None after verify_prompt."""
+    try:
+        index = _PROMPT_SEQUENCE.index(current)
+    except ValueError:
+        return None
+    if index + 1 < len(_PROMPT_SEQUENCE):
+        return _PROMPT_SEQUENCE[index + 1]
+    return None
 
 class PipelineState(TypedDict, total=False):
     """Shared state threaded through every node of the workflow graph."""
 
     visited_user_actions: bool
     last_prompt_type: PromptType
+    current_node: str
+    next_node: str
+    nodes_log: list
+    incoming_question: str | None
+    audit_path: str
+    platform: str
+    last_prompt_type: PromptType | None
+    prompt_just_run: PromptType
+    type_agent: str
+    agent_prompts: dict[str, str]
+    question_rounds: int
+    installation_answers: list[dict[str, Any]]
+    test_status: str
+    last_agent_message: str
+    sandbox_path: str
+    platform: str
+    audit_recorder: AuditRecorder
+    run_id: str
+    fail_reason: NotRequired[Any]
+    nodes_logs: list[dict[str, Any]]
 
     # Use-case queue (json_use_case_input -> artifact_generator <-> visual_report loop)
     run_id: str
@@ -102,20 +143,64 @@ def environment_setup_node(state: PipelineState) -> PipelineState:
     return state
 
 
-def prompt_agent_node(state: PipelineState) -> PipelineState:
-    """Node 4: Prompt Agent — enriched structured prompt (G3)"""
-    return state
 
 
 def sdk_agent_node(state: PipelineState) -> PipelineState:
     """Node 5: SDK Agent — single node, revisited on every loop of the
     workflow (integration / event / verify passes).
 
-    `state["last_prompt_type"]` tells this node which prompt is being sent
-    for the current pass; `route_from_sdk_agent` reads it right after this
-    node runs to decide whether to go build+run again or jump to the final
-    test run.
+    `last_prompt_type` starts as None. On the first visit it is set to
+    integrate_prompt; each successful run advances it to the next prompt
+    (integrate → event → verify) for the following visit.
     """
+    if state.get("last_prompt_type") is None:
+        state["last_prompt_type"] = "integrate_prompt"
+
+    current_prompt_type = state["last_prompt_type"]
+    agent_prompts = state["agent_prompts"]
+    sandbox_path = state["sandbox_path"]
+    platform = state["platform"]
+    audit_recorder = state["audit_recorder"]
+    run_id = state["run_id"]
+
+    user_prompt = agent_prompts[current_prompt_type]
+
+    result = asyncio.run(
+        run_sdk_integration_agent(
+            project_root_str=sandbox_path,
+            platform=platform,
+            user_prompt=user_prompt,
+            audit_recorder=audit_recorder,
+            run_id=run_id,
+        )
+    )
+
+    state["type_agent"] = "sdk_agent"
+    state["last_agent_message"] = user_prompt
+    state["prompt_just_run"] = current_prompt_type
+
+    node_succeeded = result.get("status") != "FAIL"
+    node_log: dict[str, Any] = {
+        "node": "sdk_agent",
+        "status": "Success" if node_succeeded else "Failure",
+        "prompt_type": current_prompt_type,
+    }
+    if not node_succeeded and "reason" in result:
+        node_log["reason"] = result["reason"]
+
+    nodes_logs = list(state.get("nodes_logs") or [])
+    nodes_logs.append(node_log)
+    state["nodes_logs"] = nodes_logs
+
+    if not node_succeeded:
+        state["test_status"] = "FAIL"
+        if "reason" in result:
+            state["fail_reason"] = result["reason"]
+    else:
+        next_prompt_type = _next_prompt_type(current_prompt_type)
+        if next_prompt_type is not None:
+            state["last_prompt_type"] = next_prompt_type
+
     return state
 
 
@@ -191,12 +276,6 @@ def emulator_node(state: PipelineState) -> dict:
     }
 
 
-def user_actions_node(state: PipelineState) -> PipelineState:
-    """Node 8: User Actions — simulated taps on screen (G5)"""
-    state["visited_user_actions"] = True
-    return state
-
-
 def deep_link_node(state: PipelineState) -> PipelineState:
     """Node 9: Deep Link — verify deep link behavior (G5)"""
     return state
@@ -242,10 +321,16 @@ def visual_report_node(state: PipelineState) -> PipelineState:
 def route_from_sdk_agent(state: PipelineState) -> str:
     """Conditional edge out of `sdk_agent`.
 
-    - last_prompt_type == "verify_prompt"                     -> test_runner
-    - last_prompt_type in {"integrate_prompt", "event_prompt"} -> compilation_check
+    Uses `prompt_just_run` (the prompt that just finished) because
+    `last_prompt_type` may already point at the next pass.
+
+    - prompt_just_run == "verify_prompt"                     -> test_runner
+    - prompt_just_run in {"integrate_prompt", "event_prompt"} -> compilation_check
     """
-    if state["last_prompt_type"] == "verify_prompt":
+    prompt_just_run = state.get("prompt_just_run") or state.get("last_prompt_type")
+    if prompt_just_run is None:
+        return "compilation_check"
+    if prompt_just_run == "verify_prompt":
         return "test_runner"
     return "compilation_check"
 

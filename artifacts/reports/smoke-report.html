@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PiplineAutomatoinMCP - Audit Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:24px; }
+    .container { max-width:1200px; margin:0 auto; }
+    .card { background:#111827; border:1px solid #334155; border-radius:10px; padding:16px; margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(160px,1fr)); gap:12px; }
+    .metric { background:#1e293b; border-radius:8px; padding:10px; }
+    .label { color:#94a3b8; font-size:12px; }
+    .value { font-size:20px; font-weight:700; margin-top:4px; }
+    .passed { color:#22c55e; }
+    .warning { color:#f59e0b; }
+    .failed { color:#ef4444; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { text-align:left; padding:8px; border-bottom:1px solid #334155; font-size:14px; }
+    th { color:#93c5fd; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>PiplineAutomatoinMCP - Audit Dashboard</h1>
+      <p>Generated at: 2026-07-12T09:54:54.071642Z</p>
+      <p>Run ID: <strong>demo-run</strong> | Platform: <strong>ios</strong> | Use Case: <strong>common-deeplink-smoke</strong></p>
+      <p>Status: <strong class="passed">PASSED</strong> | Start: 2026-07-12T09:00:00Z | End: 2026-07-12T09:05:00Z</p>
+    </div>
+
+    <div class="grid">
+      <div class="metric"><div class="label">Total Events</div><div class="value">3</div></div>
+      <div class="metric"><div class="label">Passed</div><div class="value passed">2</div></div>
+      <div class="metric"><div class="label">Warnings</div><div class="value warning">1</div></div>
+      <div class="metric"><div class="label">Failed</div><div class="value failed">0</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Phase Summary</h2>
+      <table>
+        <thead>
+          <tr><th>Phase</th><th>Events</th><th>Passed</th><th>Warning</th><th>Failed</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Agent Orchestration</td>
+            <td>1</td>
+            <td class="passed">0</td>
+            <td class="warning">1</td>
+            <td class="failed">0</td>
+          </tr>
+          <tr>
+            <td>General</td>
+            <td>1</td>
+            <td class="passed">1</td>
+            <td class="warning">0</td>
+            <td class="failed">0</td>
+          </tr>
+          <tr>
+            <td>Validation</td>
+            <td>1</td>
+            <td class="passed">1</td>
+            <td class="warning">0</td>
+            <td class="failed">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Failed Events</h2>
+      <p>No failed events were detected.</p>
+    </div>
+
+    <div class="card">
+      <h2>Timeline</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Timestamp</th><th>Phase</th><th>Source</th><th>Event</th><th>Status</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>2026-07-12T09:00:10Z</td>
+            <td>Validation</td>
+            <td>validator</td>
+            <td>schema_check</td>
+            <td class="passed">passed</td>
+            <td>runtime config validated</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>2026-07-12T09:01:10Z</td>
+            <td>Agent Orchestration</td>
+            <td>agent</td>
+            <td>prompt_sent</td>
+            <td class="warning">warning</td>
+            <td>fallback model used</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>2026-07-12T09:02:10Z</td>
+            <td>General</td>
+            <td>runner</td>
+            <td>launch_app</td>
+            <td class="passed">passed</td>
+            <td>app launched</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

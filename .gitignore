@@ -7,6 +7,15 @@ __pycache__/
 .venv/
 venv/
 env/
+ Python bytecode / cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
 .env
 sandboxes/
 
