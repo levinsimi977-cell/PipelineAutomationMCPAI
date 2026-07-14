@@ -20,6 +20,12 @@ USE_CASES_DIR = PROJECT_ROOT / "data" / "useCases"
 CATALOG_PATH = USE_CASES_DIR / "useCase.catalog.json"
 APPLICATION_DIR = PROJECT_ROOT / "data" / "application"
 
+# Keep in sync with resolve_and_replicate_app() in infra/application/app.py
+PLATFORM_SAMPLE_APPS = {
+    "android": "data/application/appsflyer-onelink-android-sample-apps",
+    "ios": "data/application/appsflyer-onelink-ios-sample-apps",
+}
+
 _table: Optional[UseCasesTable] = None
 
 
@@ -74,11 +80,17 @@ def _find_record(entry_id: str, user_id: str = DEFAULT_USER_ID) -> Optional[UseC
 def list_available_apps() -> list[str]:
     if not APPLICATION_DIR.exists():
         return []
-    return sorted(
-        str(p.relative_to(PROJECT_ROOT)).replace("\\", "/")
-        for p in APPLICATION_DIR.iterdir()
-        if p.is_file()
-    )
+
+    apps: list[str] = []
+    for path in APPLICATION_DIR.iterdir():
+        if path.is_file():
+            apps.append(str(path.relative_to(PROJECT_ROOT)).replace("\\", "/"))
+
+    for rel in PLATFORM_SAMPLE_APPS.values():
+        if (PROJECT_ROOT / rel).is_dir():
+            apps.append(rel)
+
+    return sorted(set(apps))
 
 
 def list_use_cases(*, enabled_only: bool = False) -> list[CatalogEntry]:

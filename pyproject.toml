@@ -23,6 +23,9 @@ dependencies = [
     "pydantic>=2.8.0",
     "python-dotenv>=1.2.2",
     "Appium-Python-Client>=3.1.0",
+    "streamlit>=1.59.2",
+    "langchain-core>=1.4.9",
+    "langgraph>=1.2.9",
 ]
 
 [project.optional-dependencies]

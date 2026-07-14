@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict, get_args
 
-from infra.application.app import run_tasks_3_and_4, setup_environment
+from infra.application.app import run_tasks_3_and_4, setup_environment, cleanup_environment
 from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
     prompt_agent_node as build_prompts,
 )
@@ -160,24 +160,23 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     `visual_report_node` on every following loop) into `current_use_case`
     so the rest of the pipeline works off the active case's data.
     """
-    
-    current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        with open(current_path, "r", encoding="utf-8") as f:
-            current_use_case = json.load(f)
+    current_path = state.get("current_use_case_path")
+    if current_path and os.path.exists(current_path):
+        with open(current_path, "r", encoding="utf-8") as f:
+            current_use_case = json.load(f)
 
-        state["current_use_case"] = current_use_case
-        state["selected_use_cases_path"] = current_path
-        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
-        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
-        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        state["current_use_case"] = current_use_case
+        state["selected_use_cases_path"] = current_path
+        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
+        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
+        state["answer_policy"] = current_use_case.get("answer_policy") or {}
 
-        if current_use_case.get("answer_policy"):
-            run_id = state.get("run_id", "run")
-            repo = get_answer_policy_repository()
-            repo.load_from_use_case(run_id, current_use_case)
+        if current_use_case.get("answer_policy"):
+            run_id = state.get("run_id", "run")
+            repo = get_answer_policy_repository()
+            repo.load_from_use_case(run_id, current_use_case)
 
-    return state
+    return state
 
 
 
@@ -191,8 +190,10 @@ async def environment_setup_node(state: PipelineState) -> PipelineState:
     3. Validate that the sandbox contains a valid mobile application.
     4. Save all results back into the pipeline state.
     """
-
-    # Step 1: Create the sandbox environment
+    # Clean previous sandbox when looping to a new use case
+    previous = state.get("sandbox_path")
+    if previous:
+        cleanup_environment(previous)
     environment_result = setup_environment(dict(state))
 
     if environment_result.get("test_status") == "FAIL":
@@ -491,7 +492,12 @@ def visual_report_node(state: PipelineState) -> PipelineState:
             state["current_use_case_path"] = remaining[0]
         else:
             state["current_use_case_path"] = None
-
+            sandbox_path = state.get("sandbox_path")
+            if sandbox_path:
+                cleanup_result = cleanup_environment(sandbox_path)
+                state["cleanup_status"] = cleanup_result.get("cleanup_status")
+                state["sandbox_path"] = ""
+        
     return state
 
 
