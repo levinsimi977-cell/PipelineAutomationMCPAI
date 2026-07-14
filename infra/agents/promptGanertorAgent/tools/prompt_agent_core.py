@@ -1,6 +1,5 @@
 import os
 import json
-from pathlib import Path
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -12,10 +11,6 @@ llm = ChatOpenAI(
     temperature=0.1,
     api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"),
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-RUNS_DIR = PROJECT_ROOT / "data" / "runs"
-SELECTED_USE_CASES_FILENAME = "selected_use_cases.json"
 
 BASE_PROMPT_TEMPLATE = PromptTemplate.from_template(
     "You are an expert technical prompt engineer.\n"
@@ -78,21 +73,6 @@ def _json_text(value) -> str:
     return json.dumps(value or {}, indent=2, ensure_ascii=False, default=str)
 
 
-def _resolve_selected_cases_path(state: dict) -> Path:
-    selected_cases_path = state.get("selected_use_cases_path")
-    if selected_cases_path:
-        return Path(selected_cases_path)
-
-    run_id = state.get("run_id")
-    if run_id:
-        return RUNS_DIR / str(run_id) / SELECTED_USE_CASES_FILENAME
-
-    raise ValueError(
-        "Missing selected use case path. Expected state['selected_use_cases_path'] "
-        "or state['run_id'] to resolve data/runs/<run_id>/selected_use_cases.json."
-    )
-
-
 def _stage_use_case_data(
     prompt_type: str,
     answer_policy: dict,
@@ -119,68 +99,33 @@ def _stage_use_case_data(
     })
 
 
-def _load_use_case_from_path(file_path: str) -> dict:
-    path = Path(file_path)
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if isinstance(data, dict) and not data.get("useCases"):
-        return data
-
-    use_cases = data.get("useCases") if isinstance(data, dict) else data
-    if not use_cases:
-        raise ValueError(f"No use cases found in: {file_path}")
-
-    first_case = use_cases[0]
-
-    # Some selected files may contain catalog entries that point to the real use case.
-    if isinstance(first_case, dict) and first_case.get("path") and not first_case.get("prompt_goal"):
-        case_path = (path.parent / first_case["path"]).resolve()
-        with case_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-
-    return first_case
-
-
-def _load_fallback_use_case(state: dict) -> dict:
-    """Load JSON only when required fields are missing from state.
-
-    Uses only existing state paths:
-    - current_use_case_path
-    - selected_use_cases_path / run_id -> selected_use_cases.json
-    """
-    current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        return _load_use_case_from_path(str(current_path))
-
-    selected_cases_path = _resolve_selected_cases_path(state)
-    if not os.path.exists(selected_cases_path):
-        raise FileNotFoundError(f"Configuration file not found at: {selected_cases_path}")
-    return _load_use_case_from_path(str(selected_cases_path))
-
-
 def prompt_agent_node(state: dict) -> dict:
-    # 1. קודם שולפים מה-state (החברה שמה שם את השדות).
+    # שולפים רק מה-state (צומת 2 כבר שמה שם את שדות ה-use case).
     platform = state.get("platform")
     app_path = state.get("app_path")
-    answer_policy = state.get("answer_policy")
-    raw_goal = state.get("prompt_goal") or state.get("prompt")
+    answer_policy = state.get("answer_policy") or {}
+    raw_goal = state.get("prompt_goal") or state.get("prompt") or ""
 
-    # 2. אם חסר משהו ב-state — טוענים מקובץ לפי current_use_case_path / selected_use_cases_path
-    if not all([platform, app_path, answer_policy is not None, raw_goal]):
-        file_case = _load_fallback_use_case(state)
-        raw_goal = raw_goal or file_case.get("prompt") or file_case.get("prompt_goal") or ""
-        platform = platform or file_case.get("platform", "android")
-        app_path = app_path or file_case.get("app_path")
-        answer_policy = answer_policy if answer_policy is not None else (file_case.get("answer_policy") or {})
-    else:
-        answer_policy = answer_policy or {}
-        raw_goal = raw_goal or ""
+    missing = [
+        name
+        for name, value in (
+            ("platform", platform),
+            ("app_path", app_path),
+            ("answer_policy", state.get("answer_policy")),
+            ("prompt_goal", raw_goal),
+        )
+        if value is None or value == ""
+    ]
+    if missing:
+        raise ValueError(
+            "Prompt Agent expected use-case fields in state (put there by the "
+            f"workflow). Missing: {', '.join(missing)}"
+        )
 
     prompt_generator_chain = BASE_PROMPT_TEMPLATE | llm | StrOutputParser()
     generated_prompts = {}
 
-    # 3. יצירת כל שלושת הפרומפטים. ה-Workflow יחליט בהמשך איזה מהם לשלוח ומתי.
+    # יצירת כל שלושת הפרומפטים. ה-Workflow יחליט בהמשך איזה מהם לשלוח ומתי.
     for prompt_type, stage_config in STAGE_CONFIG.items():
         generated_prompts[prompt_type] = prompt_generator_chain.invoke({
             "prompt_type": prompt_type,

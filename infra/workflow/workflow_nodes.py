@@ -13,9 +13,6 @@ from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
 from infra.agents.compilationAgent.compilation_agent import check_compilation
 from infra.agents.sdkAgent.tools.agent import run_sdk_integration_agent
 
-from infra.agents.answerAgent.answer_policy_repository import (
-get_answer_policy_repository,
-)   
 PromptType = Literal["integrate_prompt", "event_prompt", "verify_prompt"]
 
 _PROMPT_SEQUENCE: tuple[PromptType, ...] = get_args(PromptType)
@@ -160,25 +157,23 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     `visual_report_node` on every following loop) into `current_use_case`
     so the rest of the pipeline works off the active case's data.
     """
-    
-    current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        with open(current_path, "r", encoding="utf-8") as f:
-            current_use_case = json.load(f)
+    current_path = state.get("current_use_case_path")
+    if current_path and os.path.exists(current_path):
+        with open(current_path, "r", encoding="utf-8") as f:
+            current_use_case = json.load(f)
 
-        state["current_use_case"] = current_use_case
-        state["selected_use_cases_path"] = current_path
-        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
-        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
-        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        state["current_use_case"] = current_use_case
+        state["selected_use_cases_path"] = current_path
+        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
+        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
+        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        state["prompt_goal"] = (
+            current_use_case.get("prompt_goal")
+            or current_use_case.get("prompt")
+            or ""
+        )
 
-        if current_use_case.get("answer_policy"):
-            run_id = state.get("run_id", "run")
-            repo = get_answer_policy_repository()
-            repo.load_from_use_case(run_id, current_use_case)
-
-    return state
-
+    return state
 
 
 async def environment_setup_node(state: PipelineState) -> PipelineState:
@@ -251,10 +246,6 @@ def prompt_agent_node(state: PipelineState) -> PipelineState:
     state["prompt_agent_node_status"] = "RUNNING"
 
     try:
-        current_path = state.get("current_use_case_path")
-        if current_path:
-            state["selected_use_cases_path"] = current_path
-
         updates = build_prompts(state)
         state.update(updates)
 
