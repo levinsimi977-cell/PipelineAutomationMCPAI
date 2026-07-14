@@ -1,6 +1,6 @@
-"""Backward-compatible report package exports."""
+"""Visual report exports."""
 
-from .report import ReportGenerator, generate_html_report
+from .reporter import ReportGenerator, generate_html_report
 
 __all__ = ["ReportGenerator", "generate_html_report"]
 
