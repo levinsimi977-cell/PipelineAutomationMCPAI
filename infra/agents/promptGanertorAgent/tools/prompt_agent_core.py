@@ -1,5 +1,6 @@
 import os
 import json
+from pathlib import Path
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -73,6 +74,38 @@ def _json_text(value) -> str:
     return json.dumps(value or {}, indent=2, ensure_ascii=False, default=str)
 
 
+def _resolve_current_use_case(state: dict) -> dict:
+    """Pick the active use case from official state field selected_use_cases.
+
+    Uses current_use_case_path (when looping) to choose the matching item;
+    otherwise returns the first selected use case.
+    """
+    selected = state.get("selected_use_cases") or []
+    if not selected:
+        raise ValueError(
+            "Prompt Agent expected state['selected_use_cases'] "
+            "(list of use-case dicts) to be set by the workflow."
+        )
+
+    current_path = state.get("current_use_case_path")
+    if current_path:
+        stem = Path(str(current_path)).stem
+        for case in selected:
+            if not isinstance(case, dict):
+                continue
+            if str(case.get("id", "")) == stem:
+                return case
+        if stem.isdigit():
+            index = int(stem)
+            if 0 <= index < len(selected) and isinstance(selected[index], dict):
+                return selected[index]
+
+    first = selected[0]
+    if not isinstance(first, dict):
+        raise ValueError("state['selected_use_cases'][0] must be a use-case dict.")
+    return first
+
+
 def _stage_use_case_data(
     prompt_type: str,
     answer_policy: dict,
@@ -100,32 +133,34 @@ def _stage_use_case_data(
 
 
 def prompt_agent_node(state: dict) -> dict:
-    # שולפים רק מה-state (צומת 2 כבר שמה שם את שדות ה-use case).
-    platform = state.get("platform")
-    app_path = state.get("app_path")
-    answer_policy = state.get("answer_policy") or {}
-    raw_goal = state.get("prompt_goal") or state.get("prompt") or ""
+    # מקור האמת: selected_use_cases (+ current_use_case_path לבחירת הפעיל).
+    # answer_policy ברמת state (אם קיים) גובר על זה שבתוך ה-use case.
+    use_case = _resolve_current_use_case(state)
+
+    platform = use_case.get("platform") or "android"
+    app_path = use_case.get("app_path")
+    raw_goal = use_case.get("prompt_goal") or use_case.get("prompt") or ""
+    answer_policy = state.get("answer_policy") or use_case.get("answer_policy") or {}
 
     missing = [
         name
         for name, value in (
             ("platform", platform),
             ("app_path", app_path),
-            ("answer_policy", state.get("answer_policy")),
             ("prompt_goal", raw_goal),
+            ("answer_policy", answer_policy if answer_policy else None),
         )
         if value is None or value == ""
     ]
     if missing:
         raise ValueError(
-            "Prompt Agent expected use-case fields in state (put there by the "
-            f"workflow). Missing: {', '.join(missing)}"
+            "Prompt Agent: active use case in state['selected_use_cases'] "
+            f"is missing required fields: {', '.join(missing)}"
         )
 
     prompt_generator_chain = BASE_PROMPT_TEMPLATE | llm | StrOutputParser()
     generated_prompts = {}
 
-    # יצירת כל שלושת הפרומפטים. ה-Workflow יחליט בהמשך איזה מהם לשלוח ומתי.
     for prompt_type, stage_config in STAGE_CONFIG.items():
         generated_prompts[prompt_type] = prompt_generator_chain.invoke({
             "prompt_type": prompt_type,
@@ -142,7 +177,6 @@ def prompt_agent_node(state: dict) -> dict:
             "stage_instructions": stage_config["instructions"],
         })
 
-    # החזרת הנתונים ל-Pipeline
     return {
         "agent_prompts": generated_prompts,
         "platform": platform,

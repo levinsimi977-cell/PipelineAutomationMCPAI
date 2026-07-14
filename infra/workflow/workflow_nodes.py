@@ -152,26 +152,38 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
 def artifact_generator_node(state: PipelineState) -> PipelineState:
     """Node 2: Artifact Generator — Prompt + RULES + TEST files (G2)
 
-    Loads the use case currently pointed to by `current_use_case_path`
-    (set by `json_use_case_input_node` on the first pass, or refreshed by
-    `visual_report_node` on every following loop) into `current_use_case`
-    so the rest of the pipeline works off the active case's data.
+    Resolves the active use case from `selected_use_cases` (official state),
+    using `current_use_case_path` when the pipeline is looping over cases.
+    Writes `answer_policy` (and `platform` for downstream nodes) into state.
     """
-    current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        with open(current_path, "r", encoding="utf-8") as f:
-            current_use_case = json.load(f)
+    selected = state.get("selected_use_cases") or []
+    if not selected:
+        return state
 
-        state["current_use_case"] = current_use_case
-        state["selected_use_cases_path"] = current_path
-        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
-        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
-        state["answer_policy"] = current_use_case.get("answer_policy") or {}
-        state["prompt_goal"] = (
-            current_use_case.get("prompt_goal")
-            or current_use_case.get("prompt")
-            or ""
-        )
+    use_case = selected[0]
+    current_path = state.get("current_use_case_path")
+    if current_path:
+        stem = Path(str(current_path)).stem
+        for case in selected:
+            if isinstance(case, dict) and str(case.get("id", "")) == stem:
+                use_case = case
+                break
+        else:
+            if stem.isdigit():
+                index = int(stem)
+                if 0 <= index < len(selected) and isinstance(selected[index], dict):
+                    use_case = selected[index]
+
+    if not isinstance(use_case, dict):
+        return state
+
+    # Official state field from the use-case list image.
+    state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
+    # Needed by sdk_agent / emulator; taken from the active use case dict.
+    state["platform"] = use_case.get("platform", state.get("platform", "android"))
+
+    if current_path:
+        state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
 
     return state
 
