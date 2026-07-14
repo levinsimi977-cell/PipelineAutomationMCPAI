@@ -10,6 +10,7 @@ data/runs/
 .env
 sandboxes/
 data/runs/
+data/useCases/custom/
 .env.*
 # Compiled Python bytecode caches -- always regenerated automatically, never
 # meant to be kept or committed.
