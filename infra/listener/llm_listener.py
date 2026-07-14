@@ -135,7 +135,7 @@ def listener_on_text(
     try:
         status = classify_llm_output(merged_state)
     except ValueError as exc:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "UNCLASSIFIED",
             "status": "INFO",
@@ -145,7 +145,7 @@ def listener_on_text(
         return None, updates
 
     if status == Classification.SUCCESS:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "SUCCESS",
             "status": "INFO",
@@ -155,7 +155,7 @@ def listener_on_text(
         return None, updates
 
     if status == Classification.FAILURE:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "FAIL",
             "status": "FAIL",

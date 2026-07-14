@@ -30,7 +30,8 @@ def _load_agent_rules_text() -> str:
     with open(_MAIN_RULES_PATH, "r", encoding="utf-8") as f:
         rules_data = json.load(f)
     rules = rules_data["prompt"]["important_rules"]
-    return "\n".join(f"{r['number']}. {r['text']}" for r in rules)def safe_project_path(project_root: Path, requested_path: str) -> Path:
+    return "\n".join(f"{r['number']}. {r['text']}" for r in rules)
+def safe_project_path(project_root: Path, requested_path: str) -> Path:
     """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
     Raises:
         ValueError: If the resolved path is outside project_root.

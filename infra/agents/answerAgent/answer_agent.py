@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
-from prompts.answer_templates import ANSWER_PROMPT
+from infra.agents.answerAgent.prompts.answer_templates import ANSWER_PROMPT
 
 # Config comes straight from the environment / project .env — no separate
 # config.py module. `load_dotenv()` is a no-op if the vars are already set
