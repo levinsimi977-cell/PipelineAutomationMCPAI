@@ -46,9 +46,9 @@
       "supports_rule_override": true
     },
     {
-      "id": "custom-intigrate-sdk",
+      "id": "custom-adhj",
       "platform": "ios",
-      "path": "./custom/custom-intigrate-sdk.json",
+      "path": "./custom/custom-adhj.json",
       "type": "custom",
       "enabled": true,
       "supports_rule_override": true
