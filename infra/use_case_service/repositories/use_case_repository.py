@@ -96,7 +96,10 @@ def list_available_apps() -> list[str]:
 def list_use_cases(*, enabled_only: bool = False) -> list[CatalogEntry]:
     # Mock table only holds enabled (and newly created) records.
     _ = enabled_only
-    return [_record_to_entry(record) for record in _get_table().list_use_cases_for_user(DEFAULT_USER_ID)]
+    return [
+        _record_to_entry(record)
+        for record in _get_table().list_use_cases_for_user(DEFAULT_USER_ID)
+    ]
 
 
 def load_use_case(entry: CatalogEntry) -> UseCaseContract:
