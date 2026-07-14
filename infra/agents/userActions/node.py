@@ -16,14 +16,14 @@ def user_actions_node(state: PipelineState) -> PipelineState:
         state["next_node"] = NODE_NAME
         return state
 
-    run_id = state.get("run_id")
+    sandbox_path = state.get("sandbox_path")
     platform = state.get("platform")
-    manifest_path = Path("data") / "runs" / run_id / "events.wired.json" if run_id else None
-    if not run_id or not platform or not manifest_path or not manifest_path.is_file():
+    manifest_path = Path(sandbox_path) / "events.wired.json" if sandbox_path else None
+    if not sandbox_path or not platform or not manifest_path or not manifest_path.is_file():
         state.setdefault("nodes_log", []).append({
             "node": NODE_NAME,
             "status": "Fail",
-            "details": {"error": "run_id, platform, and events.wired.json are required"},
+            "details": {"error": "sandbox_path, platform, and events.wired.json are required"},
         })
         state["next_node"] = NODE_NAME
         return state
