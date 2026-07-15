@@ -16,6 +16,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from infra.load_env import load_project_env
+
+load_project_env()
+
 from infra.use_case_service.builder import UseCaseBuilder
 from infra.use_case_service.repositories import run_repository as run_repo
 from infra.use_case_service.repositories import use_case_repository as repo
@@ -941,7 +945,18 @@ if selected_map:
                         _flash("error", f"Workflow failed: {exc}")
                     else:
                         st.session_state["_last_workflow_result"] = final_state
-                        _flash("success", "Workflow finished running.")
+                        if final_state.get("test_status") == "FAIL":
+                            reason = (
+                                final_state.get("fail_reason")
+                                or final_state.get("error_reason")
+                                or "See nodes_log for details."
+                            )
+                            _flash(
+                                "error",
+                                f"Workflow finished with failures. {reason}",
+                            )
+                        else:
+                            _flash("success", "Workflow finished running.")
             st.rerun()
 
         last_result = st.session_state.get("_last_workflow_result")

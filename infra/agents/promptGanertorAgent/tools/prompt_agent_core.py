@@ -2,6 +2,10 @@ import os
 import json
 from pathlib import Path
 
+from infra.load_env import load_project_env
+
+load_project_env()
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI

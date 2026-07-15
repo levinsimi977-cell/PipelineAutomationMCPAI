@@ -135,7 +135,7 @@ def listener_on_text(
     try:
         status = classify_llm_output(merged_state)
     except ValueError as exc:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "UNCLASSIFIED",
             "status": "INFO",
@@ -145,7 +145,7 @@ def listener_on_text(
         return None, updates
 
     if status == Classification.SUCCESS:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "SUCCESS",
             "status": "INFO",
@@ -155,7 +155,7 @@ def listener_on_text(
         return None, updates
 
     if status == Classification.FAILURE:
-        updates["nodes_logs"].append({
+        updates["nodes_log"].append({
             "node": node_name,
             "listener": "FAIL",
             "status": "FAIL",
@@ -294,7 +294,7 @@ def listener_on_agent_response(
     updated_prompt, listener_updates = listener_on_text(
         state, node_name, agent_text, base_prompt=base_prompt
     )
-    updates["nodes_logs"].extend(listener_updates.get("nodes_logs", []))
+    updates["nodes_log"].extend(listener_updates.get("nodes_log", []))
     if listener_updates.get("test_status") == "FAIL":
         updates["test_status"] = "FAIL"
         updates["question_rounds"] = listener_updates.get("question_rounds", question_rounds)
@@ -598,10 +598,10 @@ def invoke_plain_llm_with_listener(
             agent_text,
             base_prompt=base_prompt,
         )
-        logs.extend(listener_updates.get("nodes_logs", []))
+        logs.extend(listener_updates.get("nodes_log", []))
         if listener_updates.get("test_status") == "FAIL":
             return response, {
-                "nodes_logs": logs,
+                "nodes_log": logs,
                 "test_status": "FAIL",
                 "question_rounds": listener_updates.get("question_rounds", question_rounds),
                 "installation_answers": installation_answers[initial_answer_count:],

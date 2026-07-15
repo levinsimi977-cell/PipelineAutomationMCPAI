@@ -3,18 +3,18 @@ import json
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
+from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env
 from infra.agents.AuditRecorder import AuditRecorder
 # Classifies each finished turn's Memory (SUCCESS/FAIL/QUESTION), answers
 # questions, and records everything to AuditRecorder. See llm_listener.py.
 from infra.listener.llm_listener import listener_on_agent_turn
-# Loads API keys from the .env file located next to this module
-load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+
+load_project_env(override=True)
 APP_ID = os.getenv("APP_ID", "id1512793879")
 # Safety net: caps how many sdk_agent.ainvoke() turns a single call to
 # run_sdk_integration_agent() may take before giving up.
@@ -30,7 +30,10 @@ def _load_agent_rules_text() -> str:
     with open(_MAIN_RULES_PATH, "r", encoding="utf-8") as f:
         rules_data = json.load(f)
     rules = rules_data["prompt"]["important_rules"]
-    return "\n".join(f"{r['number']}. {r['text']}" for r in rules)def safe_project_path(project_root: Path, requested_path: str) -> Path:
+    return "\n".join(f"{r['number']}. {r['text']}" for r in rules)
+
+
+def safe_project_path(project_root: Path, requested_path: str) -> Path:
     """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
     Raises:
         ValueError: If the resolved path is outside project_root.
@@ -64,6 +67,9 @@ async def create_sdk_integration_agent(
     platform: str,                 # 'ios' or 'android'
     user_prompt: str,               # The original user request (e.g. "install the SDK")
     audit_recorder: AuditRecorder,  # The audit object - every step here is recorded to it
+    *,
+    app_id: str | None = None,
+    dev_key: str | None = None,
 ) -> Dict[str, Any]:
     """Builds (but does not run) the SDK integration agent: loads API keys,
     connects to the AppsFlyer MCP server, registers file tools, builds the
@@ -74,8 +80,9 @@ async def create_sdk_integration_agent(
     project_root = Path(project_root_str)
     platform_lower = platform.lower()
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    dev_key = os.getenv("APPSFLYER_DEV_KEY")
-    if not openai_api_key or not dev_key:
+    resolved_dev_key = dev_key or get_dev_key()
+    resolved_app_id = app_id or get_app_id_for_platform(platform_lower) or APP_ID
+    if not openai_api_key or not resolved_dev_key:
         raise RuntimeError("Missing OPENAI_API_KEY or APPSFLYER_DEV_KEY in .env")
     model = ChatOpenAI(
         model="gpt-5.1",
@@ -89,7 +96,7 @@ async def create_sdk_integration_agent(
             "transport": "stdio",
             "command": "npx",
             "args": ["-y", "@appsflyer/sdk-mcp-server"],
-            "env": {"APP_ID": APP_ID, "DEV_KEY": dev_key},
+            "env": {"APP_ID": resolved_app_id, "DEV_KEY": resolved_dev_key},
         }
     })
     mcp_tools = await mcp_client.get_tools()
@@ -227,11 +234,18 @@ async def run_sdk_integration_agent(
         "reason" (always a string) on failure.
     """
     agent_id = state.get("agent_id", 0)
+    resolved_app_id = state.get("app_id") or get_app_id_for_platform(platform)
+    resolved_dev_key = state.get("dev_key") or get_dev_key()
     if agent_id == 0:
         # No agent yet for this use case: build one and mint its id now.
         agent_id = str(uuid.uuid4())
         setup = await create_sdk_integration_agent(
-            project_root_str, platform, user_prompt, audit_recorder
+            project_root_str,
+            platform,
+            user_prompt,
+            audit_recorder,
+            app_id=resolved_app_id,
+            dev_key=resolved_dev_key,
         )
         session = {
             "agent": setup["agent"],
