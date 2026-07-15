@@ -22,6 +22,7 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
+from infra.use_case_service.repositories.run_repository import RUNS_DIR
 
 
 # Resolve emulator tools directory relative to this file
@@ -71,6 +72,46 @@ def _next_prompt_type(current: PromptType) -> PromptType | None:
     return None
 
 
+def _is_pipeline_fail(state: PipelineState) -> bool:
+    """True when the pipeline should stop normal flow and go to test_runner."""
+    return state.get("test_status") == "FAIL"
+
+
+def route_after_node(state: PipelineState, *, on_success: str) -> str:
+    """Shared gate: FAIL -> test_runner, otherwise the normal next node."""
+    if _is_pipeline_fail(state):
+        return "test_runner"
+    return on_success
+
+
+def route_after_json_use_case_input(state: PipelineState) -> str:
+    return route_after_node(state, on_success="artifact_generator")
+
+
+def route_after_artifact_generator(state: PipelineState) -> str:
+    return route_after_node(state, on_success="environment_setup")
+
+
+def route_after_environment_setup(state: PipelineState) -> str:
+    return route_after_node(state, on_success="prompt_agent")
+
+
+def route_after_prompt_agent(state: PipelineState) -> str:
+    return route_after_node(state, on_success="sdk_agent")
+
+
+def route_after_compilation_check(state: PipelineState) -> str:
+    return route_after_node(state, on_success="emulator")
+
+
+def route_after_user_actions(state: PipelineState) -> str:
+    return route_after_node(state, on_success="deep_link")
+
+
+def route_after_deep_link(state: PipelineState) -> str:
+    return route_after_node(state, on_success="sdk_agent")
+
+
 class PipelineState(TypedDict, total=False):
     """
     Shared state threaded through every node of the workflow graph.
@@ -117,6 +158,8 @@ class PipelineState(TypedDict, total=False):
 
     app_id: NotRequired[str]
 
+    dev_key: NotRequired[str]
+
     platform: NotRequired[str]
 
     app_status: NotRequired[str]
@@ -156,7 +199,7 @@ class PipelineState(TypedDict, total=False):
     # Agent management
     # ==================================================
 
-    agent_id: NotRequired[int]
+    agent_id: NotRequired[Optional[str]]
 
     agent_model: NotRequired[str]
 
@@ -255,31 +298,23 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     """
 
     # New pipeline behavior: every run starts with a fresh sdk agent id
-    state.setdefault("agent_id", 0)
+    state.setdefault("agent_id", None)
 
     selected_cases = state.get("selected_use_cases") or []
     run_id = state.get("run_id", "run")
 
-    use_cases_dir = os.path.join(
-        "data",
-        "runs",
-        run_id,
-        "use_cases",
-    )
+    use_cases_dir = RUNS_DIR / run_id / "use_cases"
 
-    os.makedirs(use_cases_dir, exist_ok=True)
+    use_cases_dir.mkdir(parents=True, exist_ok=True)
 
     case_paths = []
 
     for index, case in enumerate(selected_cases):
         case_id = case.get("id", str(index))
 
-        case_path = os.path.join(
-            use_cases_dir,
-            f"{case_id}.json",
-        )
+        case_path = use_cases_dir / f"{case_id}.json"
 
-        with open(case_path, "w", encoding="utf-8") as f:
+        with case_path.open("w", encoding="utf-8") as f:
             json.dump(
                 case,
                 f,
@@ -287,15 +322,19 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
                 indent=2,
             )
 
-        case_paths.append(case_path)
+        case_paths.append(str(case_path))
 
-    state["use_cases_dir"] = use_cases_dir
+    state["use_cases_dir"] = str(use_cases_dir)
 
     state["current_use_case_path"] = (
         case_paths[0]
         if case_paths
         else None
     )
+
+    if not case_paths:
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = "No use cases selected for this run."
 
     return state
 
@@ -318,6 +357,10 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
         state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
         state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        # Each use case gets its own sdk_agent conversation: reset agent_id so
+        # run_sdk_integration_agent builds a fresh agent instead of reusing a
+        # (by now closed) session id left over from the previous use case.
+        state["agent_id"] = None
 
         if current_use_case.get("answer_policy"):
             run_id = state.get("run_id", "run")
@@ -339,17 +382,37 @@ async def environment_setup_node(
     validates application.
     """
 
+    def _append_node_log(
+        *,
+        status: str,
+        message: str,
+        extra: dict | None = None,
+    ) -> list[dict]:
+        entry: dict = {
+            "node": "environment_setup",
+            "status": status,
+            "message": message,
+        }
+        if extra:
+            entry.update(extra)
+        return [*(state.get("nodes_log") or []), entry]
+
     environment_result = setup_environment(
         dict(state)
     )
 
 
     if environment_result.get("test_status") == "FAIL":
-
+        reason = environment_result.get("error_reason", "Environment setup failed.")
         return {
             **state,
             **environment_result,
             "environment_setup_status": "FAILED",
+            "fail_reason": reason,
+            "nodes_log": _append_node_log(
+                status="Failure",
+                message=reason,
+            ),
         }
 
 
@@ -359,15 +422,17 @@ async def environment_setup_node(
 
 
     if not sandbox_path:
-
+        reason = "Environment setup did not return a sandbox_path."
         return {
             **state,
             **environment_result,
             "test_status": "FAIL",
             "environment_setup_status": "FAILED",
-            "error_reason": (
-                "Environment setup did not return "
-                "a sandbox_path."
+            "error_reason": reason,
+            "fail_reason": reason,
+            "nodes_log": _append_node_log(
+                status="Failure",
+                message=reason,
             ),
         }
 
@@ -381,6 +446,8 @@ async def environment_setup_node(
                 False,
             )
         ),
+        app_id=state.get("app_id"),
+        dev_key=state.get("dev_key"),
     )
 
 
@@ -389,6 +456,19 @@ async def environment_setup_node(
         == "OK"
     )
 
+    if checks_succeeded:
+        node_message = "Sandbox created; MCP and application validation passed."
+    else:
+        mcp_status = (checks_result.get("task_3_mcp_alive") or {}).get("status")
+        app_validation = checks_result.get("task_4_application_validation") or {}
+        app_status = app_validation.get("status")
+        app_error = app_validation.get("error")
+        node_message = (
+            "Environment checks failed "
+            f"(mcp={mcp_status}, app_validation={app_status}"
+            + (f": {app_error}" if app_error else "")
+            + ")."
+        )
 
     return {
         **state,
@@ -410,6 +490,12 @@ async def environment_setup_node(
             else "FAIL"
         ),
 
+        "fail_reason": (
+            None
+            if checks_succeeded
+            else node_message
+        ),
+
         "task_3_mcp_alive": checks_result.get(
             "task_3_mcp_alive"
         ),
@@ -419,6 +505,17 @@ async def environment_setup_node(
         ),
 
         "environment_setup_result": checks_result,
+
+        "nodes_log": _append_node_log(
+            status="Success" if checks_succeeded else "Failure",
+            message=node_message,
+            extra={
+                "mcp_status": (checks_result.get("task_3_mcp_alive") or {}).get("status"),
+                "app_validation_status": (
+                    (checks_result.get("task_4_application_validation") or {}).get("status")
+                ),
+            },
+        ),
     }
 
 
@@ -494,6 +591,7 @@ def prompt_agent_node(
         if missing:
 
             state["prompt_agent_node_status"] = "FAIL"
+            state["test_status"] = "FAIL"
 
             state["prompt_agent_node_error"] = (
                 "Prompt Agent did not save required fields: "
@@ -513,6 +611,7 @@ def prompt_agent_node(
     except Exception as exc:
 
         state["prompt_agent_node_status"] = "FAIL"
+        state["test_status"] = "FAIL"
 
         state["prompt_agent_node_error"] = str(exc)
 
@@ -563,6 +662,15 @@ def sdk_agent_node(
     sandbox_path = state.get(
         "sandbox_path",
     )
+
+    if not sandbox_path:
+        state["test_status"] = "FAIL"
+        state["nodes_log"] = list(state.get("nodes_log") or []) + [{
+            "node": "sdk_agent",
+            "status": "Failure",
+            "reason": "sandbox_path is missing — environment_setup may have failed.",
+        }]
+        return state
 
     platform = state.get(
         "platform",
@@ -621,12 +729,6 @@ def sdk_agent_node(
     ):
         node_log["reason"] = result["reason"]
 
-
-
-    state["nodes_logs"] = [
-        *(state.get("nodes_logs") or []),
-        node_log,
-    ]
 
 
     state["nodes_log"] = [
@@ -698,6 +800,8 @@ def compilation_check_node(
 
     state.update(result)
 
+    if not result.get("compilation_passed"):
+        state["test_status"] = "FAIL"
 
     state["current_node"] = (
         "compilation_check"
@@ -943,21 +1047,20 @@ def route_from_sdk_agent(
     """
     Conditional edge from SDK agent.
 
-    verify_prompt -> test_runner
-
-    integrate/event -> compilation_check
+    FAIL (any prompt) -> test_runner
+    verify_prompt success -> test_runner
+    integrate/event success -> compilation_check
     """
+    if _is_pipeline_fail(state):
+        return "test_runner"
 
     prompt_just_run = (
         state.get("prompt_just_run")
         or state.get("last_prompt_type")
     )
 
-
     if prompt_just_run == "verify_prompt":
-
         return "test_runner"
-
 
     return "compilation_check"
 
@@ -968,20 +1071,23 @@ def route_from_emulator(
 ) -> str:
     """
     Conditional edge from emulator.
+
+    FAIL -> test_runner
+    event_prompt without user_actions -> user_actions
+    otherwise -> sdk_agent (next prompt pass)
     """
+    if _is_pipeline_fail(state):
+        return "test_runner"
 
     if (
         state.get("last_prompt_type")
         == "event_prompt"
-
         and not state.get(
             "visited_user_actions",
             False,
         )
     ):
-
         return "user_actions"
-
 
     return "sdk_agent"
 
