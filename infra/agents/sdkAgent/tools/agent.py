@@ -3,18 +3,18 @@ import json
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
+from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env
 from infra.agents.AuditRecorder import AuditRecorder
 # Classifies each finished turn's Memory (SUCCESS/FAIL/QUESTION), answers
 # questions, and records everything to AuditRecorder. See llm_listener.py.
 from infra.listener.llm_listener import listener_on_agent_turn
-# Loads API keys from the .env file located next to this module
-load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+
+load_project_env(override=True)
 APP_ID = os.getenv("APP_ID", "id1512793879")
 # Safety net: caps how many sdk_agent.ainvoke() turns a single call to
 # run_sdk_integration_agent() may take before giving up.
@@ -30,7 +30,10 @@ def _load_agent_rules_text() -> str:
     with open(_MAIN_RULES_PATH, "r", encoding="utf-8") as f:
         rules_data = json.load(f)
     rules = rules_data["prompt"]["important_rules"]
-    return "\n".join(f"{r['number']}. {r['text']}" for r in rules)def safe_project_path(project_root: Path, requested_path: str) -> Path:
+    return "\n".join(f"{r['number']}. {r['text']}" for r in rules)
+
+
+def safe_project_path(project_root: Path, requested_path: str) -> Path:
     """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
     Raises:
         ValueError: If the resolved path is outside project_root.
@@ -47,7 +50,7 @@ def _load_agent_rules_text() -> str:
         )
     return resolved
 # ============================================================================
-# Session registry: agent_id -> {agent, tools, state, turn_offset}.
+# Session registry: agent_id -> {agent, tools, turn_offset}.
 # Keeps the built agent (and its in-memory checkpointer) alive across
 # separate calls, so a repeated agent_id resumes instead of starting fresh.
 # agent_id has no relation to the pipeline run_id or the sandbox path -- it
@@ -64,6 +67,9 @@ async def create_sdk_integration_agent(
     platform: str,                 # 'ios' or 'android'
     user_prompt: str,               # The original user request (e.g. "install the SDK")
     audit_recorder: AuditRecorder,  # The audit object - every step here is recorded to it
+    *,
+    app_id: str | None = None,
+    dev_key: str | None = None,
 ) -> Dict[str, Any]:
     """Builds (but does not run) the SDK integration agent: loads API keys,
     connects to the AppsFlyer MCP server, registers file tools, builds the
@@ -74,8 +80,9 @@ async def create_sdk_integration_agent(
     project_root = Path(project_root_str)
     platform_lower = platform.lower()
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    dev_key = os.getenv("APPSFLYER_DEV_KEY")
-    if not openai_api_key or not dev_key:
+    resolved_dev_key = dev_key or get_dev_key()
+    resolved_app_id = app_id or get_app_id_for_platform(platform_lower) or APP_ID
+    if not openai_api_key or not resolved_dev_key:
         raise RuntimeError("Missing OPENAI_API_KEY or APPSFLYER_DEV_KEY in .env")
     model = ChatOpenAI(
         model="gpt-5.1",
@@ -89,7 +96,7 @@ async def create_sdk_integration_agent(
             "transport": "stdio",
             "command": "npx",
             "args": ["-y", "@appsflyer/sdk-mcp-server"],
-            "env": {"APP_ID": APP_ID, "DEV_KEY": dev_key},
+            "env": {"APP_ID": resolved_app_id, "DEV_KEY": resolved_dev_key},
         }
     })
     mcp_tools = await mcp_client.get_tools()
@@ -211,12 +218,12 @@ async def run_sdk_integration_agent(
     audit_recorder: AuditRecorder,
 ) -> Dict[str, Any]:
     """Orchestrates the SDK installation.
-    agent_id lives in state["agent_id"] (initialized to 0 by the workflow) and
+    agent_id lives in state["agent_id"] (initialized to None by the workflow) and
     has no relation to the pipeline run_id or the sandbox path:
-    - state["agent_id"] == 0  -> no agent exists yet for this use case; build
+    - state["agent_id"] is None  -> no agent exists yet for this use case; build
       one, mint a fresh agent_id, and write it back into state["agent_id"] so
       later calls (verify pass, etc.) can resume this same conversation.
-    - state["agent_id"] != 0  -> an agent is expected to already exist; look
+    - state["agent_id"] is not None  -> an agent is expected to already exist; look
       it up in _AGENT_SESSIONS. If it is missing (e.g. process restarted and
       the in-memory registry was lost), fail explicitly instead of silently
       starting a new, unrelated conversation under the old id.
@@ -226,17 +233,23 @@ async def run_sdk_integration_agent(
         dict with "status" ("SUCCESS"/"FAIL"), "agent_id", "turns", and
         "reason" (always a string) on failure.
     """
-    agent_id = state.get("agent_id", 0)
-    if agent_id == 0:
+    agent_id = state.get("agent_id")
+    resolved_app_id = state.get("app_id") or get_app_id_for_platform(platform)
+    resolved_dev_key = state.get("dev_key") or get_dev_key()
+    if agent_id is None:
         # No agent yet for this use case: build one and mint its id now.
         agent_id = str(uuid.uuid4())
         setup = await create_sdk_integration_agent(
-            project_root_str, platform, user_prompt, audit_recorder
+            project_root_str,
+            platform,
+            user_prompt,
+            audit_recorder,
+            app_id=resolved_app_id,
+            dev_key=resolved_dev_key,
         )
         session = {
             "agent": setup["agent"],
             "tools": setup["tools"],
-            "state": {"platform": platform},
             "turn_offset": 0,   # Keeps turn_index continuous across separate calls
         }
         _AGENT_SESSIONS[agent_id] = session
@@ -254,9 +267,10 @@ async def run_sdk_integration_agent(
             }
         prompt = user_prompt
     sdk_agent = session["agent"]
-    # Named inner_state (not state) on purpose: state is this function's
-    # PipelineState parameter above - reusing the name would silently shadow it.
-    inner_state = session["state"]
+    # inner_state IS the outer PipelineState (same object, not a copy) - so it
+    # already has run_id, app_path, etc. Mutations here persist back to the
+    # workflow because sdk_agent_node returns this same `state` object.
+    inner_state = state
     # Fixed thread_id for this agent_id's lifetime, so the checkpointer
     # recognizes all calls below as belonging to the same conversation.
     config = {"configurable": {"thread_id": f"sdk_agent_{agent_id}"}}
@@ -273,18 +287,18 @@ async def run_sdk_integration_agent(
         )
         if action == "done":
             session["turn_offset"] = turn_index + 1
-            inner_state["status"] = "SUCCESS"
+            inner_state["sdk_agent_status"] = "SUCCESS"
             return {"status": "SUCCESS", "agent_id": agent_id, "turns": turn_index + 1}
         if action == "fail":
             session["turn_offset"] = turn_index + 1
-            inner_state["status"] = "FAIL"
+            inner_state["sdk_agent_status"] = "FAIL"
             return {"status": "FAIL", "agent_id": agent_id, "turns": turn_index + 1, "reason": str(updates)}
         # "continue": either a question was answered (answer is in next_prompt) or we just proceed.
         prompt = next_prompt
     # Hit MAX_TURNS without done/fail: stop instead of looping forever.
     session["turn_offset"] += MAX_TURNS
     audit_recorder.write("INSTALLATION_TIMEOUT", {"max_turns": MAX_TURNS})
-    inner_state["status"] = "FAIL"
+    inner_state["sdk_agent_status"] = "FAIL"
     return {"status": "FAIL", "agent_id": agent_id, "reason": f"Exceeded max turns ({MAX_TURNS})"}
 # ============================================================================
 # Step C - Teardown (call once the conversation is truly finished, e.g.
@@ -294,11 +308,11 @@ def close_sdk_integration_agent(state: Dict[str, Any], audit_recorder: Optional[
     """Frees the session (agent, tools, checkpointer memory) held for
     state["agent_id"] - same state-based lookup as run_sdk_integration_agent.
 
-    Safe to call even if agent_id is 0/None or already closed - it is then
+    Safe to call even if agent_id is None or already closed - it is then
     simply a no-op. Only removes the entry from _AGENT_SESSIONS; does not
     clear state["agent_id"] (the caller may still want it around for logging).
     """
-    agent_id = state.get("agent_id", 0)
+    agent_id = state.get("agent_id")
     session = _AGENT_SESSIONS.pop(agent_id, None)
     if session is not None and audit_recorder is not None:
         audit_recorder.write("AGENT_SESSION_CLOSED", {"agent_id": agent_id})
