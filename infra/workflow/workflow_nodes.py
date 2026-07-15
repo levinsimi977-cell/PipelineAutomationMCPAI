@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict, get_args
 
@@ -27,23 +26,9 @@ from infra.agents.userActions.deep_link import (
     simulate_deep_link_click,
 )
 from infra.use_case_service.repositories.run_repository import RUNS_DIR
-
-
-# Resolve emulator tools directory relative to this file
-_TOOLS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "agents", "sdkAgent", "tools")
-)
-
-if _TOOLS_DIR not in sys.path:
-    sys.path.insert(0, _TOOLS_DIR)
-
-
-from emulator import (
-    setup_appium_environment,
-    start_appium_server,
-    list_devices,
-    start_device,
-    launch_app_on_device,
+from infra.workflow.nodes.nodeEmulator import (
+    emulator_node as _emulator_node_impl,
+    route_from_emulator as _route_from_emulator_impl,
 )
 
 
@@ -350,7 +335,6 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     Loads the active use case into state.
     """
-    
     current_path = state.get("current_use_case_path")
     if current_path and os.path.exists(current_path):
         with open(current_path, "r", encoding="utf-8") as f:
@@ -372,8 +356,6 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
             repo.load_from_use_case(run_id, current_use_case)
 
     return state
-
-
 
 async def environment_setup_node(
     state: PipelineState,
@@ -842,110 +824,11 @@ def compilation_check_node(
     return state
 
 
-
-def emulator_node(
-    state: PipelineState,
-) -> dict:
-    """
-    Node 7: Emulator
-
-    Starts Appium,
-    starts device,
-    launches application.
-    """
-
-    device_id = state.get(
-        "device_id"
-    )
-
-    app_id = state.get(
-        "app_id"
-    )
-
-    remote_url = state.get(
-        "remote_url",
-        "http://127.0.0.1:4723",
-    )
+def emulator_node(state: PipelineState) -> dict:
+    """Node 7: Emulator — launch compiled app (G5)"""
+    return _emulator_node_impl(state)
 
 
-    steps = []
-
-    driver_instance = None
-
-    devices_listing = ""
-
-
-    try:
-
-        steps.append(
-            f"[setup] {setup_appium_environment()}"
-        )
-
-
-        steps.append(
-            f"[server] {start_appium_server()}"
-        )
-
-
-        devices_listing = list_devices()
-
-
-        steps.append(
-            f"[devices] {devices_listing}"
-        )
-
-
-        if not device_id:
-
-            steps.append(
-                "[device] Skipped: device_id missing."
-            )
-
-        else:
-
-            steps.append(
-                f"[device] {start_device(device_id)}"
-            )
-
-
-            driver_result = launch_app_on_device(
-                state.get("platform"),
-                device_id,
-                app_id,
-                remote_url,
-            )
-
-
-            if isinstance(driver_result, str):
-
-                steps.append(
-                    f"[launch] {driver_result}"
-                )
-
-            else:
-
-                driver_instance = driver_result
-
-                steps.append(
-                    "[launch] App launched successfully."
-                )
-
-
-    except Exception as exc:
-
-        steps.append(
-            f"[error] Node execution failed: {exc}"
-        )
-
-
-
-    return {
-        "available_devices": devices_listing,
-
-        "execution_result": "\n".join(steps),
-
-        "driver": driver_instance,
-    }
 def user_actions_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1048,7 +931,6 @@ def visual_report_node(
     return state
 
 
-
 def route_from_sdk_agent(
     state: PipelineState,
 ) -> str:
@@ -1074,30 +956,17 @@ def route_from_sdk_agent(
 
 
 
-def route_from_emulator(
-    state: PipelineState,
-) -> str:
+def route_from_emulator(state: PipelineState) -> str:
     """
     Conditional edge from emulator.
 
     FAIL -> test_runner
-    event_prompt without user_actions -> user_actions
-    otherwise -> sdk_agent (next prompt pass)
+    otherwise delegate to nodeEmulator routing logic
     """
     if _is_pipeline_fail(state):
         return "test_runner"
 
-    if (
-        state.get("last_prompt_type")
-        == "event_prompt"
-        and not state.get(
-            "visited_user_actions",
-            False,
-        )
-    ):
-        return "user_actions"
-
-    return "sdk_agent"
+    return _route_from_emulator_impl(state)
 
 
 
