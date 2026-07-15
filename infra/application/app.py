@@ -10,6 +10,59 @@ from typing import Any, Dict
 
 from infra.application.app_validator import validate_application
 from infra.application.mcp_environment import check_mcp_alive
+from infra.load_env import get_dev_key
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+_PLATFORM_SAMPLE_APPS = {
+    "android": "appsflyer-onelink-android-sample-apps",
+    "ios": "appsflyer-onelink-ios-sample-apps",
+}
+
+
+def _find_ios_project_root(sample_apps_root: Path) -> Path:
+    """Pick the shallowest Xcode project inside the iOS sample-apps bundle."""
+    projects = sorted(sample_apps_root.rglob("*.xcodeproj"))
+    if not projects:
+        raise FileNotFoundError(
+            f"No .xcodeproj found under iOS sample apps: {sample_apps_root}"
+        )
+    return min(projects, key=lambda path: len(path.parts)).parent
+
+
+def _find_android_project_root(sample_apps_root: Path) -> Path:
+    """Pick the shallowest Gradle project inside the Android sample-apps bundle."""
+    matches: list[Path] = []
+    for marker in ("settings.gradle", "settings.gradle.kts"):
+        matches.extend(sample_apps_root.rglob(marker))
+    if not matches:
+        raise FileNotFoundError(
+            f"No settings.gradle found under Android sample apps: {sample_apps_root}"
+        )
+    return min(matches, key=lambda path: len(path.parts)).parent
+
+
+def resolve_sample_app_source_path(platform_name: str) -> Path:
+    """
+    Map platform to the concrete mobile project directory (not the repo wrapper).
+    Sample-app folders contain multiple nested projects; validation needs the
+    directory that actually has Podfile/xcodeproj or settings.gradle.
+    """
+    folder_name = _PLATFORM_SAMPLE_APPS.get(platform_name)
+    if folder_name is None:
+        raise ValueError(
+            f"Unsupported platform: {platform_name}. Must be 'android' or 'ios'."
+        )
+
+    sample_apps_root = _PROJECT_ROOT / "data" / "application" / folder_name
+    if not sample_apps_root.exists():
+        raise FileNotFoundError(
+            f"Required application folder missing at: {sample_apps_root}"
+        )
+
+    if platform_name == "ios":
+        return _find_ios_project_root(sample_apps_root)
+    return _find_android_project_root(sample_apps_root)
 
 # =====================================================================
 # TASK 1: Sandbox Replication Environment (Team 1 Integration)
@@ -26,7 +79,7 @@ def create_sandbox_app(original_app_path: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Ensure the dynamic container folder physically exists on disk
-    sandbox_root = Path("sandboxes").resolve() / f"run_{timestamp}_{unique_id}"
+    sandbox_root = _PROJECT_ROOT / "sandboxes" / f"run_{timestamp}_{unique_id}"
     
     
     original_path = Path(original_app_path)
@@ -75,24 +128,7 @@ def resolve_and_replicate_app(platform_name: str) -> str:
     Maps the extracted platform name to the local directory structure 
     and passes the validated absolute path to the sandbox replicator.
     """
-    base_dir = "data/application"
-    
-    # Map the platform string to your exact repository folder names
-    if platform_name == "android":
-        app_folder_name = "appsflyer-onelink-android-sample-apps"
-    elif platform_name == "ios":
-        app_folder_name = "appsflyer-onelink-ios-sample-apps"
-    else:
-        raise ValueError(f"Unsupported platform: {platform_name}. Must be 'android' or 'ios'.")
-        
-    # Build the absolute path to the target folder
-    absolute_app_path = str(Path(base_dir).resolve() / app_folder_name)
-    
-    # Verify the physical folder exists locally before duplicating
-    if not Path(absolute_app_path).exists():
-        raise FileNotFoundError(f"Required application folder missing at: {absolute_app_path}")
-        
-    # Execute replication by calling your original function
+    absolute_app_path = str(resolve_sample_app_source_path(platform_name))
     return create_sandbox_app(absolute_app_path)
 
 
@@ -182,6 +218,9 @@ async def run_tasks_3_and_4(
     app_path: Path,
     workdir: Path,
     run_build_check: bool = False,
+    *,
+    app_id: str | None = None,
+    dev_key: str | None = None,
 ) -> Dict[str, Any]:
     app_report = build_application_report(
         app_path=app_path,
@@ -191,8 +230,8 @@ async def run_tasks_3_and_4(
 
     mcp_report = await check_mcp_alive(
         workdir=workdir,
-        app_id=os.getenv("APP_ID"),
-        dev_key=os.getenv("APPSFLYER_DEV_KEY") or os.getenv("DEV_KEY"),
+        app_id=app_id or os.getenv("APP_ID"),
+        dev_key=dev_key or get_dev_key(),
     )
 
     final_status = "OK"

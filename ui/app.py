@@ -16,6 +16,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from infra.load_env import load_project_env
+
+load_project_env()
+
 from infra.use_case_service.builder import UseCaseBuilder
 from infra.use_case_service.repositories import run_repository as run_repo
 from infra.use_case_service.repositories import use_case_repository as repo
@@ -942,9 +946,22 @@ if selected_map:
                         _flash("error", f"Workflow failed: {exc}")
                     else:
                         st.session_state["_last_workflow_result"] = final_state
+                        # report_path is captured regardless of pass/fail —
+                        # visual_report_node always writes it — so the report
+                        # below can still be opened even on a failed run.
                         report_path = final_state.get("report_path") or ""
                         st.session_state["_last_report_path"] = report_path
-                        if report_path:
+                        if final_state.get("test_status") == "FAIL":
+                            reason = (
+                                final_state.get("fail_reason")
+                                or final_state.get("error_reason")
+                                or "See nodes_log for details."
+                            )
+                            _flash(
+                                "error",
+                                f"Workflow finished with failures. {reason}",
+                            )
+                        elif report_path:
                             _flash("success", f"Workflow finished. Report saved to {report_path}.")
                         else:
                             _flash("success", "Workflow finished running.")
