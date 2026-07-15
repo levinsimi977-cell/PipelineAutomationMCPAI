@@ -1,7 +1,14 @@
 #import "DLViewController.h"
-#import <AppsFlyerLib/AppsFlyerLib.h>
+
+@interface DLViewController ()
+- (void)copyShareInviteLinkWithFruitName:(NSString *)fruitName;
+@end
 
 @implementation DLViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+}
 
 - (NSMutableAttributedString *)attributionDataToStringWithData:(NSDictionary<NSString *, id> *)data {
     NSMutableAttributedString *newString = [[NSMutableAttributedString alloc] init];
@@ -11,6 +18,8 @@
     NSArray<NSString *> *sortedKeys = [data.allKeys sortedArrayUsingSelector:@selector(compare:)];
 
     for (NSString *key in sortedKeys) {
+        NSLog(@"ViewController %@ : %@", key, data[key] ?: @"null");
+
         NSAttributedString *boldKeyStr = [[NSAttributedString alloc] initWithString:key attributes:boldAttribute];
         [newString appendAttributedString:boldKeyStr];
 
@@ -51,38 +60,10 @@
 }
 
 - (void)copyShareInviteLinkWithFruitName:(NSString *)fruitName {
-    [AppsFlyerShareInviteHelper generateInviteLinkWithLinkGenerator:^AppsFlyerLinkGenerator *(AppsFlyerLinkGenerator *generator) {
-        [generator addParameterValue:fruitName forKey:@"deep_link_value"];
-        [generator addParameterValue:self.fruitAmountStr forKey:@"deep_link_sub1"];
-        [generator addParameterValue:@"THIS_USER_ID" forKey:@"deep_link_sub2"];
-        [generator setCampaign:@"share_invite"];
-        [generator setChannel:@"mobile_share"];
-//        [[AppsFlyerLib shared] setAppInviteOneLinkID:@"H5hv"];
-        [AppsFlyerLib shared].appInviteOneLinkID = @"H5hv";
-//        [[AppsFlyerLib shared]setAppInviteOneLink];
-        return generator;
-    } completionHandler:^(NSURL * _Nullable url, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AFSDK] generateInviteLink failed: %@", error);
-            return;
-        }
-        if (!url) {
-            NSLog(@"[AFSDK] generateInviteLink returned nil URL");
-            return;
-        }
-        [UIPasteboard generalPasteboard].string = url.absoluteString;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self showToastWithMessage:@"Link copied to clipboard" font:[UIFont systemFontOfSize:12.0]];
-        });
-
-        [AppsFlyerShareInviteHelper logInvite:@"mobile_share"
-                              eventParameters:@{@"referrerId": @"THIS_USER_ID",
-                                                @"campaign": @"share_invite"}];
-    }];
+    [self showToastWithMessage:@"Share invite requires AppsFlyer SDK" font:[UIFont systemFontOfSize:12.0]];
 }
 
 - (NSString *)getFruitAmountWithData:(NSDictionary<NSString *, id> *)data {
-    // Make sure either deep_link_sub1 or fruit_amount exists
     NSSet<NSString *> *keys = [NSSet setWithArray:data.allKeys];
     id fruitAmount = nil;
 
@@ -97,13 +78,12 @@
         return nil;
     }
 
-    // Make sure fruitAmount is a valid number
     NSCharacterSet *decimalDigits = [NSCharacterSet decimalDigitCharacterSet];
     if ([fruitAmount isKindOfClass:[NSString class]] && [decimalDigits isSupersetOfSet:[NSCharacterSet characterSetWithCharactersInString:(NSString *)fruitAmount]]) {
         self.fruitAmountStr = (NSString *)fruitAmount;
         return (NSString *)fruitAmount;
     } else {
-        NSLog(@"[AFSDK] Fruit amount is not a whole number");
+        NSLog(@"Fruit amount is not a whole number");
         return nil;
     }
 }
