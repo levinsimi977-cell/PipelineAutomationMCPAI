@@ -56,10 +56,15 @@ playground.xcworkspace
 
 # CocoaPods
 #
-# Sample apps: do NOT commit Pods. Podfile.lock is the source of truth;
-# users run `pod install` themselves. See:
+# We recommend against adding the Pods directory to your .gitignore. However
+# you should judge for yourself, the pros and cons are mentioned at:
 # https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
+#
 Pods/
+Podfile.lock
+#
+# Add this line if you want to avoid checking in source code from the Xcode workspace
+# *.xcworkspace
 
 # Carthage
 #
@@ -90,24 +95,4 @@ fastlane/test_output
 # https://github.com/johnno1962/injectionforxcode
 
 iOSInjectionProject/
-
-# Internal planning + AI-agent scratch space (not for distribution)
-docs/plans/
-docs/superpowers/
-docs/reports/
-
-# Editor / IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# macOS metadata
-.AppleDouble
-.LSOverride
-._*
-
-# Claude / agent state
-.claude-trace/
 
