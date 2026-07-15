@@ -1,22 +1,22 @@
 {
   "metadata": {
-    "id": "c7b31840-e478-49e7-9198-84621737a912",
-    "timestamp": "2026-07-08T12:31:16.335017Z",
+    "id": "78f6fcee-305e-4231-b219-d39f95654987",
+    "timestamp": "2026-07-12T12:00:42.776831Z",
     "schema_version": "1.0.0"
   },
   "app_path": "data/application/banana.app",
   "platform": "ios",
-  "prompt_goal": "asfddgfgjhk",
+  "prompt_goal": "ababbab",
   "answer_policy": {
     "metadata": {
-      "id": "edf0cd15-b19a-4d1d-852e-9ac1b78e476d",
-      "timestamp": "2026-07-08T12:31:16.334990Z",
+      "id": "62a2b8eb-1739-41e2-8106-ac7cfd861c43",
+      "timestamp": "2026-07-12T12:00:42.776803Z",
       "schema_version": "1.0.0"
     },
     "ios_minimal": {
       "metadata": {
-        "id": "9734dd52-3e1c-4df6-a994-420ca82de9c7",
-        "timestamp": "2026-07-08T12:31:16.334965Z",
+        "id": "03d3af47-7d64-472b-a52f-5a06ae938bc8",
+        "timestamp": "2026-07-12T12:00:42.776773Z",
         "schema_version": "1.0.0"
       },
       "use_att": true,
@@ -26,18 +26,20 @@
     },
     "verify_sdk": {
       "metadata": {
-        "id": "d01a71da-a5c0-4815-b294-26a644cc88f6",
-        "timestamp": "2026-07-08T12:31:16.334938Z",
+        "id": "189a1790-5d0f-4c63-94c8-2de3c9760a81",
+        "timestamp": "2026-07-12T12:00:42.776746Z",
         "schema_version": "1.0.0"
       },
       "verify_logs_ready": true,
       "app_launched": true
-    }
+    },
+    "integration_policy": "dvgfhk.l';\\",
+    "app_event_policy": "zdgdjfghkjk.;"
   },
   "installation_answers": [],
   "agent_messages": [],
-  "installation_agent_summary": "Asfdghjk",
+  "installation_agent_summary": "sfgdfhj",
   "llm_model": "claude-sonnet-5-thinking-high",
-  "app_id": "Asefhtg",
-  "dev_key": "YXNkcmdmaHRq"
+  "app_id": "zsfgdhj",
+  "dev_key": "eGNiZm5nbWgsag=="
 }
