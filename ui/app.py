@@ -929,8 +929,9 @@ if selected_map:
 
         st.write("")
         if st.button("🚀 Save and run tests", use_container_width=True, type="primary"):
+            session_id = _session_id()
             try:
-                run_repo.save_selected_use_cases(_session_id(), selected_map)
+                run_repo.save_selected_use_cases(session_id, selected_map)
             except run_repo.RunRepositoryError as exc:
                 _flash("error", str(exc))
             else:
@@ -938,13 +939,18 @@ if selected_map:
 
                 with st.spinner("Running the workflow..."):
                     try:
-                        final_state = run_launcher.start_workflow(_session_id())
+                        final_state = run_launcher.start_workflow(session_id)
                     except run_repo.RunRepositoryError as exc:
                         _flash("error", str(exc))
                     except Exception as exc:  # noqa: BLE001 - surface any node failure to the user
                         _flash("error", f"Workflow failed: {exc}")
                     else:
                         st.session_state["_last_workflow_result"] = final_state
+                        # report_path is captured regardless of pass/fail —
+                        # visual_report_node always writes it — so the report
+                        # below can still be opened even on a failed run.
+                        report_path = final_state.get("report_path") or ""
+                        st.session_state["_last_report_path"] = report_path
                         if final_state.get("test_status") == "FAIL":
                             reason = (
                                 final_state.get("fail_reason")
@@ -955,11 +961,31 @@ if selected_map:
                                 "error",
                                 f"Workflow finished with failures. {reason}",
                             )
+                        elif report_path:
+                            _flash("success", f"Workflow finished. Report saved to {report_path}.")
                         else:
                             _flash("success", "Workflow finished running.")
             st.rerun()
 
-        last_result = st.session_state.get("_last_workflow_result")
+        last_report_path = st.session_state.get("_last_report_path")
+        last_result = st.session_state.get("_last_workflow_result") or {}
+        if last_report_path and Path(last_report_path).is_file():
+            last_run_id = last_result.get("run_id", "")
+            st.divider()
+            st.markdown('<div class="section-eyebrow">Run output</div>', unsafe_allow_html=True)
+            st.subheader("Pipeline Run Report")
+            st.caption(f"Run ID: `{last_run_id}`")
+            report_html = Path(last_report_path).read_text(encoding="utf-8")
+            st.download_button(
+                "Download report.html",
+                data=report_html,
+                file_name=f"{last_run_id or 'report'}.html",
+                mime="text/html",
+                use_container_width=True,
+            )
+            with st.container(border=True):
+                st.components.v1.html(report_html, height=900, scrolling=True)
+
         if last_result:
             with st.expander("Last workflow run — nodes_log", expanded=False):
                 st.json(last_result.get("nodes_log", []))
