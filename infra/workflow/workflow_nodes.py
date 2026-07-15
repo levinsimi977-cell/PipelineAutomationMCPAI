@@ -22,6 +22,10 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
+from infra.agents.userActions.deep_link import (
+    extract_deep_link_url_from_audit,
+    simulate_deep_link_click,
+)
 
 
 # Resolve emulator tools directory relative to this file
@@ -588,6 +592,9 @@ def sdk_agent_node(
         )
     )
 
+    deep_link_url = extract_deep_link_url_from_audit(audit_recorder)
+    if deep_link_url:
+        state["deep_link_url"] = deep_link_url
 
     state["type_agent"] = "sdk_agent"
 
@@ -856,7 +863,8 @@ def deep_link_node(
     """
     Node 9: Deep Link
     """
-
+    state["deep_link_is_visited"] = True
+    state.update(simulate_deep_link_click(state))
     return state
 
 
