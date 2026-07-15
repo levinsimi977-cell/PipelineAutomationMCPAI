@@ -156,7 +156,7 @@ class PipelineState(TypedDict, total=False):
     # Agent management
     # ==================================================
 
-    agent_id: NotRequired[int]
+    agent_id: NotRequired[Optional[str]]
 
     agent_model: NotRequired[str]
 
@@ -255,7 +255,7 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     """
 
     # New pipeline behavior: every run starts with a fresh sdk agent id
-    state.setdefault("agent_id", 0)
+    state.setdefault("agent_id", None)
 
     selected_cases = state.get("selected_use_cases") or []
     run_id = state.get("run_id", "run")
@@ -318,6 +318,10 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
         state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
         state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        # Each use case gets its own sdk_agent conversation: reset agent_id so
+        # run_sdk_integration_agent builds a fresh agent instead of reusing a
+        # (by now closed) session id left over from the previous use case.
+        state["agent_id"] = None
 
         if current_use_case.get("answer_policy"):
             run_id = state.get("run_id", "run")
