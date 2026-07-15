@@ -12,6 +12,7 @@ Writes HTML to:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -180,6 +181,8 @@ class RunReportBuilder:
         state: dict[str, Any],
         audit_events: list[dict[str, Any]],
         output_path: Path,
+        *,
+        index_url: str | None = None,
     ) -> Path:
         normalized = self._normalize_events(audit_events)
         summary = self._build_summary(state, normalized)
@@ -194,10 +197,19 @@ class RunReportBuilder:
             audit_detail=self._build_audit_detail(audit_events),
             mcp_conversation=self._build_mcp_conversation(audit_events),
             mcp_validation=self._build_mcp_validation(state, audit_events),
+            index_url=index_url,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(html, encoding="utf-8")
         return output_path
+
+    def evaluate(self, state: dict[str, Any]) -> dict[str, Any]:
+        """
+        Same pass/failed/unknown verdict shown at the top of a detail report,
+        without rendering the full HTML. Used to label a use case's card on
+        the run's index page with the same status the detail report agrees on.
+        """
+        return self._build_validation(state, self._build_workflow_detail(state))
 
     def _normalize_events(self, audit_events: list[dict[str, Any]]) -> list[NormalizedAuditEvent]:
         normalized: list[NormalizedAuditEvent] = []
@@ -351,6 +363,14 @@ class RunReportBuilder:
                 detail_lines.append(summary)
         if detail_lines:
             checks.append({"label": "Details", "value": "\n".join(detail_lines)})
+
+        # Raw state, exactly as stored (state[f"{node}_log"] or the matching
+        # nodes_log/nodes_logs entries) — not the human-summarized line above.
+        if log_entries:
+            checks.append({
+                "label": "State (raw)",
+                "value": self._format_state_value(log_entries),
+            })
 
         return checks
 
@@ -554,14 +574,13 @@ class RunReportBuilder:
 
         message_lines = [tools_line, workflow_line]
 
-        if tools_valid is True and all_nodes_passed:
-            passed: bool | None = True
+        # Binary verdict only — no ambiguous "Unknown" state. If tool order
+        # couldn't be verified (tools_valid is None) but every workflow node
+        # ran and passed, that's still a Passed run; anything else is Failed.
+        if tools_valid is not False and all_nodes_passed:
+            passed: bool = True
             label = "Passed"
             css_class = "passed"
-        elif tools_valid is None and all_nodes_passed:
-            passed = None
-            label = "Unknown"
-            css_class = "unknown"
         else:
             passed = False
             label = "Failed"
@@ -934,10 +953,201 @@ def generate_run_report(
         from data.reports.build_report import generate_run_report
         generate_run_report(state)
     """
-    run_id = state.get("run_id") or state.get("runId") or datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_id = state.get("run_id") or state.get("runId")
+    if not run_id:
+        from infra.workflow.use_case_loader import generate_run_id
+
+        run_id = generate_run_id()
+    run_date = run_date or datetime.now()
     output_dir = resolve_output_dir(str(run_id), run_date=run_date)
     audit_events = load_audit_events(state, audit_recorder=audit_recorder)
     return RunReportBuilder().build(state, audit_events, output_dir / "report.html")
 
 
-__all__ = ["RunReportBuilder", "generate_run_report", "load_audit_events", "resolve_output_dir"]
+def generate_and_attach_report(
+    state: dict[str, Any],
+    *,
+    audit_recorder: AuditRecorder | None = None,
+) -> dict[str, Any]:
+    """
+    Workflow-node wrapper around generate_run_report().
+
+    Builds a single combined-state HTML report and records its path under
+    state["report_path"]. Kept for standalone callers (e.g. one-off scripts)
+    that just want one report for the whole state, no per-use-case index.
+    For the multi-use-case workflow, see record_use_case_report() /
+    attach_index_report() below instead.
+
+    A report failure never raises: it must not hide a successful workflow
+    result from the caller.
+    """
+    try:
+        report_path = generate_run_report(state, audit_recorder=audit_recorder)
+        state["report_path"] = str(report_path.resolve())
+    except Exception:  # noqa: BLE001 — reporting must not break the workflow
+        state.setdefault("report_path", "")
+    return state
+
+
+def _slugify_use_case_id(value: str) -> str:
+    """Sanitize a use case id into a safe folder name."""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", str(value or "").strip()).strip("-")
+    return slug or "use-case"
+
+
+def resolve_use_case_output_dir(
+    run_id: str, use_case_id: str, run_date: datetime | None = None
+) -> Path:
+    """data/reports/<date>/<run_id>/<use-case-slug>/ — one folder per use case in the run."""
+    return resolve_output_dir(run_id, run_date=run_date) / _slugify_use_case_id(use_case_id)
+
+
+def record_use_case_report(
+    state: dict[str, Any],
+    *,
+    audit_recorder: AuditRecorder | None = None,
+    run_date: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Build the detail report for the use case that just finished the pipeline.
+
+    Must be called from visual_report_node BEFORE it advances
+    current_use_case_path to the next use case — state still holds that
+    use case's data (current_use_case, platform, mcp results, etc.) at this
+    point. Appends a card (id, platform, status, path to its own
+    report.html) to state["use_case_reports"] so the run's index page can
+    list every use case once the whole run finishes.
+
+    Never raises — a report failure must not hide a successful workflow
+    result from the caller.
+    """
+    try:
+        current_use_case = state.get("current_use_case") or {}
+        cards: list[dict[str, Any]] = state.setdefault("use_case_reports", [])
+        use_case_id = (
+            current_use_case.get("id")
+            or state.get("primary_use_case_id")
+            or f"use-case-{len(cards) + 1}"
+        )
+        run_id = state.get("run_id") or "run"
+        run_date = run_date or datetime.now()
+        output_dir = resolve_use_case_output_dir(str(run_id), str(use_case_id), run_date=run_date)
+        output_path = output_dir / "report.html"
+
+        audit_events = load_audit_events(state, audit_recorder=audit_recorder)
+        builder = RunReportBuilder()
+        # output_path is always <run_dir>/<use-case-slug>/report.html, so the
+        # run's index.html is exactly one level up — lets the detail report
+        # link back to "all use cases" without knowing the run's absolute path.
+        builder.build(state, audit_events, output_path, index_url="../index.html")
+        validation = builder.evaluate(state)
+
+        cards.append({
+            "id": str(use_case_id),
+            "platform": state.get("platform") or "unknown",
+            "prompt_goal": current_use_case.get("prompt_goal") or "",
+            "status_label": validation.get("label", "Failed"),
+            "css_class": validation.get("css_class", "failed"),
+            "report_path": str(output_path.resolve()),
+            "relative_path": f"{output_path.parent.name}/{output_path.name}",
+            "duration": builder._format_duration(state),
+            "started_at": state.get("started_at"),
+            "ended_at": state.get("ended_at"),
+        })
+    except Exception:  # noqa: BLE001 — reporting must not break the workflow
+        pass
+    return state
+
+
+def _combined_duration(builder: "RunReportBuilder", cards: list[dict[str, Any]]) -> str:
+    """
+    Total run time across every use case in the run — from the earliest
+    started_at to the latest ended_at of any use case, i.e. how long the
+    whole run (all use cases together) actually took, not any single one.
+    """
+    starts: list[datetime] = []
+    ends: list[datetime] = []
+    for card in cards:
+        for raw, bucket in ((card.get("started_at"), starts), (card.get("ended_at"), ends)):
+            if not raw or raw == "N/A":
+                continue
+            try:
+                bucket.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
+            except ValueError:
+                continue
+    if not starts or not ends:
+        return "—"
+    return builder._format_duration({
+        "started_at": min(starts).isoformat(),
+        "ended_at": max(ends).isoformat(),
+    })
+
+
+def generate_index_report(
+    state: dict[str, Any],
+    *,
+    run_date: datetime | None = None,
+) -> Path:
+    """Render data/reports/<date>/<run_id>/index.html — cards for every use case in the run."""
+    run_id = state.get("run_id") or "run"
+    run_date = run_date or datetime.now()
+    output_dir = resolve_output_dir(str(run_id), run_date=run_date)
+    cards = state.get("use_case_reports") or []
+
+    builder = RunReportBuilder()
+
+    totals = {
+        "total": len(cards),
+        "passed": sum(1 for c in cards if c.get("css_class") == "passed"),
+        "failed": sum(1 for c in cards if c.get("css_class") != "passed"),
+    }
+
+    html = builder.env.get_template("index_report.html.j2").render(
+        generated_at=builder._format_display_datetime(),
+        run_id=run_id,
+        cards=cards,
+        totals=totals,
+        total_duration=_combined_duration(builder, cards),
+    )
+    output_path = output_dir / "index.html"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html, encoding="utf-8")
+    return output_path
+
+
+def attach_index_report(
+    state: dict[str, Any],
+    *,
+    run_date: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Workflow-node wrapper around generate_index_report().
+
+    Intended to be called from visual_report_node once current_use_case_path
+    is exhausted (every use case in the run has its own card + detail report
+    already recorded via record_use_case_report()). Records the index page's
+    path under state["report_path"] so the UI opens the cards overview
+    first, with each card linking to that use case's own detail report.
+
+    A report failure never raises: it must not hide a successful workflow
+    result from the caller.
+    """
+    try:
+        report_path = generate_index_report(state, run_date=run_date)
+        state["report_path"] = str(report_path.resolve())
+    except Exception:  # noqa: BLE001 — reporting must not break the workflow
+        state.setdefault("report_path", "")
+    return state
+
+
+__all__ = [
+    "RunReportBuilder",
+    "generate_run_report",
+    "generate_and_attach_report",
+    "record_use_case_report",
+    "generate_index_report",
+    "attach_index_report",
+    "resolve_use_case_output_dir",
+    "load_audit_events",
+    "resolve_output_dir",
+]

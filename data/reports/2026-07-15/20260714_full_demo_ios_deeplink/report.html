@@ -76,9 +76,27 @@
 
     .top-bar {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 12px;
     }
+    .top-bar-left { display: flex; align-items: center; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-dark);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: var(--chip-shadow);
+    }
+    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
     .theme-toggle {
       display: inline-flex;
       align-items: center;
@@ -612,6 +630,8 @@
   <div class="container">
 
     <div class="top-bar">
+      <div class="top-bar-left">
+      </div>
       <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
         <span id="theme-toggle-icon">🌙</span>
         <span id="theme-toggle-label">Dark mode</span>
@@ -620,7 +640,7 @@
 
     <header class="page-header">
       <h1>Pipeline Run Report</h1>
-      <p class="subtitle">Report generated on July 15, 2026 at 09:49 AM</p>
+      <p class="subtitle">Report generated on July 15, 2026 at 02:58 PM</p>
     </header>
 
     <section class="verdict passed">
@@ -2410,6 +2430,20 @@ Conversion data received. First open event detected.</pre>
       var btn = document.getElementById("theme-toggle");
       var label = document.getElementById("theme-toggle-label");
       var icon = document.getElementById("theme-toggle-icon");
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto any link to another report page
+        // (card / back-to-overview) so navigating between them keeps the
+        // same light/dark choice, without affecting any other report.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
 
       function applyTheme(theme) {
         if (theme === "dark") {
@@ -2421,14 +2455,20 @@ Conversion data received. First open event detected.</pre>
           label.textContent = "Dark mode";
           icon.textContent = "🌙";
         }
+        propagateTheme(theme);
       }
 
-      applyTheme(localStorage.getItem("report-theme") || "light");
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via a card or the "All use
+      // cases" link carries whichever theme was active on the linking page.
+      applyTheme(themeFromQuery());
 
       btn.addEventListener("click", function () {
-        var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
-        localStorage.setItem("report-theme", next);
-        applyTheme(next);
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
       });
     })();
   </script>

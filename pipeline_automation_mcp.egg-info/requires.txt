@@ -1,4 +1,8 @@
+jsonschema>=4.0.0
+jinja2>=3.1.0
+pydantic>=2.8.0
 python-dotenv>=1.2.2
+Appium-Python-Client>=3.1.0
 
 [dev]
 pytest>=8.0

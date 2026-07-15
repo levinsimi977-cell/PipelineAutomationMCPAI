@@ -152,6 +152,6 @@ class McpToolOrderValidator:
         return f"{tool}_{action}" if action else tool
 
 
-from infra.user_interface_use_case.reports.reporter import ReportGenerator, generate_html_report
+from infra.reports.reporter import ReportGenerator, generate_html_report
 
 __all__ = ["McpToolOrderValidator", "ReportGenerator", "generate_html_report"]

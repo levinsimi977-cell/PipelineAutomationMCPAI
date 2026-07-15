@@ -1,0 +1,314 @@
+,rh<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Run Report — 20260715_multi_use_case_demo</title>
+  <style>
+    :root {
+      --bg: #f0f7ff;
+      --surface: #ffffff;
+      --surface-soft: #f8fbff;
+      --border: #dbeafe;
+      --border-strong: #93c5fd;
+      --text: #1e3a5f;
+      --muted: #64748b;
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --primary-dark: #0369a1;
+      --passed: #059669;
+      --passed-bg: #ecfdf5;
+      --failed: #dc2626;
+      --failed-bg: #fef2f2;
+      --unknown: #d97706;
+      --unknown-bg: #fffbeb;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
+      --body-gradient: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+      --passed-border: #6ee7b7;
+      --failed-border: #fca5a5;
+      --unknown-border: #fcd34d;
+      --chip-shadow: 0 1px 4px rgba(2,132,199,.06);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: #151f32;
+      --surface-soft: #111827;
+      --border: #2d3a52;
+      --border-strong: #475569;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-light: #1e293b;
+      --primary-dark: #bae6fd;
+      --passed: #34d399;
+      --passed-bg: #064e3b;
+      --failed: #f87171;
+      --failed-bg: #450a0a;
+      --unknown: #fbbf24;
+      --unknown-bg: #451a03;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+      --body-gradient: linear-gradient(160deg, #0b1220 0%, #111827 45%, #0c4a6e 100%);
+      --passed-border: #059669;
+      --failed-border: #dc2626;
+      --unknown-border: #d97706;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background: var(--body-gradient);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 1080px; margin: 0 auto; padding: 36px 24px 52px; }
+
+    .top-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--chip-shadow);
+    }
+    .theme-toggle:hover { background: var(--primary-light); border-color: var(--border-strong); }
+
+    .page-header { text-align: center; margin-bottom: 28px; }
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      letter-spacing: -0.02em;
+    }
+    .page-header .subtitle { color: var(--muted); font-size: 1.02rem; margin: 0; }
+    .run-id-line {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: 4px 0 28px;
+      word-break: break-word;
+    }
+    .run-id-line strong { color: var(--primary-dark); font-weight: 600; }
+
+    .totals-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .total-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 12px;
+      text-align: center;
+      box-shadow: var(--chip-shadow);
+    }
+    .total-chip .num { font-size: 1.5rem; font-weight: 800; }
+    .total-chip .num.text { font-size: 1.15rem; }
+    .total-chip .lbl { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .total-chip.passed .num { color: var(--passed); }
+    .total-chip.failed .num { color: var(--failed); }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      display: block;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      text-decoration: none;
+      color: var(--text);
+      transition: transform 0.12s, border-color 0.12s;
+    }
+    .card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+    .card-title { font-size: 1.05rem; font-weight: 700; color: var(--primary-dark); word-break: break-word; }
+    .status-badge {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .status-badge.passed { background: var(--passed-bg); color: var(--passed); border: 1px solid var(--passed-border); }
+    .status-badge.failed { background: var(--failed-bg); color: var(--failed); border: 1px solid var(--failed-border); }
+
+    .card-platform {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-light);
+      border-radius: 6px;
+      padding: 2px 8px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .card-duration {
+      display: inline-block;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 8px 8px;
+    }
+    .card-desc {
+      font-size: 0.92rem;
+      color: var(--muted);
+      margin: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-footer {
+      margin-top: 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .empty {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="top-bar">
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
+        <span id="theme-toggle-icon">🌙</span>
+        <span id="theme-toggle-label">Dark mode</span>
+      </button>
+    </div>
+
+    <header class="page-header">
+      <h1>Pipeline Run Report</h1>
+      <p class="subtitle">Report generated on July 15, 2026 at 03:07 PM</p>
+    </header>
+    <p class="run-id-line">Run ID: <strong>20260715_multi_use_case_demo</strong></p>
+
+    <div class="totals-row">
+      <div class="total-chip"><div class="num">3</div><div class="lbl">Use cases</div></div>
+      <div class="total-chip passed"><div class="num">2</div><div class="lbl">Passed</div></div>
+      <div class="total-chip failed"><div class="num">1</div><div class="lbl">Failed</div></div>
+      <div class="total-chip"><div class="num text">27m 35s</div><div class="lbl">Total duration</div></div>
+    </div>
+
+    <div class="cards-grid">
+      <a class="card" data-theme-link href="common-first-open-sdk-presence/report.html" target="_blank" rel="noopener">
+        <div class="card-head">
+          <span class="card-title">common-first-open-sdk-presence</span>
+          <span class="status-badge passed">
+✓            Passed
+          </span>
+        </div>
+        <span class="card-platform">android</span>
+        <span class="card-duration">⏱ 27m 35s</span>
+        <p class="card-desc">Validate SDK presence and first-open event on launch.</p>
+        <div class="card-footer">Open detail report →</div>
+      </a>
+      <a class="card" data-theme-link href="common-deeplink-smoke/report.html" target="_blank" rel="noopener">
+        <div class="card-head">
+          <span class="card-title">common-deeplink-smoke</span>
+          <span class="status-badge passed">
+✓            Passed
+          </span>
+        </div>
+        <span class="card-platform">ios</span>
+        <span class="card-duration">⏱ 27m 35s</span>
+        <p class="card-desc">Smoke-test OneLink deep link handling end to end.</p>
+        <div class="card-footer">Open detail report →</div>
+      </a>
+      <a class="card" data-theme-link href="ios-deeplink-validation/report.html" target="_blank" rel="noopener">
+        <div class="card-head">
+          <span class="card-title">ios-deeplink-validation</span>
+          <span class="status-badge failed">
+✗            Failed
+          </span>
+        </div>
+        <span class="card-platform">ios</span>
+        <span class="card-duration">⏱ 22m 51s</span>
+        <p class="card-desc">Validate deep link opens the expected destination screen.</p>
+        <div class="card-footer">Open detail report →</div>
+      </a>
+    </div>
+
+  </div>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      var label = document.getElementById("theme-toggle-label");
+      var icon = document.getElementById("theme-toggle-icon");
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto every card link so opening a use
+        // case's detail report keeps the same light/dark choice made here.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
+
+      function applyTheme(theme) {
+        if (theme === "dark") {
+          root.setAttribute("data-theme", "dark");
+          label.textContent = "Light mode";
+          icon.textContent = "☀️";
+        } else {
+          root.removeAttribute("data-theme");
+          label.textContent = "Dark mode";
+          icon.textContent = "🌙";
+        }
+        propagateTheme(theme);
+      }
+
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via the "back to overview"
+      // link carries whichever theme was active on the detail report.
+      applyTheme(themeFromQuery());
+
+      btn.addEventListener("click", function () {
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+      });
+    })();
+  </script>
+</body>
+</html>

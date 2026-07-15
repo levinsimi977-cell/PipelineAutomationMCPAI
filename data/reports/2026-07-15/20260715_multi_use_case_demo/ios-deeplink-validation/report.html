@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Run Report — 20260714_failed_demo_ios_deeplink</title>
+  <title>Run Report — 20260715_multi_use_case_demo</title>
   <style>
     :root {
       --bg: #f0f7ff;
@@ -76,9 +76,27 @@
 
     .top-bar {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 12px;
     }
+    .top-bar-left { display: flex; align-items: center; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-dark);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: var(--chip-shadow);
+    }
+    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
     .theme-toggle {
       display: inline-flex;
       align-items: center;
@@ -612,6 +630,9 @@
   <div class="container">
 
     <div class="top-bar">
+      <div class="top-bar-left">
+        <a class="back-link" data-theme-link href="../index.html">← All use cases</a>
+      </div>
       <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
         <span id="theme-toggle-icon">🌙</span>
         <span id="theme-toggle-label">Dark mode</span>
@@ -620,7 +641,7 @@
 
     <header class="page-header">
       <h1>Pipeline Run Report</h1>
-      <p class="subtitle">Report generated on July 15, 2026 at 02:42 PM</p>
+      <p class="subtitle">Report generated on July 15, 2026 at 03:07 PM</p>
     </header>
 
     <section class="verdict failed">
@@ -694,6 +715,15 @@
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Materialized 3 use case JSON files.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Materialized 3 use case JSON files."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -723,6 +753,15 @@
                       <tr>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Loaded use case and registered answer_policy.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Loaded use case and registered answer_policy."
+  }
+]</pre></td>
                       </tr>
                     </tbody>
                   </table>
@@ -754,6 +793,15 @@
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Sandbox cloned; MCP alive; app validated.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Sandbox cloned; MCP alive; app validated."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -783,6 +831,15 @@
                       <tr>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Generated integrate/event/verify prompts.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Generated integrate/event/verify prompts."
+  }
+]</pre></td>
                       </tr>
                     </tbody>
                   </table>
@@ -815,6 +872,21 @@
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">integrate_prompt: SDK integration completed.
 event_prompt: In-app event af_purchase wired.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "prompt_type": "integrate_prompt",
+    "message": "SDK integration completed."
+  },
+  {
+    "status": "Success",
+    "prompt_type": "event_prompt",
+    "message": "In-app event af_purchase wired."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -844,6 +916,15 @@ event_prompt: In-app event af_purchase wired.</pre></td>
                       <tr>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">xcodebuild failed — undefined symbol _AppsFlyerLib in BananasViewController.o</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Fail",
+    "message": "xcodebuild failed — undefined symbol _AppsFlyerLib in BananasViewController.o"
+  }
+]</pre></td>
                       </tr>
                     </tbody>
                   </table>
@@ -875,6 +956,15 @@ event_prompt: In-app event af_purchase wired.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">User action simulation passed.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "User action simulation passed."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -904,6 +994,15 @@ event_prompt: In-app event af_purchase wired.</pre></td>
                       <tr>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Appium started; app launched.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Appium started; app launched."
+  }
+]</pre></td>
                       </tr>
                     </tbody>
                   </table>
@@ -1063,38 +1162,9 @@ event_prompt: In-app event af_purchase wired.</pre></td>
                 <tr>
                   <td>current_use_case</td>
                   <td><pre>{
-  "id": "common-deeplink-smoke",
-  "useCaseId": "common-deeplink-smoke",
+  "id": "ios-deeplink-validation",
   "platform": "ios",
-  "app_path": "data/application/banana.app",
-  "prompt_goal": "Integrate AppsFlyer SDK, wire in-app purchase event, and validate deep link handling.",
-  "answer_policy": {
-    "ios_minimal": {
-      "use_att": true,
-      "use_cuid": true,
-      "use_scene_delegate": true,
-      "use_response_listener": true
-    },
-    "deeplink": {
-      "use_deep_linking": true,
-      "onelink_url": "https://banana.onelink.me/xyz9/offers",
-      "url_identifier": "offers",
-      "uri_scheme": "banana",
-      "use_custom_uri_scheme": true
-    },
-    "in_app_event": {
-      "inapp_event_method": "button_tap",
-      "event_name": "af_purchase",
-      "event_params": {
-        "product_id": "banana_bundle",
-        "price": 4.99
-      }
-    },
-    "verify_sdk": {
-      "verify_logs_ready": true,
-      "app_launched": true
-    }
-  }
+  "prompt_goal": "Validate deep link opens the expected destination screen."
 }</pre></td>
                 </tr>
                 <tr>
@@ -1124,7 +1194,7 @@ event_prompt: In-app event af_purchase wired.</pre></td>
               <tbody>
                 <tr>
                   <td>run_id</td>
-                  <td><pre>20260714_failed_demo_ios_deeplink</pre></td>
+                  <td><pre>20260715_multi_use_case_demo</pre></td>
                 </tr>
                 <tr>
                   <td>platform</td>
@@ -1556,6 +1626,35 @@ verifyIosDeepLink was invoked before createIosDeepLink for ios.</pre></td>
                 <tr>
                   <td>use_case_id</td>
                   <td><pre>common-deeplink-smoke</pre></td>
+                </tr>
+                <tr>
+                  <td>use_case_reports</td>
+                  <td><pre>[
+  {
+    "id": "common-first-open-sdk-presence",
+    "platform": "android",
+    "prompt_goal": "Validate SDK presence and first-open event on launch.",
+    "status_label": "Passed",
+    "css_class": "passed",
+    "report_path": "/Users/user8/Desktop/PiplineAutomatoinMCP/data/reports/2026-07-15/20260715_multi_use_case_demo/common-first-open-sdk-presence/report.html",
+    "relative_path": "common-first-open-sdk-presence/report.html",
+    "duration": "27m 35s",
+    "started_at": "2026-07-14T08:55:12",
+    "ended_at": "2026-07-14T09:22:47"
+  },
+  {
+    "id": "common-deeplink-smoke",
+    "platform": "ios",
+    "prompt_goal": "Smoke-test OneLink deep link handling end to end.",
+    "status_label": "Passed",
+    "css_class": "passed",
+    "report_path": "/Users/user8/Desktop/PiplineAutomatoinMCP/data/reports/2026-07-15/20260715_multi_use_case_demo/common-deeplink-smoke/report.html",
+    "relative_path": "common-deeplink-smoke/report.html",
+    "duration": "27m 35s",
+    "started_at": "2026-07-14T08:55:12",
+    "ended_at": "2026-07-14T09:22:47"
+  }
+]</pre></td>
                 </tr>
               </tbody>
             </table>
@@ -2371,6 +2470,20 @@ Conversion data received. First open event detected.</pre>
       var btn = document.getElementById("theme-toggle");
       var label = document.getElementById("theme-toggle-label");
       var icon = document.getElementById("theme-toggle-icon");
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto any link to another report page
+        // (card / back-to-overview) so navigating between them keeps the
+        // same light/dark choice, without affecting any other report.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
 
       function applyTheme(theme) {
         if (theme === "dark") {
@@ -2382,11 +2495,17 @@ Conversion data received. First open event detected.</pre>
           label.textContent = "Dark mode";
           icon.textContent = "🌙";
         }
+        propagateTheme(theme);
       }
 
-      // Always open in light mode — the toggle below only affects this
-      // viewing session, it never carries over to the next report opened.
-      applyTheme("light");
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via a card or the "All use
+      // cases" link carries whichever theme was active on the linking page.
+      applyTheme(themeFromQuery());
 
       btn.addEventListener("click", function () {
         applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
