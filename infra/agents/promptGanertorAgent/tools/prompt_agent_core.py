@@ -2,6 +2,10 @@ import os
 import json
 from pathlib import Path
 
+from infra.load_env import load_project_env
+
+load_project_env()
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -28,7 +32,9 @@ BASE_PROMPT_TEMPLATE = PromptTemplate.from_template(
     "- The agent MUST use AppsFlyer MCP tools whenever SDK guidance or validation is needed.\n"
     "- The agent MUST inspect the project files before editing them.\n"
     "- The agent MUST NOT answer from memory instead of calling MCP tools.\n"
-    "- The agent MUST NOT invent AppsFlyer SDK setup or verification steps that are not returned by MCP.\n"
+    "- The agent MUST NOT invent AppsFlyer SDK setup or verification steps that are not returned by MCP, "
+    "but MAY mechanically translate MCP-provided code snippets into the project's actual programming "
+    "language (e.g. Swift to Objective-C) as long as the same APIs, parameters, and logic are preserved.\n"
     "- If the MCP tool is unavailable or fails, the agent must report failure instead of guessing.\n\n"
     "Stage-specific instructions:\n{stage_instructions}\n\n"
     "Create one final prompt for the SDK agent now."
