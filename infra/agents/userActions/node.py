@@ -16,19 +16,20 @@ def user_actions_node(state: PipelineState) -> PipelineState:
         state["next_node"] = NODE_NAME
         return state
 
-    audit_path = state.get("audit_path")
+    sandbox_path = state.get("sandbox_path")
     platform = state.get("platform")
-    if not audit_path or not platform:
+    manifest_path = Path(sandbox_path) / "events.wired.json" if sandbox_path else None
+    if not sandbox_path or not platform or not manifest_path or not manifest_path.is_file():
         state.setdefault("nodes_log", []).append({
             "node": NODE_NAME,
             "status": "Fail",
-            "details": {"error": "audit_path and platform are required"},
+            "details": {"error": "sandbox_path, platform, and events.wired.json are required"},
         })
         state["next_node"] = NODE_NAME
         return state
 
     result = run_user_actions_pipeline(
-        audit_path=Path(audit_path),
+        manifest_path=manifest_path,
         platform=platform,
         appium_url=state.get("appium_url", "http://127.0.0.1:4723"),
         wait_seconds=state.get("wait_seconds", 2.0),
