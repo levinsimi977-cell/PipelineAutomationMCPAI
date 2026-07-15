@@ -481,6 +481,13 @@ class RunReportBuilder:
         }
 
     def _parse_bool(self, value: Any) -> bool | None:
+        """
+        Loosely parse a state value that's *supposed* to mean true/false but
+        might be a real bool, a string ("true"/"yes"/"passed"/...), or
+        missing entirely. Returns None (not False!) when `value` is None, so
+        callers can distinguish "explicitly false" from "we don't know" —
+        see how tools_valid is None is treated differently from False below.
+        """
         if value is None:
             return None
         if isinstance(value, bool):
@@ -490,16 +497,34 @@ class RunReportBuilder:
     def _build_validation(
         self, state: dict[str, Any], workflow_detail: dict[str, Any]
     ) -> dict[str, Any]:
-        """Overall pass = MCP tool order valid AND every workflow node visited + successful."""
+        """
+        Builds the top-of-report verdict banner (Passed/Failed) plus the
+        two explanatory lines under it.
+
+        Overall pass = MCP tool order valid AND every workflow node visited
+        + successful. Deliberately a *binary* verdict — no "Unknown" state:
+        if tool-order simply couldn't be verified (tools_valid is None,
+        e.g. no MCP_SEQUENCE event was recorded) but every node still ran
+        and passed, that still counts as Passed; only tools_valid is False
+        (order was checked and found wrong) counts against it. See the
+        tools_valid is not False check further down.
+        """
         tools_valid = self._parse_bool(state.get("is_tool_order_valid"))
+        # Same field, three different spellings across the codebase
+        # (including a typo, "massage" instead of "message") — try all of
+        # them so whichever node actually wrote it is picked up.
         tool_detail = (
             state.get("is_tool_order_valid_message")
             or state.get("is_tool_order_valid_massage")
             or state.get("is_tool_order_valid_msg")
             or ""
         ).strip()
+        # Only the first line of a possibly-multiline detail message — the
+        # verdict banner is meant to be a short summary, not the full text.
         tool_detail_line = tool_detail.split("\n", 1)[0] if tool_detail else ""
 
+        # Pull the roll-up counts _build_workflow_detail() already computed,
+        # instead of recomputing them here.
         wf_summary = workflow_detail.get("summary", {})
         total_nodes = int(wf_summary.get("total_nodes") or len(self.WORKFLOW_NODE_ORDER))
         not_run_count = int(wf_summary.get("not_run_nodes") or 0)
@@ -510,6 +535,9 @@ class RunReportBuilder:
         all_success = failed_count == 0 and passed_count == total_nodes
         all_nodes_passed = all_visited and all_success
 
+        # Build the human-readable "which node(s) caused this" lists used
+        # both in the workflow_line text below and exposed separately in
+        # the returned dict (failed_nodes/not_run_nodes) for the template.
         not_run_node_lines: list[str] = []
         failed_node_lines: list[str] = []
         for node in workflow_detail.get("nodes", []):
@@ -520,6 +548,8 @@ class RunReportBuilder:
                 continue
             if node.get("status") == "passed":
                 continue
+            # Pull that node's own "Details" check (built in _node_checks)
+            # to append a short reason after the node's name/status.
             detail = next(
                 (c["value"] for c in node.get("checks", []) if c.get("label") == "Details"),
                 "",
@@ -529,6 +559,7 @@ class RunReportBuilder:
                 line = f"{line}: {detail.split(chr(10), 1)[0]}"
             failed_node_lines.append(line)
 
+        # First explanatory line: MCP tool call order.
         if tools_valid is True:
             tools_line = "MCP tools were invoked in the correct order."
         elif tools_valid is False:
@@ -538,11 +569,15 @@ class RunReportBuilder:
         else:
             tools_line = "MCP tool order could not be verified for this run."
 
+        # Second explanatory line: workflow node completion. Four distinct
+        # phrasings depending on the exact combination of "did every node
+        # run" (all_visited) and "did everything that ran pass" (all_success).
         if all_visited and all_success:
             workflow_line = (
                 f"All {total_nodes} workflow nodes were executed and completed successfully."
             )
         elif not all_visited and not all_success:
+            # Both incomplete AND something that did run failed — report both.
             parts: list[str] = []
             if failed_node_lines:
                 parts.append(f"Failed at {failed_node_lines[0]}")
@@ -552,6 +587,8 @@ class RunReportBuilder:
                 )
             workflow_line = "Workflow incomplete — " + "; ".join(parts) + "."
         elif not all_visited:
+            # Incomplete, but everything that *did* run passed — the run
+            # simply stopped early (e.g. a graceful early exit), not a failure.
             if not_run_node_lines:
                 workflow_line = (
                     "Workflow incomplete — not executed: "
@@ -563,6 +600,7 @@ class RunReportBuilder:
                     f"Workflow incomplete — {not_run_count} of {total_nodes} nodes were not executed."
                 )
         else:
+            # All nodes visited, but at least one of them failed.
             if failed_node_lines:
                 workflow_line = (
                     "Workflow failed — " + "; ".join(failed_node_lines) + "."
@@ -588,6 +626,10 @@ class RunReportBuilder:
 
         message = "\n".join(message_lines)
 
+        # Only computed for a failed run — a passing run has nothing to
+        # show in the terminal-style error box on the report.
+        error_output = None if passed else self._build_error_output(state, workflow_detail)
+
         return {
             "passed": passed,
             "message": message,
@@ -600,10 +642,74 @@ class RunReportBuilder:
             "all_nodes_success": all_success,
             "failed_nodes": failed_node_lines,
             "not_run_nodes": not_run_node_lines,
+            "error_output": error_output,
         }
 
+    def _build_error_output(
+        self, state: dict[str, Any], workflow_detail: dict[str, Any]
+    ) -> str:
+        """
+        The literal, "straight from the terminal" error text shown in the
+        failed-run report's error box. The goal is to surface whatever text
+        a developer would actually have seen in their own terminal/logs
+        when this run failed — not a re-summarized version of it — tried in
+        priority order:
+
+          1. state["fail_reason"] / state["error_reason"] — the two fields
+             every failing node in this codebase sets (see
+             infra/workflow/workflow_nodes.py), the same ones ui/app.py
+             already surfaces in the Streamlit UI's error flash message.
+          2. state["compilation_result"]'s stderr/stdout tail, if
+             compilation is what failed — the actual xcodebuild/gradle
+             output captured by infra/agents/compilationAgent.
+          3. The first failed (or warning) workflow node's own "Details"
+             check, in full — unlike the short one-line summary used in
+             the verdict's workflow_line text above.
+          4. A generic fallback message if none of the above yielded
+             anything, so the box is never left blank.
+        """
+        fail_reason = state.get("fail_reason") or state.get("error_reason")
+        if fail_reason:
+            return str(fail_reason).strip()
+
+        compilation_result = state.get("compilation_result")
+        if compilation_result is not None:
+            # compilation_result may be a CompilationResult dataclass
+            # instance (the real pipeline) or a plain dict (demo fixtures)
+            # — this small getter works against either shape.
+            if isinstance(compilation_result, dict):
+                get = compilation_result.get
+            else:
+                get = lambda key, default=None: getattr(compilation_result, key, default)  # noqa: E731
+            stderr_tail = str(get("stderr_tail") or "").strip()
+            stdout_tail = str(get("stdout_tail") or "").strip()
+            detail = str(get("detail") or "").strip()
+            if stderr_tail or stdout_tail or detail:
+                return "\n\n".join(part for part in (detail, stderr_tail or stdout_tail) if part)
+
+        for node in workflow_detail.get("nodes", []):
+            if node.get("node") not in self.WORKFLOW_NODE_ORDER:
+                continue
+            if node.get("status") not in ("failed", "warning"):
+                continue
+            detail = next(
+                (c["value"] for c in node.get("checks", []) if c.get("label") == "Details"),
+                "",
+            )
+            if detail and detail != "—":
+                return f"[{node['label']}]\n{detail}"
+
+        return "No error details were captured for this run."
+
     def _build_audit_detail(self, audit_events: list[dict[str, Any]]) -> dict[str, Any]:
-        """Structured audit view aligned with AuditRecorder storage format."""
+        """
+        Structured audit view aligned with AuditRecorder storage format:
+        buckets every raw event by its event_type into one of four known
+        categories (agent decisions, MCP tool results, simulated user
+        replies, MCP call log), each rendered as its own table in the
+        report's Audit section, plus a catch-all "other_events" bucket for
+        any event_type not in that list.
+        """
         agent_decisions: list[dict[str, str]] = []
         mcp_tool_results: list[dict[str, str]] = []
         simulated_user_replies: list[dict[str, str]] = []
@@ -645,7 +751,24 @@ class RunReportBuilder:
         }
 
     def _build_mcp_conversation(self, audit_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Pair AGENT_DECISION with the next MCP_TOOL_RESULT for the same tool."""
+        """
+        Pair AGENT_DECISION with the next MCP_TOOL_RESULT for the same tool,
+        so the report can show "agent called X with these args -> got this
+        result" as one row instead of two separate unlinked events.
+
+        `pending` holds AGENT_DECISION entries still waiting for their
+        matching result. When a MCP_TOOL_RESULT for the same tool name
+        arrives, it's matched against the *most recent* still-unmatched
+        pending decision for that tool (searched in reverse) — handles the
+        same tool being called more than once in a row correctly, pairing
+        each call with its own result rather than always the first one.
+        If a result shows up with no matching pending decision (shouldn't
+        normally happen, but data can be incomplete), it's still shown as
+        its own row with empty args rather than being dropped.
+        Anything left in `pending` at the end (a decision whose result never
+        arrived — e.g. the run crashed mid-call) is appended as-is, with
+        result=None, so it's still visible instead of silently disappearing.
+        """
         conversation: list[dict[str, Any]] = []
         pending: list[dict[str, Any]] = []
 
@@ -684,7 +807,28 @@ class RunReportBuilder:
         return conversation
 
     def _build_state_sections(self, state: dict[str, Any]) -> list[dict[str, Any]]:
-        """Grouped pipeline state per spec — only keys present in state are shown."""
+        """
+        Grouped pipeline state per spec — only keys present in state are
+        shown. Built in three passes so every key in `state` ends up
+        displayed exactly once, in a sensible place:
+
+          1. Walk STATE_SECTIONS in order; any key from a section's `keys`
+             tuple that actually exists in `state` becomes a row in that
+             section, and gets added to `covered` so later passes know
+             it's already been shown.
+          2. Any remaining state key not covered above, not one of the
+             workflow's internal per-node bookkeeping keys (skipped via the
+             `skip` set), and not starting with "_" (a private/internal
+             key) lands in a catch-all "Other State" section — this is
+             what guarantees nothing in `state` is ever silently dropped
+             just because it wasn't anticipated by STATE_SECTIONS.
+          3. Per-node "{node}_is_visited" / "{node}_log" keys, if a node
+             wrote them directly to state, get their own dedicated
+             "Workflow Node State Keys" section instead of cluttering
+             "Other State" — these are already shown per-node in the
+             Workflow timeline anyway, so this section is more of a raw
+             backup view of the same data.
+        """
         covered: set[str] = set()
         sections: list[dict[str, Any]] = []
 
@@ -748,6 +892,17 @@ class RunReportBuilder:
         return sections
 
     def _build_mcp_validation(self, state: dict[str, Any], audit_events: list[dict[str, Any]]) -> dict[str, Any]:
+        """
+        Data for the "MCP Tool Call Order" table: which MCP tools were
+        called, in what order, for which platform. Prefers a single
+        MCP_SEQUENCE event if one exists (it's written once, already
+        containing the full ordered call_log plus platform — the most
+        authoritative source), and returns on the first one found. If no
+        MCP_SEQUENCE event exists, falls back to manually collecting every
+        individual MCP_CALL_LOG event's payload in the order they appear,
+        and finally to state["call_log"] if there were no MCP_CALL_LOG
+        events at all either.
+        """
         call_log: list[dict[str, Any]] = []
         for raw in audit_events or []:
             if raw.get("event_type") == "MCP_CALL_LOG":
@@ -765,6 +920,7 @@ class RunReportBuilder:
 
     @staticmethod
     def _format_display_datetime(value: datetime | str | None = None) -> str:
+        """Human-friendly "Report generated on" text — defaults to right now when no value is given."""
         if value is None:
             dt = datetime.now()
         elif isinstance(value, datetime):
@@ -773,11 +929,21 @@ class RunReportBuilder:
             try:
                 dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
             except ValueError:
+                # Not a parseable ISO datetime — show whatever string was
+                # given as-is rather than raising or silently dropping it.
                 return str(value)
         return dt.strftime("%B %d, %Y at %I:%M %p")
 
     @staticmethod
     def _format_state_value(value: Any) -> str:
+        """
+        The single formatter used everywhere a raw state/log value needs to
+        become displayable text: primitives are stringified directly (no
+        quotes added around plain strings), everything else (dict, list,
+        etc.) is pretty-printed as JSON. If a value somehow isn't
+        JSON-serializable, falls back to Python's own str() instead of
+        raising — a report must always render even if one value is odd.
+        """
         if value is None:
             return "null"
         if isinstance(value, (str, int, float, bool)):
@@ -788,6 +954,7 @@ class RunReportBuilder:
             return str(value)
 
     def _format_duration(self, state: dict[str, Any]) -> str:
+        """"—" whenever either timestamp is missing/invalid/negative, so the UI never shows a bogus duration."""
         started = state.get("started_at")
         ended = state.get("ended_at")
         if not started or not ended or started == "N/A":
@@ -800,6 +967,8 @@ class RunReportBuilder:
                 return "—"
             mins, secs = divmod(total_secs, 60)
             hours, mins = divmod(mins, 60)
+            # Coarsest non-zero unit wins: once there are hours, minutes
+            # alone stop being shown; once there are minutes, seconds stop.
             if hours:
                 return f"{hours}h {mins}m"
             if mins:
@@ -809,6 +978,12 @@ class RunReportBuilder:
             return "—"
 
     def _resolve_use_case_display(self, state: dict[str, Any]) -> str:
+        """
+        Best-effort "which use case is this report about" label, tried in
+        priority order across several possible state keys (different
+        callers/nodes populate different ones), finally falling back to
+        state["current_use_case"]["id"/"useCaseId"], and "—" if truly nothing is set.
+        """
         for key in ("primary_use_case_name", "use_case_id", "primary_use_case_id", "current_use_case_path"):
             value = state.get(key)
             if value is None or value == "":
@@ -820,6 +995,7 @@ class RunReportBuilder:
         )
 
     def _build_summary(self, state: dict[str, Any], events: list[NormalizedAuditEvent]) -> dict[str, Any]:
+        """Builds the report header: run id, platform, duration, and the three chips shown right under the title."""
         run_id = state.get("run_id") or state.get("runId") or "unknown-run"
 
         return {
@@ -838,6 +1014,7 @@ class RunReportBuilder:
 
     @staticmethod
     def _load_audit_jsonl(path: Path) -> list[dict[str, Any]]:
+        """Reads an AuditRecorder audit.jsonl file: one JSON object per line, blank lines skipped."""
         return [
             json.loads(line)
             for line in path.read_text(encoding="utf-8").splitlines()
@@ -846,6 +1023,7 @@ class RunReportBuilder:
 
     @staticmethod
     def _format_payload(payload: dict[str, Any]) -> str:
+        """Compact (non-indented) JSON for the Audit Trail table's "Details" column, capped at 2000 chars so one huge payload can't blow up the page."""
         if not payload:
             return ""
         try:
@@ -855,6 +1033,12 @@ class RunReportBuilder:
 
     @staticmethod
     def _infer_source(event_type: str, payload: dict[str, Any]) -> str:
+        """
+        Guess a human-readable "who produced this event" label purely from
+        the event_type string's naming convention, since events don't
+        always explicitly say their source. Falls back to whatever node
+        name is in the payload, or "Pipeline" if even that's missing.
+        """
         if event_type in {"AGENT_DECISION", "MCP_TOOL_RESULT", "MCP_CALL_LOG"}:
             return "LLM ↔ MCP"
         if event_type.startswith("LISTENER"):
@@ -865,6 +1049,7 @@ class RunReportBuilder:
 
     @staticmethod
     def _phase_from_event_type(event_type: str) -> str:
+        """Coarse grouping column for the Audit Trail table — most event types just fall into "General"."""
         if event_type in {"AGENT_DECISION", "MCP_TOOL_RESULT"}:
             return "Agent Orchestration"
         if event_type.startswith("LISTENER"):
@@ -873,6 +1058,15 @@ class RunReportBuilder:
 
     @staticmethod
     def _status_from_event_type(event_type: str, payload: dict[str, Any]) -> str:
+        """
+        Per-event pass/fail/info status, tried in priority order: an
+        explicit status/test_status field in the payload wins if present;
+        otherwise a listener that reported FAIL counts as failed; otherwise
+        for MCP_TOOL_RESULT specifically, a crude keyword scan of the result
+        text ("error"/"failed") is used as a last resort since MCP tool
+        results don't always carry a separate status field. Anything else
+        defaults to "info" (neither success nor failure, just informational).
+        """
         explicit = payload.get("status") or payload.get("test_status")
         if explicit:
             return RunReportBuilder._normalize_status(str(explicit))
@@ -885,6 +1079,7 @@ class RunReportBuilder:
 
     @staticmethod
     def _normalize_status(value: str) -> str:
+        """Collapses every status spelling used anywhere in this codebase (ok/success/pass/ready/warn/error/fail/...) down to one of exactly four buckets: passed/warning/failed/info."""
         lowered = value.lower().strip()
         if lowered in {"ok", "success", "pass", "passed", "ready"}:
             return "passed"
@@ -896,6 +1091,7 @@ class RunReportBuilder:
 
     @staticmethod
     def _infer_phase(source: str, event: str, details: str) -> str:
+        """Last-resort phase guess for legacy-shaped events (see _normalize_events) that don't carry an explicit "phase" field — simple keyword sniffing over the combined text."""
         text = f"{source} {event} {details}".lower()
         if "agent" in text or "prompt" in text:
             return "Agent Orchestration"
@@ -905,12 +1101,19 @@ class RunReportBuilder:
 
     @staticmethod
     def _normalize_timestamp(value: Any) -> str:
+        """Report timestamps are always plain strings for display — "N/A" placeholder if none was recorded, otherwise just str()'d as-is (no reformatting/timezone conversion)."""
         if value is None:
             return "N/A"
         return str(value)
 
 
 def resolve_output_dir(run_id: str, run_date: datetime | None = None) -> Path:
+    """
+    The folder convention every report path in this module is built from:
+    data/reports/<YYYY-MM-DD>/<run_id>/ — dated by day so reports naturally
+    sort/group by when the run happened, defaulting to today if `run_date`
+    isn't given.
+    """
     day = (run_date or datetime.now()).strftime("%Y-%m-%d")
     return DATA_REPORTS_DIR / day / run_id
 
@@ -919,6 +1122,19 @@ def load_audit_events(
     state: dict[str, Any],
     audit_recorder: AuditRecorder | None = None,
 ) -> list[dict[str, Any]]:
+    """
+    Get the list of raw audit events for a run, tried in priority order:
+      1. An AuditRecorder instance passed in directly by the caller.
+      2. state["audit_recorder"] — the same live recorder object the
+         workflow itself used during this run, if it's still around.
+      3. An audit.jsonl file on disk (from state["audit_path"], or the
+         default data/runs/<run_id>/audit.jsonl location) — for when the
+         live recorder object isn't available, e.g. building a report for
+         a past run from a fresh process.
+    Returns an empty list (never raises) if none of the above worked, since
+    a report with zero audit events is still valid to render — it just
+    won't have an Audit Trail to show.
+    """
     if audit_recorder is not None:
         return audit_recorder.all_events()
 
@@ -953,6 +1169,9 @@ def generate_run_report(
         from data.reports.build_report import generate_run_report
         generate_run_report(state)
     """
+    # A run should always have a run_id by this point, but if it's somehow
+    # missing (e.g. a hand-built state for testing), mint one rather than
+    # writing the report to a folder literally named "None".
     run_id = state.get("run_id") or state.get("runId")
     if not run_id:
         from infra.workflow.use_case_loader import generate_run_id
@@ -990,7 +1209,14 @@ def generate_and_attach_report(
 
 
 def _slugify_use_case_id(value: str) -> str:
-    """Sanitize a use case id into a safe folder name."""
+    """
+    Sanitize a use case id into a safe folder name: any character that
+    isn't a letter/digit/underscore/hyphen becomes a hyphen (so e.g. spaces,
+    slashes, or unicode from a free-text id can't break the filesystem
+    path), then strips leading/trailing hyphens. Falls back to the generic
+    "use-case" if the result would otherwise be empty (e.g. the id was
+    blank or entirely made of unsafe characters).
+    """
     slug = re.sub(r"[^A-Za-z0-9_-]+", "-", str(value or "").strip()).strip("-")
     return slug or "use-case"
 
@@ -1023,6 +1249,9 @@ def record_use_case_report(
     """
     try:
         current_use_case = state.get("current_use_case") or {}
+        # state["use_case_reports"] is the running list of cards shared
+        # across every call to this function within one run — each call
+        # (one per use case) appends exactly one more card to the same list.
         cards: list[dict[str, Any]] = state.setdefault("use_case_reports", [])
         use_case_id = (
             current_use_case.get("id")
@@ -1040,6 +1269,9 @@ def record_use_case_report(
         # run's index.html is exactly one level up — lets the detail report
         # link back to "all use cases" without knowing the run's absolute path.
         builder.build(state, audit_events, output_path, index_url="../index.html")
+        # Re-derive the same pass/fail verdict the detail report itself just
+        # showed, so this use case's card on the index page always agrees
+        # with what you'd see if you opened its own report.
         validation = builder.evaluate(state)
 
         cards.append({
@@ -1092,13 +1324,21 @@ def generate_index_report(
     run_id = state.get("run_id") or "run"
     run_date = run_date or datetime.now()
     output_dir = resolve_output_dir(str(run_id), run_date=run_date)
+    # Every card was already appended by record_use_case_report() as each
+    # use case finished — this function only reads that list, it never
+    # builds a card itself.
     cards = state.get("use_case_reports") or []
 
+    # Only used here for its Jinja `env` and the small formatting helpers
+    # (_format_display_datetime/_format_duration) — none of the per-report
+    # build()/evaluate() logic is used for the index page.
     builder = RunReportBuilder()
 
     totals = {
         "total": len(cards),
         "passed": sum(1 for c in cards if c.get("css_class") == "passed"),
+        # Binary verdict, same as _build_validation(): anything that isn't
+        # exactly "passed" counts as failed for the totals row.
         "failed": sum(1 for c in cards if c.get("css_class") != "passed"),
     }
 

@@ -1,6 +1,23 @@
 """
 Generate a fully populated demo report with realistic AppsFlyer pipeline data.
 
+This module is pure test/demo fixture data — no pipeline code runs here, it
+just hand-builds a `state` dict and an `AUDIT_EVENTS` list shaped exactly
+like what a *real* successful run of the LangGraph workflow would produce,
+then feeds them straight into the same RunReportBuilder / generate_run_report
+that the real workflow uses. The values below (timestamps, prompts, MCP
+tool args/results, etc.) are all made up but deliberately realistic, so the
+report this generates looks like a genuine run rather than a placeholder.
+
+The STATE dict's "--- Section ---" comments mirror RunReportBuilder.
+STATE_SECTIONS in build_report.py — this file exists to be read against
+that class, not on its own, since the report only shows keys that actually
+appear in state.
+
+demo_failed_report.py (build_failed_state()) reuses this same STATE as its
+starting point and only overrides the fields that would differ on a failed
+run. demo_index_report.py combines both into a multi-use-case run.
+
 Usage:
     python -m data.reports.demo_full_report          # successful run
     python -m data.reports.demo_failed_report      # failed run
@@ -345,6 +362,10 @@ _NODE_LOGS = {
     "visual_report": {"status": "Success", "message": f"Report saved to {REPORT_PATH}."},
 }
 
+# Writes the explicit per-node state keys (see RunReportBuilder.
+# _node_is_visited_key() / _node_log_key() in build_report.py): every node
+# in this demo is marked visited=True with its own canned log entry, so the
+# Workflow Overview panel shows all 11 nodes as "Success" for this run.
 for _node in PIPELINE_NODES:
     STATE[f"{_node}_is_visited"] = True
     STATE[f"{_node}_log"] = _NODE_LOGS[_node]
@@ -484,11 +505,20 @@ AUDIT_EVENTS: list[dict] = [
 
 
 class _DemoRecorder:
+    """
+    Minimal stand-in for the real AuditRecorder: only needs to implement
+    all_events() since that's the only method load_audit_events() in
+    build_report.py actually calls on whatever recorder object it's given.
+    """
     def all_events(self) -> list[dict]:
         return AUDIT_EVENTS
 
 
 def main() -> None:
+    # generate_run_report() is the same module function visual_report_node
+    # calls in the real workflow (via generate_and_attach_report()) — this
+    # demo takes the exact same code path, just with fixture data instead
+    # of a real pipeline run.
     path = generate_run_report(STATE, audit_recorder=_DemoRecorder())
     print(f"Full demo report written to:\n  {path.resolve()}")
 

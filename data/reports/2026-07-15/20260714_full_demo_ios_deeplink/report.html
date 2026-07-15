@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Run Report — 20260714_full_demo_ios_deeplink</title>
   <style>
+    /* Light theme (default). Every color used below is a var(--...) instead
+       of a literal, so [data-theme="dark"] just below can override the same
+       variable names and repaint the whole page without touching any rule
+       that actually uses them. */
     :root {
       --bg: #f0f7ff;
       --surface: #ffffff;
@@ -34,6 +38,10 @@
       --chip-shadow: 0 1px 4px rgba(2,132,199,.06);
     }
 
+    /* Dark theme override. Activated purely by the presence of the
+       data-theme="dark" attribute on <html> (set by the script at the
+       bottom of the page) — this file never needs two copies of any rule,
+       only two copies of the variable values. */
     [data-theme="dark"] {
       --bg: #0b1220;
       --surface: #151f32;
@@ -74,6 +82,9 @@
 
     .container { max-width: 960px; margin: 0 auto; padding: 36px 24px 52px; }
 
+    /* Header row: optional "← All use cases" link on the left (only exists
+       when this report was reached from an index page — see index_url in
+       the HTML below), theme toggle button on the right. */
     .top-bar {
       display: flex;
       justify-content: space-between;
@@ -130,6 +141,10 @@
     }
     .page-header .subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
 
+    /* Big pass/fail banner at the top of the report. `.verdict.passed` /
+       `.verdict.failed` (the class Jinja inserts from validation.css_class)
+       is what actually picks the green vs. red color scheme below — the
+       plain `.verdict` rule only supplies the shared box styling. */
     .verdict {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -151,6 +166,9 @@
     }
     .verdict.passed .verdict-icon { background: var(--passed-bg); color: var(--passed); border: 2px solid var(--passed-border); }
     .verdict.failed .verdict-icon { background: var(--failed-bg); color: var(--failed); border: 2px solid var(--failed-border); }
+    /* .unknown is dead CSS: build_report.py's _build_validation() only ever
+       returns css_class "passed" or "failed" now (binary verdict, no
+       ambiguous state) — kept here in case that changes again later. */
     .verdict.unknown .verdict-icon { background: var(--unknown-bg); color: var(--unknown); border: 2px solid var(--unknown-border); }
 
     .verdict-title {
@@ -182,6 +200,51 @@
       font-weight: 600;
     }
 
+    /* Failed-run error box, styled like a terminal window — always these
+       fixed dark colors regardless of the page's own light/dark theme
+       toggle, same way a real terminal doesn't change with the OS theme.
+       Shows validation.error_output (see RunReportBuilder._build_error_output). */
+    .error-terminal {
+      margin: 6px 0 22px;
+      border-radius: 10px;
+      overflow: hidden;
+      text-align: left;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+    .error-terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 14px;
+      background: #2d2d2d;
+    }
+    .error-terminal-bar .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .error-terminal-bar .dot.red { background: #ff5f56; }
+    .error-terminal-bar .dot.yellow { background: #ffbd2e; }
+    .error-terminal-bar .dot.green { background: #27c93f; }
+    .error-terminal-title {
+      margin-left: 8px;
+      color: #9aa0a6;
+      font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .error-terminal-body {
+      margin: 0;
+      background: #1e1e1e;
+      color: #ff8a80;
+      padding: 16px 18px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 340px;
+      overflow: auto;
+      text-align: left;
+    }
+
+    /* The 3 small "chips" under the verdict banner: Platform / Use Case /
+       Duration — one <span class="chip"> per entry in summary.meta_chips. */
     .meta-row {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -225,6 +288,10 @@
     }
     .run-id-line strong { color: var(--primary-dark); font-weight: 600; }
 
+    /* The 4 top-level collapsible sections (Workflow Overview / State
+       Variables / Audit communication / Full Timeline) are each a plain
+       HTML <details class="panel"> — no JS needed to expand/collapse them,
+       the browser does that natively; this block is just their styling. */
     .accordion { display: grid; gap: 14px; }
 
     details.panel {
@@ -342,6 +409,9 @@
       overflow: auto;
     }
 
+    /* "Paired LLM ↔ MCP exchanges" list inside the Audit panel: each
+       .exchange is one turn's request (left bubble) + result (right
+       bubble), from mcp_conversation (see _build_mcp_conversation()). */
     .conversation { display: grid; gap: 12px; }
     .exchange {
       border: 1px solid var(--border);
@@ -629,6 +699,9 @@
 <body>
   <div class="container">
 
+    <!-- Only "index_url" and the theme-toggle button live outside the
+         accordion — everything else on the page is one of the 4 collapsible
+         panels below (Workflow / State / Audit communication / Timeline). -->
     <div class="top-bar">
       <div class="top-bar-left">
       </div>
@@ -640,9 +713,15 @@
 
     <header class="page-header">
       <h1>Pipeline Run Report</h1>
-      <p class="subtitle">Report generated on July 15, 2026 at 02:58 PM</p>
+      <p class="subtitle">Report generated on July 15, 2026 at 10:14 PM</p>
     </header>
 
+    <!-- Top verdict banner. `validation` comes from
+         RunReportBuilder._build_validation() — .css_class is "passed" or
+         "failed" (drives the color via the CSS above), .label is the
+         "Passed"/"Failed" heading text, and .message_lines is the list of
+         explanatory sentences (tool order + workflow completion) rendered
+         one per <p> below. -->
     <section class="verdict passed">
       <div class="verdict-icon">
 ✓      </div>
@@ -653,6 +732,8 @@
       </div>
     </section>
 
+    <!-- summary.meta_chips is a fixed 3-item list (Platform / Use Case /
+         Duration) built in RunReportBuilder._build_summary(). -->
     <div class="meta-row">
       <span class="chip">
         <span class="chip-label">Platform</span>
@@ -670,6 +751,10 @@
 
     <div class="accordion">
 
+      <!-- Panel 1: one row per LangGraph node, in pipeline order, from
+           workflow_detail.nodes (built by _build_workflow_detail()).
+           Clicking a node's own <details> below (not this outer panel)
+           expands that node's individual checks. -->
       <details class="panel">
         <summary>
           <span class="summary-left">
@@ -689,6 +774,9 @@
           </div>
 
           <div class="workflow-timeline">
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">1</div>
@@ -714,11 +802,23 @@
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Materialized 3 use case JSON files.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Materialized 3 use case JSON files."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">2</div>
@@ -744,11 +844,23 @@
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Loaded use case and registered answer_policy.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Loaded use case and registered answer_policy."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">3</div>
@@ -774,11 +886,23 @@
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Sandbox cloned; MCP alive; app validated.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Sandbox cloned; MCP alive; app validated."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">4</div>
@@ -804,11 +928,23 @@
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Generated integrate/event/verify prompts.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Generated integrate/event/verify prompts."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">5</div>
@@ -836,11 +972,34 @@
 event_prompt: In-app event af_purchase wired.
 verify_prompt: Verify pass completed.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "prompt_type": "integrate_prompt",
+    "message": "SDK integration completed."
+  },
+  {
+    "status": "Success",
+    "prompt_type": "event_prompt",
+    "message": "In-app event af_purchase wired."
+  },
+  {
+    "status": "Success",
+    "prompt_type": "verify_prompt",
+    "message": "Verify pass completed."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">6</div>
@@ -866,11 +1025,23 @@ verify_prompt: Verify pass completed.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">xcodebuild BUILD SUCCEEDED.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "xcodebuild BUILD SUCCEEDED."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">7</div>
@@ -896,11 +1067,23 @@ verify_prompt: Verify pass completed.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">User action simulation passed.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "User action simulation passed."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">8</div>
@@ -926,11 +1109,23 @@ verify_prompt: Verify pass completed.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Appium started; app launched.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Appium started; app launched."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">9</div>
@@ -956,11 +1151,23 @@ verify_prompt: Verify pass completed.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Deep link destination matched.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Deep link destination matched."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">10</div>
@@ -986,11 +1193,23 @@ verify_prompt: Verify pass completed.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Smoke test suite passed (4/4).</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Smoke test suite passed (4/4)."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
             <details class="wf-node passed">
               <summary>
                 <div class="wf-step">11</div>
@@ -1016,6 +1235,15 @@ verify_prompt: Verify pass completed.</pre></td>
                         <th>Details</th>
                         <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Report saved to data/reports/2026-07-14/20260714_full_demo_ios_deeplink/report.html.</pre></td>
                       </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "status": "Success",
+    "message": "Report saved to data/reports/2026-07-14/20260714_full_demo_ios_deeplink/report.html."
+  }
+]</pre></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -1025,6 +1253,10 @@ verify_prompt: Verify pass completed.</pre></td>
         </div>
       </details>
 
+      <!-- Panel 2: the raw `state` dict, grouped into named sections by
+           RunReportBuilder._build_state_sections() (STATE_SECTIONS above),
+           plus an auto-generated "Other State" catch-all so nothing in
+           state is ever left unshown. -->
       <details class="panel">
         <summary>
           <span class="summary-left">
@@ -1738,6 +1970,15 @@ All required integration, in-app, and deep-link tools were invoked in the correc
         </div>
       </details>
 
+      <!-- Panel 3: everything the AuditRecorder captured about agent
+           decisions and MCP tool calls, split three ways:
+           1. mcp_validation.call_log -> the small chip row of tool names
+              in call order (see _build_mcp_validation()).
+           2. audit_detail.* -> raw events bucketed by event_type
+              (_build_audit_detail()), one titled group per bucket.
+           3. mcp_conversation -> AGENT_DECISION paired with its matching
+              MCP_TOOL_RESULT (_build_mcp_conversation()), shown as
+              request/result bubble pairs. -->
       <details class="panel">
         <summary>
           <span class="summary-left">
@@ -2158,6 +2399,10 @@ Conversion data received. First open event detected.</pre>
         </div>
       </details>
 
+      <!-- Panel 4: every audit event as one flat, chronological table row
+           each — `events` is the `normalized` list built by
+           RunReportBuilder._normalize_events(), i.e. the least-processed,
+           most complete view of the raw audit trail. -->
       <details class="panel">
         <summary>
           <span class="summary-left">
@@ -2425,11 +2670,27 @@ Conversion data received. First open event detected.</pre>
     </div>
   </div>
   <script>
+    /*
+     * Theme handling for this page. Intentionally does NOT use
+     * localStorage — that would make every report a user has ever opened
+     * remember dark mode forever, so a report opened fresh (e.g. double-
+     * clicked from Finder) always starts in light mode (see themeFromQuery()
+     * default below). Instead, the *current* light/dark choice is only
+     * carried forward through explicit navigation: this page's own links
+     * (marked with the data-theme-link attribute, e.g. the "← All use
+     * cases" back-link) get a "?theme=dark"/"?theme=light" query parameter
+     * appended live, right before the user clicks, matching whatever this
+     * page is showing at that moment. Same mechanism lives in
+     * index_report.html.j2 so the two pages stay in sync while navigating
+     * between them, without ever affecting some other report opened later.
+     */
     (function () {
       var root = document.documentElement;
       var btn = document.getElementById("theme-toggle");
       var label = document.getElementById("theme-toggle-label");
       var icon = document.getElementById("theme-toggle-icon");
+      // Any link on the page tagged data-theme-link (currently only the
+      // "← All use cases" back-link) gets its href rewritten below.
       var themeLinks = document.querySelectorAll("[data-theme-link]");
 
       function propagateTheme(theme) {
@@ -2445,6 +2706,10 @@ Conversion data received. First open event detected.</pre>
         });
       }
 
+      // Sets/removes the data-theme="dark" attribute on <html> (which is
+      // what the CSS variable overrides at the top of this file key off
+      // of), flips the toggle button's own icon/label to describe the
+      // *next* click's action, and re-propagates the new theme onto links.
       function applyTheme(theme) {
         if (theme === "dark") {
           root.setAttribute("data-theme", "dark");
@@ -2458,6 +2723,10 @@ Conversion data received. First open event detected.</pre>
         propagateTheme(theme);
       }
 
+      // Reads ?theme=dark|light from this page's own URL. Anything other
+      // than exactly "dark" (including no query param at all) resolves to
+      // "light" — this is what makes light the default for a freshly
+      // opened report.
       function themeFromQuery() {
         var theme = new URLSearchParams(window.location.search).get("theme");
         return theme === "dark" ? "dark" : "light";
@@ -2467,6 +2736,7 @@ Conversion data received. First open event detected.</pre>
       // cases" link carries whichever theme was active on the linking page.
       applyTheme(themeFromQuery());
 
+      // Manual toggle click: just flip whatever the current state is.
       btn.addEventListener("click", function () {
         applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
       });
