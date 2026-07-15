@@ -3,6 +3,8 @@ data/reports/__init__.py
 data/reports/build_report.py
 data/reports/demo_failed_report.py
 data/reports/demo_full_report.py
+data/reports/demo_index_report.py
+infra/load_env.py
 infra/agents/AuditRecorder.py
 infra/agents/answerAgent/__init__.py
 infra/agents/answerAgent/agent.py
