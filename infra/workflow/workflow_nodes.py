@@ -385,10 +385,6 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     if current_path:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
-        if current_use_case.get("answer_policy"):
-            run_id = state.get("run_id", "run")
-            repo = get_answer_policy_repository()
-            repo.load_from_use_case(run_id, current_use_case)
         state["artifact_generator_is_visited"] = True
         state["nodes_log"] = [
             *(state.get("nodes_log") or []),
