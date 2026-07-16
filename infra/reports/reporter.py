@@ -178,3 +178,4 @@ def generate_html_report(state: dict, audit_events: list, output_path: str) -> N
     generator = ReportGenerator()
     generator.write_html_report(state=state, audit_events=audit_events, output_path=output_path)
 
+

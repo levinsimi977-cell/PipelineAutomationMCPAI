@@ -10,6 +10,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 
+from infra.use_case_service.repositories.run_repository import (
+    RUNS_DIR,
+    load_selected_use_cases,
+)
+
 # הגדרת המודל - שימוש במשתני סביבה לאבטחה
 llm = ChatOpenAI(
     model=os.getenv("OPENAI_MODEL", "gpt-5.1"),
@@ -80,20 +85,11 @@ def _json_text(value) -> str:
     return json.dumps(value or {}, indent=2, ensure_ascii=False, default=str)
 
 
-def _resolve_current_use_case(state: dict) -> dict:
-    """Pick the active use case from official state field selected_use_cases.
-
-    Uses current_use_case_path (when looping) to choose the matching item;
-    otherwise returns the first selected use case.
-    """
-    selected = state.get("selected_use_cases") or []
+def _pick_from_selected(selected: list, current_path) -> dict | None:
+    """Choose the active use case from a list using current_use_case_path stem."""
     if not selected:
-        raise ValueError(
-            "Prompt Agent expected state['selected_use_cases'] "
-            "(list of use-case dicts) to be set by the workflow."
-        )
+        return None
 
-    current_path = state.get("current_use_case_path")
     if current_path:
         stem = Path(str(current_path)).stem
         for case in selected:
@@ -107,9 +103,92 @@ def _resolve_current_use_case(state: dict) -> dict:
                 return selected[index]
 
     first = selected[0]
-    if not isinstance(first, dict):
-        raise ValueError("state['selected_use_cases'][0] must be a use-case dict.")
-    return first
+    return first if isinstance(first, dict) else None
+
+
+def _path_under_run_dir(path: Path, run_id: str) -> bool:
+    """True only if path resolves inside data/runs/<run_id>/ (this run only)."""
+    try:
+        path.resolve().relative_to((RUNS_DIR / str(run_id)).resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _load_use_case_from_path(file_path: Path) -> dict:
+    with file_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, dict) and not data.get("useCases"):
+        if "id" not in data:
+            data = {**data, "id": file_path.stem}
+        return data
+
+    use_cases = data.get("useCases") if isinstance(data, dict) else data
+    if not use_cases:
+        raise ValueError(f"No use cases found in: {file_path}")
+
+    first_case = use_cases[0]
+    if isinstance(first_case, dict) and first_case.get("path") and not first_case.get("prompt_goal"):
+        case_path = (file_path.parent / first_case["path"]).resolve()
+        with case_path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict) and "id" not in payload:
+            payload = {**payload, "id": case_path.stem}
+        return payload
+
+    if isinstance(first_case, dict) and "id" not in first_case:
+        first_case = {**first_case, "id": file_path.stem}
+    return first_case
+
+
+def _load_selected_from_disk(run_id: str) -> list[dict]:
+    """Load selected use cases only from data/runs/<run_id>/ (never other runs)."""
+    return load_selected_use_cases(str(run_id))
+
+
+def _resolve_current_use_case(state: dict) -> dict:
+    """Resolve active use case: state memory first, then data/runs/<run_id> only.
+
+    Order:
+    1. state['selected_use_cases'] (this run's in-memory list)
+    2. state['current_use_case_path'] if it points inside data/runs/<run_id>/
+    3. load_selected_use_cases(run_id) from data/runs/<run_id>/
+    """
+    current_path = state.get("current_use_case_path")
+    run_id = state.get("run_id")
+
+    selected = state.get("selected_use_cases") or []
+    picked = _pick_from_selected(selected, current_path)
+    if picked is not None:
+        return picked
+
+    if not run_id:
+        raise ValueError(
+            "Prompt Agent: state['selected_use_cases'] is empty and state['run_id'] "
+            "is missing — cannot fall back to data/runs/<run_id>/."
+        )
+
+    # Active file for this run only (written by json_use_case_input under use_cases/).
+    if current_path:
+        path = Path(str(current_path))
+        if path.is_file() and _path_under_run_dir(path, str(run_id)):
+            return _load_use_case_from_path(path)
+
+    try:
+        disk_selected = _load_selected_from_disk(str(run_id))
+    except Exception as exc:
+        raise ValueError(
+            "Prompt Agent: state['selected_use_cases'] is empty and failed to load "
+            f"from data/runs/{run_id}/: {exc}"
+        ) from exc
+
+    picked = _pick_from_selected(disk_selected, current_path)
+    if picked is None:
+        raise ValueError(
+            f"Prompt Agent: no use cases found in state or data/runs/{run_id}/."
+        )
+    return picked
 
 
 def _stage_use_case_data(
@@ -139,7 +218,7 @@ def _stage_use_case_data(
 
 
 def prompt_agent_node(state: dict) -> dict:
-    # מקור האמת: selected_use_cases (+ current_use_case_path לבחירת הפעיל).
+    # 1) state של הריצה הנוכחית  2) גיבוי: data/runs/<run_id>/ בלבד
     # answer_policy ברמת state (אם קיים) גובר על זה שבתוך ה-use case.
     use_case = _resolve_current_use_case(state)
 
@@ -160,8 +239,8 @@ def prompt_agent_node(state: dict) -> dict:
     ]
     if missing:
         raise ValueError(
-            "Prompt Agent: active use case in state['selected_use_cases'] "
-            f"is missing required fields: {', '.join(missing)}"
+            "Prompt Agent: active use case is missing required fields: "
+            f"{', '.join(missing)}"
         )
 
     prompt_generator_chain = BASE_PROMPT_TEMPLATE | llm | StrOutputParser()

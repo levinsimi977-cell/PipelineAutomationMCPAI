@@ -343,17 +343,47 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     """
     Node 2: Artifact Generator
 
-    Resolves the active use case from `selected_use_cases` (official state),
-    using `current_use_case_path` when the pipeline is looping over cases.
-    Writes `answer_policy` (and `platform` for downstream nodes) into state,
-    and loads the policy into the answer-policy repository.
+    Resolves the active use case from `selected_use_cases` (this run's state),
+    using `current_use_case_path` when looping. If memory is empty, falls back
+    only to `data/runs/<run_id>/` for the same run — never other runs.
     """
-    selected = state.get("selected_use_cases") or []
+    from infra.use_case_service.repositories.run_repository import (
+        load_selected_use_cases,
+    )
+
+    selected = list(state.get("selected_use_cases") or [])
+    current_path = state.get("current_use_case_path")
+    run_id = state.get("run_id")
+    source = "state"
+
+    if not selected and run_id:
+        try:
+            selected = load_selected_use_cases(str(run_id))
+            state["selected_use_cases"] = selected
+            source = f"data/runs/{run_id}"
+        except Exception:
+            selected = []
+
     if not selected:
+        reason = (
+            "No use cases in state['selected_use_cases'] and none found under "
+            f"data/runs/{run_id}/."
+            if run_id
+            else "No use cases in state['selected_use_cases'] and run_id is missing."
+        )
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
         return state
 
-    use_case = selected[0]
-    current_path = state.get("current_use_case_path")
+    use_case = selected[0] if isinstance(selected[0], dict) else None
     if current_path:
         stem = Path(str(current_path)).stem
         for case in selected:
@@ -367,6 +397,17 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
                     use_case = selected[index]
 
     if not isinstance(use_case, dict):
+        reason = "Active use case could not be resolved for this run."
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
         return state
 
     state["current_use_case"] = use_case
@@ -379,38 +420,23 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     state["agent_id"] = None
 
     if use_case.get("answer_policy"):
-        run_id = state.get("run_id", "run")
+        policy_run_id = run_id or "run"
         repo = get_answer_policy_repository()
-        repo.load_from_use_case(run_id, use_case)
+        repo.load_from_use_case(policy_run_id, use_case)
 
     if current_path:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
-        state["artifact_generator_is_visited"] = True
-        state["nodes_log"] = [
-            *(state.get("nodes_log") or []),
-            {
-                "node": "artifact_generator",
-                "status": "Success",
-                "message": f"Loaded use case from {current_path}.",
-            },
-        ]
-    else:
-        reason = (
-            f"Use case file not found at path: {current_path}."
-            if current_path
-            else "current_use_case_path is missing from state."
-        )
-        state["test_status"] = "FAIL"
-        state["fail_reason"] = reason
 
-        state["nodes_log"] = [
-            *(state.get("nodes_log") or []),
-            {
-                "node": "artifact_generator",
-                "status": "Failure",
-                "message": reason,
-            },
-        ]
+    state["artifact_generator_is_visited"] = True
+    case_id = use_case.get("id", "?")
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "artifact_generator",
+            "status": "Success",
+            "message": f"Loaded use case '{case_id}' from {source}.",
+        },
+    ]
 
     return state
 
@@ -1013,7 +1039,16 @@ def visual_report_node(
     """
     Node 11: Visual Report
 
-    Handles multiple use cases loop.
+    Handles multiple use cases loop. Every time this node runs, state still
+    reflects the use case that just finished (current_use_case_path hasn't
+    advanced yet) — so it first builds that use case's own detail report via
+    data/reports/build_report.py (RunReportBuilder, the same builder used by
+    the demo reports) and registers it as a card under
+    state["use_case_reports"]. Once every selected use case has been
+    processed (current_use_case_path is exhausted), it builds the run's
+    index page — cards for every use case, each linking to its own detail
+    report — and records its path under state["report_path"] — regardless
+    of whether the run passed or failed.
     """
 
     use_cases_dir = state.get(
@@ -1023,6 +1058,13 @@ def visual_report_node(
     current_path = state.get(
         "current_use_case_path"
     )
+
+    if current_path:
+        from data.reports.build_report import record_use_case_report
+
+        state = record_use_case_report(
+            state, audit_recorder=state.get("audit_recorder")
+        )
 
 
     if (
@@ -1067,6 +1109,10 @@ def visual_report_node(
             state["current_use_case_path"] = None
 
 
+    if not state.get("current_use_case_path"):
+        from data.reports.build_report import attach_index_report
+
+        state = attach_index_report(state)
 
     return state
 
