@@ -307,6 +307,17 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     Loads the active use case into state.
     """
+    # Reset per-use-case state so previous use case data
+    # does not leak into the next one.
+    state["test_status"] = "READY"
+    state["error_detected"] = False
+    state["last_prompt_type"] = None
+    state["visited_user_actions"] = False
+    state["user_actions_is_visited"] = False
+    state.pop("fail_reason", None)
+    state.pop("error_reason", None)
+    state.pop("failed_node", None)
+    state.pop("error_message", None)
 
     current_path = state.get("current_use_case_path")
 
