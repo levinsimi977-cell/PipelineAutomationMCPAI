@@ -1,0 +1,35 @@
+{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "adfgdhfjgk",
+  "rules_policy": {
+    "default_profiles": [
+      "common"
+    ],
+    "allow_user_override": true,
+    "allowed_profiles": [
+      "common",
+      "ios",
+      "android",
+      "strict"
+    ]
+  },
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    }
+  },
+  "installation_answers": [],
+  "agent_messages": [],
+  "installation_agent_summary": "Asadsfjk",
+  "app_id": "afsghjko",
+  "dev_key": "sdfghjk",
+  "llm_model": "gpt-4o-mini"
+}
