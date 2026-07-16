@@ -22,7 +22,10 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
-from infra.use_case_service.repositories.run_repository import RUNS_DIR
+from infra.use_case_service.repositories.run_repository import (
+    RUNS_DIR,
+    delete_run_selection,
+)
 
 
 # Resolve emulator tools directory relative to this file
@@ -354,7 +357,15 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
         state["current_use_case"] = current_use_case
         state["selected_use_cases_path"] = current_path
-        state["platform"] = current_use_case.get("platform", state.get("platform", "android"))
+        # run_platform (stamped by the UI when the use case was selected —
+        # see ui/app.py's _stamp_run_platform) is the concrete platform to
+        # run against and takes priority. Falling back to "platform" alone
+        # would break for a "common" use case, whose own platform field is
+        # literally the string "common", not a real platform.
+        state["platform"] = (
+            current_use_case.get("run_platform")
+            or current_use_case.get("platform", state.get("platform", "android"))
+        )
         state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
         state["answer_policy"] = current_use_case.get("answer_policy") or {}
         # Each use case gets its own sdk_agent conversation: reset agent_id so
@@ -976,6 +987,24 @@ def test_runner_node(
 
 
 
+def _clear_run_dir(state: PipelineState) -> None:
+    """Erase the entire data/runs/<run_id>/ directory for this run.
+
+    Called once the workflow has processed the last selected use case, since
+    everything under it (runtime-config.json, audit.jsonl, the top-level
+    saved-selection JSON files, and the use_cases/ working copies) is
+    regenerated automatically the next time a run is started. Reuses
+    run_repository.delete_run_selection() — the same delete used by the
+    UI's manual "Saved run selections pending cleanup" housekeeping button —
+    so there is only one place that knows how to tear down a run dir.
+    """
+    run_id = state.get("run_id")
+    if not run_id:
+        return
+
+    delete_run_selection(run_id)
+
+
 def visual_report_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1056,6 +1085,10 @@ def visual_report_node(
         from data.reports.build_report import attach_index_report
 
         state = attach_index_report(state)
+
+        # Last node of the run: no use cases remain, so wipe the entire
+        # data/runs/<run_id>/ directory now that the final report is built.
+        _clear_run_dir(state)
 
     return state
 
