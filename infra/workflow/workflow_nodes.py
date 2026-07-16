@@ -385,6 +385,32 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     if current_path:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
+        state["artifact_generator_is_visited"] = True
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Success",
+                "message": f"Loaded use case from {current_path}.",
+            },
+        ]
+    else:
+        reason = (
+            f"Use case file not found at path: {current_path}."
+            if current_path
+            else "current_use_case_path is missing from state."
+        )
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
 
     return state
 
