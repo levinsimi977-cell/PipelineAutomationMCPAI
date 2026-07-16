@@ -35,7 +35,7 @@ def _load_agent_rules_text() -> str:
 
 def safe_project_path(project_root: Path, requested_path: str) -> Path:
     """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
-    Raises:
+    Raises: ValueError: If the resolved path is outside project_root.
         ValueError: If the resolved path is outside project_root.
     """
     requested = Path(requested_path)
