@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Run Report — 20260715_multi_use_case_demo</title>
+  <title>Run Report — 1470727a9cdb4c589d8b620d5034bb48</title>
   <style>
     /*
      * This is the run-level "overview" page: data/reports/<date>/<run_id>/index.html.
@@ -272,58 +272,33 @@
 
     <header class="page-header">
       <h1>Pipeline Run Report</h1>
-      <p class="subtitle">Report generated on July 16, 2026 at 02:53 PM</p>
+      <p class="subtitle">Report generated on July 16, 2026 at 03:35 PM</p>
     </header>
 
     <!-- totals is a plain dict built in generate_index_report():
          {total, passed, failed} — a simple count over `cards`, computed
          once in Python rather than doing arithmetic in the template. -->
     <div class="totals-row">
-      <div class="total-chip"><div class="num">3</div><div class="lbl">Use cases</div></div>
-      <div class="total-chip passed"><div class="num">2</div><div class="lbl">Passed</div></div>
+      <div class="total-chip"><div class="num">1</div><div class="lbl">Use cases</div></div>
+      <div class="total-chip passed"><div class="num">0</div><div class="lbl">Passed</div></div>
       <div class="total-chip failed"><div class="num">1</div><div class="lbl">Failed</div></div>
       <!-- total_duration is the whole run's wall-clock span (earliest
            started_at to latest ended_at across every use case), computed
            by _combined_duration() in build_report.py — NOT a sum of each
            use case's individual duration. -->
-      <div class="total-chip"><div class="num text">27m 35s</div><div class="lbl">Total duration</div></div>
+      <div class="total-chip"><div class="num text">—</div><div class="lbl">Total duration</div></div>
     </div>
 
     <div class="cards-grid">
-      <a class="card" data-theme-link href="common-first-open-sdk-presence/report.html" target="_blank" rel="noopener">
+      <a class="card" data-theme-link href="android-app-link-validation/report.html" target="_blank" rel="noopener">
         <div class="card-head">
-          <span class="card-title">common-first-open-sdk-presence</span>
-          <span class="status-badge passed">
-✓            Passed
-          </span>
-        </div>
-        <span class="card-platform">android</span>
-        <span class="card-duration">⏱ 27m 35s</span>
-        <p class="card-desc">Validate SDK presence and first-open event on launch.</p>
-        <div class="card-footer">Open detail report →</div>
-      </a>
-      <a class="card" data-theme-link href="common-deeplink-smoke/report.html" target="_blank" rel="noopener">
-        <div class="card-head">
-          <span class="card-title">common-deeplink-smoke</span>
-          <span class="status-badge passed">
-✓            Passed
-          </span>
-        </div>
-        <span class="card-platform">ios</span>
-        <span class="card-duration">⏱ 27m 35s</span>
-        <p class="card-desc">Smoke-test OneLink deep link handling end to end.</p>
-        <div class="card-footer">Open detail report →</div>
-      </a>
-      <a class="card" data-theme-link href="ios-deeplink-validation/report.html" target="_blank" rel="noopener">
-        <div class="card-head">
-          <span class="card-title">ios-deeplink-validation</span>
+          <span class="card-title">android-app-link-validation</span>
           <span class="status-badge failed">
 ✗            Failed
           </span>
         </div>
-        <span class="card-platform">ios</span>
-        <span class="card-duration">⏱ 22m 51s</span>
-        <p class="card-desc">Validate deep link opens the expected destination screen.</p>
+        <span class="card-platform">android</span>
+        <p class="card-desc">Validate Android app link intent resolution and destination routing.</p>
         <div class="card-footer">Open detail report →</div>
       </a>
     </div>

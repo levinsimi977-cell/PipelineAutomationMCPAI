@@ -32,7 +32,13 @@ TEMPLATES_DIR = DATA_REPORTS_DIR / "templates"
 # report needs an absolute URL to get back to where use cases are entered.
 # Defaults to the local Streamlit port; override with STREAMLIT_HOME_URL if
 # the app is served elsewhere.
-STREAMLIT_HOME_URL = os.environ.get("STREAMLIT_HOME_URL", "http://localhost:8501")
+_STREAMLIT_BASE_URL = os.environ.get("STREAMLIT_HOME_URL", "http://localhost:8501")
+
+# The back link lands on the entry page AND scrolls straight to the "Previous
+# reports" history there (the ?goto=history flag is handled by ui/app.py), so
+# returning from a report drops the user right where they can reopen past runs
+# or start another one.
+STREAMLIT_HOME_URL = _STREAMLIT_BASE_URL.rstrip("/") + "/?goto=history"
 
 
 @dataclass

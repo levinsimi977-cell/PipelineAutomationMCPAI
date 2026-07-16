@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
+import tempfile
 import uuid
 import webbrowser
 from datetime import datetime
@@ -407,7 +409,100 @@ def _display_validation_errors(exc: ValidationError) -> None:
         st.error(f"- **{field}**: {err['msg']}")
 
 
-def _open_report_in_browser(report_path: str) -> None:
+def _streamlit_home_url() -> str:
+    """
+    Absolute URL of this Streamlit entry page, with ?goto=history so landing
+    back here scrolls straight to the "Previous reports" section. Shared with
+    the report templates (build_report.STREAMLIT_HOME_URL) so the in-report
+    back link and the injected one below always point to the same place.
+    """
+    try:
+        from data.reports.build_report import STREAMLIT_HOME_URL
+
+        return STREAMLIT_HOME_URL
+    except Exception:  # noqa: BLE001 - fall back to the well-known local default
+        return "http://localhost:8501/?goto=history"
+
+
+# Matches any in-report "🏠 Back to use cases" anchor (as emitted by the report
+# templates), so it can be stripped before injecting the single uniform bar —
+# leaving any "← All use cases" (index) link untouched.
+_IN_REPORT_HOME_LINK_RE = re.compile(r"<a\b[^>]*>[^<]*Back to use cases[^<]*</a>", re.IGNORECASE)
+
+
+def _report_date_from_path(report_path: Path) -> Optional[str]:
+    """The data/reports/<YYYY-MM-DD>/ folder name in a report's path, if any."""
+    for part in report_path.parts:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", part):
+            return part
+    return None
+
+
+def _inject_back_bar(html: str, report_path: Path, report_date: Optional[str] = None) -> str:
+    """
+    Give every report the exact same "🏠 Back to use cases" bar.
+
+    To keep the design uniform across all reports (old and new), any back link
+    the report already baked in is stripped first, then one identical sticky
+    bar is injected at the very top. The bar's link carries ?goto=history (via
+    _streamlit_home_url) so returning lands on the entry form scrolled to the
+    Previous reports section rather than at the top; &open=<date> is appended
+    so the specific date folder this report lives in re-opens on arrival, with
+    every other folder left collapsed.
+
+    Relative links inside the report (an index page's per-use-case card links,
+    a detail report's "../index.html") are rewritten to absolute file:// URLs
+    against the report's real directory, so they keep working even though the
+    modified copy is opened from a temp folder.
+    """
+    # Remove the report's own home link(s) so there's never two competing,
+    # differently-styled "back" affordances — only the uniform bar below.
+    html = _IN_REPORT_HOME_LINK_RE.sub("", html)
+
+    # Rewrite relative *.html links (e.g. an index page's per-use-case card
+    # links, or a detail report's "../index.html") to absolute file:// URLs
+    # against the report's real directory. A <base href> wouldn't be enough:
+    # the index page's theme JS recomputes each link with
+    # `new URL(href, window.location.href)`, which resolves against the temp
+    # copy's location (ignoring <base>) and would point at a non-existent
+    # /tmp/... path. Absolute URLs are immune to that.
+    def _absolutize(match: "re.Match[str]") -> str:
+        rel = match.group(1)
+        try:
+            return f'href="{(report_path.parent / rel).resolve().as_uri()}"'
+        except Exception:  # noqa: BLE001 - leave anything odd untouched
+            return match.group(0)
+
+    html = re.sub(r'href="(?!https?:|file:|#|mailto:)([^"]+\.html)"', _absolutize, html)
+
+    home_url = _streamlit_home_url()
+    report_date = report_date or _report_date_from_path(report_path)
+    if report_date:
+        home_url = f"{home_url}&open={report_date}"
+
+    back_bar = (
+        '<div style="position:sticky;top:0;z-index:99999;background:#0f766e;'
+        'padding:11px 20px;box-shadow:0 1px 6px rgba(0,0,0,.18);'
+        'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">'
+        f'<a href="{home_url}" '
+        'style="color:#fff;text-decoration:none;font-weight:600;font-size:0.95rem;'
+        'display:inline-flex;align-items:center;gap:8px;">'
+        '🏠 Back to use cases</a>'
+        '</div>'
+    )
+
+    # Drop the bar in right after the opening <body> tag so it's the first
+    # thing on the page and stays pinned to the top while scrolling.
+    match = re.search(r"<body[^>]*>", html)
+    if match:
+        insert_at = match.end()
+        html = html[:insert_at] + back_bar + html[insert_at:]
+    else:
+        html = back_bar + html
+    return html
+
+
+def _open_report_in_browser(report_path: str, report_date: Optional[str] = None) -> None:
     """
     Open a finished report as its own full-page browser tab.
 
@@ -417,14 +512,71 @@ def _open_report_in_browser(report_path: str) -> None:
     runs locally here (server == the user's own machine), so file:// resolves
     to exactly the report that visual_report_node just wrote.
 
-    Best-effort only: if no browser can be launched (e.g. a headless host) it
-    silently no-ops so a failed browser launch can never crash the app or hide
-    the run result shown on this page.
+    Every report is opened through the same path: a uniform "🏠 Back to use
+    cases" bar is injected (see _inject_back_bar) and a temp copy is opened, so
+    old and new reports alike present an identical way back to the entry form —
+    which lands scrolled to the Previous reports history, with this report's own
+    date folder re-opened (report_date, else inferred from the path).
+
+    Best-effort only: if anything goes wrong it falls back to opening the
+    original file, and if even that fails it silently no-ops so a browser
+    launch can never crash the app.
     """
     try:
-        webbrowser.open_new_tab(Path(report_path).resolve().as_uri())
+        path = Path(report_path).resolve()
+        html = path.read_text(encoding="utf-8")
+        html = _inject_back_bar(html, path, report_date)
+        tmp_path = Path(tempfile.gettempdir()) / f"af_report_{uuid.uuid4().hex}.html"
+        tmp_path.write_text(html, encoding="utf-8")
+        webbrowser.open_new_tab(tmp_path.as_uri())
     except Exception:  # noqa: BLE001 - opening a browser must never crash the app
-        pass
+        try:
+            webbrowser.open_new_tab(Path(report_path).resolve().as_uri())
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _scroll_to_history() -> None:
+    """
+    Scroll the main page to the "Previous reports" history heading.
+
+    Triggered when the user arrives via a report's "Back to use cases" link
+    (which carries ?goto=history). Finds the heading by its text rather than an
+    id, since Streamlit's markdown sanitizer can strip injected ids. Retries a
+    few times because the heading may not be painted the instant this runs.
+    """
+    st.components.v1.html(
+        """
+        <script>
+        (function () {
+            const doc = window.parent.document;
+            function findHeading() {
+                const headings = doc.querySelectorAll("h1, h2, h3");
+                for (const h of headings) {
+                    if (h.textContent && h.textContent.indexOf("Previous reports") !== -1) {
+                        return h;
+                    }
+                }
+                return null;
+            }
+            // Keep trying until the heading is painted, then scroll to it a few
+            // more times over ~1s so late layout shifts (expanders rendering,
+            // etc.) can't leave the page parked back at the top.
+            function run(attempt) {
+                const h = findHeading();
+                if (h) {
+                    h.scrollIntoView({ behavior: "smooth", block: "start" });
+                    if (attempt < 6) { setTimeout(() => run(attempt + 1), 180); }
+                } else if (attempt < 40) {
+                    setTimeout(() => run(attempt + 1), 120);
+                }
+            }
+            setTimeout(() => run(0), 150);
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 
 # All generated reports live under data/reports/<YYYY-MM-DD>/<run_id>/, written
@@ -1026,7 +1178,25 @@ def render_existing_tab() -> None:
 
 st.set_page_config(page_title="Use Case Builder", page_icon="🧪", layout="centered")
 _inject_base_styles()
-_restore_scroll_position()
+
+# A report's "🏠 Back to use cases" link returns here with ?goto=history —
+# meaning "land on the form, but scrolled to the Previous reports section".
+# Capture that intent into session_state and clear the query param so it fires
+# exactly once (later reruns from button clicks won't keep re-scrolling), then
+# skip the normal scroll-position restore for this run so the history scroll
+# below wins instead of being fought by the restored offset.
+if st.query_params.get("goto") == "history":
+    st.session_state["_scroll_to_history"] = True
+    # &open=<date> tells us which history folder to re-open on arrival — the
+    # date folder of the report just returned from. Absent it, all folders
+    # stay collapsed.
+    open_date = st.query_params.get("open")
+    if open_date:
+        st.session_state["_history_open_date"] = open_date
+    st.query_params.clear()
+
+if not st.session_state.get("_scroll_to_history"):
+    _restore_scroll_position()
 
 st.title("🧪 Use Case Builder")
 st.caption("Create a new test use case, or reuse an existing one, for the AppsFlyer SDK automation pipeline.")
@@ -1171,6 +1341,13 @@ if previous_reports:
     # collapsed to keep the section compact.
     ordered_dates = sorted(reports_by_date, reverse=True)
 
+    # By default every folder is collapsed. Only the folder recorded in
+    # _history_open_date opens — that's set either when the user clicks a run
+    # here, or on returning from a report via its "Back to use cases" link
+    # (which carries &open=<date>). So the last folder the user engaged with
+    # is the one shown open, and a plain fresh visit shows everything closed.
+    open_date = st.session_state.get("_history_open_date")
+
     st.divider()
     with st.container(border=True):
         st.markdown('<div class="section-eyebrow">History</div>', unsafe_allow_html=True)
@@ -1178,12 +1355,12 @@ if previous_reports:
         st.caption("Browse earlier runs by date. Click a run to open its report in a new browser tab.")
         st.write("")
 
-        for date_index, date in enumerate(ordered_dates):
+        for date in ordered_dates:
             runs = reports_by_date[date]
             run_word = "run" if len(runs) == 1 else "runs"
             with st.expander(
                 f"📁  {date}   ·   {len(runs)} {run_word}",
-                expanded=(date_index == 0),
+                expanded=(date == open_date),
             ):
                 for row_index, rep in enumerate(runs):
                     # A thin rule between rows (not before the first) gives the
@@ -1204,7 +1381,10 @@ if previous_reports:
                             type="tertiary",
                             use_container_width=True,
                         ):
-                            _open_report_in_browser(rep["entry_path"])
+                            # Remember this folder so it stays open on the next
+                            # rerun / when returning from the report.
+                            st.session_state["_history_open_date"] = rep["date"]
+                            _open_report_in_browser(rep["entry_path"], rep["date"])
                     with col_meta:
                         use_case_count = rep["use_case_count"]
                         uc_word = "use case" if use_case_count == 1 else "use cases"
@@ -1215,6 +1395,12 @@ if previous_reports:
                             "</div>",
                             unsafe_allow_html=True,
                         )
+
+# Arrived here via a report's "Back to use cases" link (?goto=history handled
+# at the top): now that the history is on the page, scroll to it. pop() so it
+# only fires this once, not on every following rerun.
+if st.session_state.pop("_scroll_to_history", False):
+    _scroll_to_history()
 
 pending_runs = run_repo.list_pending_run_selections()
 
