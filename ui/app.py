@@ -181,8 +181,25 @@ _CUSTOM_CSS = """
         color: #0F766E !important;
         font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace !important;
         font-weight: 600;
-        justify-content: flex-start;
+        display: flex !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
         padding-left: 0 !important;
+    }
+    /* Force every layer of the label (the flex child div, the markdown
+       container, and the <p>/<span> inside it) hard left, so the run name
+       sits at the row's left edge instead of floating in the centre. The
+       universal selector covers whatever wrapper Streamlit's version uses. */
+    .stButton button[kind="tertiary"] > div,
+    .stButton button[data-testid="stBaseButton-tertiary"] > div {
+        width: 100%;
+        justify-content: flex-start !important;
+    }
+    .stButton button[kind="tertiary"] *,
+    .stButton button[data-testid="stBaseButton-tertiary"] * {
+        text-align: left !important;
+        margin-left: 0 !important;
+        margin-right: auto !important;
     }
     .stButton button[kind="tertiary"]:hover,
     .stButton button[data-testid="stBaseButton-tertiary"]:hover {
@@ -190,13 +207,33 @@ _CUSTOM_CSS = """
         text-decoration: underline;
     }
 
-    /* ---- History: run finish-time, right-aligned next to each run link ----- */
+    /* ---- History: per-run meta (use-case count + finish time) --------------- */
+    .history-meta {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 12px;
+    }
+    .uc-chip {
+        background: #F1F5F9;
+        color: #0F766E;
+        border: 1px solid #E2E8F0;
+        border-radius: 999px;
+        padding: 2px 11px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
     .history-time {
-        text-align: right;
         color: #64748B;
         font-size: 0.85rem;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+    }
+    .history-sep {
+        border: none;
+        border-top: 1px solid #EEF2F6;
+        margin: 0.4rem 0 !important;
     }
 
     /* ---- Divider breathing room --------------------------------------------- */
@@ -425,6 +462,20 @@ def _list_previous_reports(max_reports: int = 30) -> list[dict]:
                 entry = run_dir / "report.html"
             if not entry.is_file():
                 continue
+
+            # How many use cases this run covered. A multi-use-case run has one
+            # sub-folder per use case (each with its own report.html) alongside
+            # the index.html; a single report.html at the run root is just one.
+            if entry.name == "index.html":
+                use_case_count = sum(
+                    1
+                    for child in run_dir.iterdir()
+                    if child.is_dir() and (child / "report.html").is_file()
+                )
+                use_case_count = use_case_count or 1
+            else:
+                use_case_count = 1
+
             mtime = entry.stat().st_mtime
             reports.append(
                 {
@@ -435,6 +486,7 @@ def _list_previous_reports(max_reports: int = 30) -> list[dict]:
                     # Time only — the date is already the folder heading it sits
                     # under, so the row itself just needs the clock time.
                     "time": datetime.fromtimestamp(mtime).strftime("%H:%M:%S"),
+                    "use_case_count": use_case_count,
                     "_sort": mtime,
                 }
             )
@@ -1133,10 +1185,15 @@ if previous_reports:
                 f"📁  {date}   ·   {len(runs)} {run_word}",
                 expanded=(date_index == 0),
             ):
-                for rep in runs:
-                    # vertical_alignment keeps the green run link and its time
-                    # on the same baseline so every row lines up cleanly.
-                    col_run, col_when = st.columns([7, 3], vertical_alignment="center")
+                for row_index, rep in enumerate(runs):
+                    # A thin rule between rows (not before the first) gives the
+                    # list clean, evenly separated rows instead of floating text.
+                    if row_index > 0:
+                        st.markdown("<hr class='history-sep'>", unsafe_allow_html=True)
+
+                    # vertical_alignment keeps the green run link and its meta
+                    # (use-case count + time) on the same baseline per row.
+                    col_run, col_meta = st.columns([6, 4], vertical_alignment="center")
                     with col_run:
                         # A tertiary (link-style) button styled green + monospace
                         # by the CSS above, so it reads like a clickable file
@@ -1148,9 +1205,14 @@ if previous_reports:
                             use_container_width=True,
                         ):
                             _open_report_in_browser(rep["entry_path"])
-                    with col_when:
+                    with col_meta:
+                        use_case_count = rep["use_case_count"]
+                        uc_word = "use case" if use_case_count == 1 else "use cases"
                         st.markdown(
-                            f"<div class='history-time'>🕒 {rep['time']}</div>",
+                            "<div class='history-meta'>"
+                            f"<span class='uc-chip'>🧩 {use_case_count} {uc_word}</span>"
+                            f"<span class='history-time'>🕒 {rep['time']}</span>"
+                            "</div>",
                             unsafe_allow_html=True,
                         )
 
