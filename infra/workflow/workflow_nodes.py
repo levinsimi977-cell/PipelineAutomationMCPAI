@@ -342,44 +342,114 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     return state
 
 
-
 def artifact_generator_node(state: PipelineState) -> PipelineState:
     """
     Node 2: Artifact Generator
 
-    Loads the active use case into state.
+    Resolves the active use case from `selected_use_cases` (this run's state),
+    using `current_use_case_path` when looping. If memory is empty, falls back
+    only to `data/runs/<run_id>/` for the same run — never other runs.
     """
-    
+    from infra.use_case_service.repositories.run_repository import (
+        load_selected_use_cases,
+    )
+
+    selected = list(state.get("selected_use_cases") or [])
     current_path = state.get("current_use_case_path")
-    if current_path and os.path.exists(current_path):
-        with open(current_path, "r", encoding="utf-8") as f:
-            current_use_case = json.load(f)
+    run_id = state.get("run_id")
+    source = "state"
 
-        state["current_use_case"] = current_use_case
-        state["selected_use_cases_path"] = current_path
-        # run_platform (stamped by the UI when the use case was selected —
-        # see ui/app.py's _stamp_run_platform) is the concrete platform to
-        # run against and takes priority. Falling back to "platform" alone
-        # would break for a "common" use case, whose own platform field is
-        # literally the string "common", not a real platform.
-        state["platform"] = (
-            current_use_case.get("run_platform")
-            or current_use_case.get("platform", state.get("platform", "android"))
+    if not selected and run_id:
+        try:
+            selected = load_selected_use_cases(str(run_id))
+            state["selected_use_cases"] = selected
+            source = f"data/runs/{run_id}"
+        except Exception:
+            selected = []
+
+    if not selected:
+        reason = (
+            "No use cases in state['selected_use_cases'] and none found under "
+            f"data/runs/{run_id}/."
+            if run_id
+            else "No use cases in state['selected_use_cases'] and run_id is missing."
         )
-        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
-        state["answer_policy"] = current_use_case.get("answer_policy") or {}
-        # Each use case gets its own sdk_agent conversation: reset agent_id so
-        # run_sdk_integration_agent builds a fresh agent instead of reusing a
-        # (by now closed) session id left over from the previous use case.
-        state["agent_id"] = None
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
+        return state
 
-        if current_use_case.get("answer_policy"):
-            run_id = state.get("run_id", "run")
-            repo = get_answer_policy_repository()
-            repo.load_from_use_case(run_id, current_use_case)
+    use_case = selected[0] if isinstance(selected[0], dict) else None
+    if current_path:
+        stem = Path(str(current_path)).stem
+        for case in selected:
+            if isinstance(case, dict) and str(case.get("id", "")) == stem:
+                use_case = case
+                break
+        else:
+            if stem.isdigit():
+                index = int(stem)
+                if 0 <= index < len(selected) and isinstance(selected[index], dict):
+                    use_case = selected[index]
+
+    if not isinstance(use_case, dict):
+        reason = "Active use case could not be resolved for this run."
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
+        return state
+
+    state["current_use_case"] = use_case
+    state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
+    # run_platform (stamped by the UI when the use case was selected —
+    # see ui/app.py's _stamp_run_platform) is the concrete platform to
+    # run against and takes priority. Falling back to "platform" alone
+    # would break for a "common" use case, whose own platform field is
+    # literally the string "common", not a real platform.
+    state["platform"] = (
+        use_case.get("run_platform")
+        or use_case.get("platform", state.get("platform", "android"))
+    )
+    state["app_path"] = state.get("app_path") or use_case.get("app_path")
+    # Each use case gets its own sdk_agent conversation: reset agent_id so
+    # run_sdk_integration_agent builds a fresh agent instead of reusing a
+    # (by now closed) session id left over from the previous use case.
+    state["agent_id"] = None
+
+    if use_case.get("answer_policy"):
+        policy_run_id = run_id or "run"
+        repo = get_answer_policy_repository()
+        repo.load_from_use_case(policy_run_id, use_case)
+
+    if current_path:
+        state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
+
+    state["artifact_generator_is_visited"] = True
+    case_id = use_case.get("id", "?")
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "artifact_generator",
+            "status": "Success",
+            "message": f"Loaded use case '{case_id}' from {source}.",
+        },
+    ]
 
     return state
-
 
 
 async def environment_setup_node(
@@ -544,19 +614,6 @@ def prompt_agent_node(
 
 
     try:
-
-        current_path = state.get(
-            "current_use_case_path"
-        )
-
-
-        if current_path:
-
-            state["selected_use_cases_path"] = (
-                current_path
-            )
-
-
         updates = build_prompts(state)
 
         state.update(updates)
