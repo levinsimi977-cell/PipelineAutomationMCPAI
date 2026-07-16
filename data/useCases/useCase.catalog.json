@@ -60,6 +60,22 @@
       "type": "custom",
       "enabled": true,
       "supports_rule_override": true
+    },
+    {
+      "id": "custom-merav-use-case",
+      "platform": "ios",
+      "path": "./custom/custom-merav-use-case.json",
+      "type": "custom",
+      "enabled": true,
+      "supports_rule_override": true
+    },
+    {
+      "id": "custom-merav-use-case-2",
+      "platform": "ios",
+      "path": "./custom/custom-merav-use-case-2.json",
+      "type": "custom",
+      "enabled": true,
+      "supports_rule_override": true
     }
   ]
 }
