@@ -19,10 +19,10 @@ This file only documents the contract answer_agent.py expects from
 APP_ID = ""
 DEV_KEY = ""
 
-# Google Gemini model name and API key, used by answer_agent.py's LLM path
-# (infra/agents/answerAgent/answer_agent.py -> ChatGoogleGenerativeAI).
-# Leave GEMINI_API_KEY empty to disable the LLM path entirely -- the agent
-# falls back to deterministic/regex answering when it's unset (see the
-# module docstring in answer_agent.py).
-GEMINI_MODEL = "gemini-1.5-flash"
-GEMINI_API_KEY = ""
+# OpenAI model / API key for answer_agent.py's LLM path
+# (infra/agents/answerAgent/answer_agent.py -> ChatOpenAI).
+# Prefer setting OPENAI_API_KEY or GPT_API_KEY in the project .env —
+# answer_agent reads those via os.getenv (load_project_env).
+# Leave empty to disable the LLM path (UnansweredQuestionError).
+OPENAI_MODEL = "gpt-5.1"
+OPENAI_API_KEY = ""
