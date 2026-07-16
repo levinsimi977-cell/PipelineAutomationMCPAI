@@ -15,7 +15,7 @@ from infra.load_env import get_dev_key
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 _PLATFORM_SAMPLE_APPS = {
-    "android": "appsflyer-onelink-android-sample-apps",
+    "android": "appsflyer-onelink-android-sample-apps-liaz-empty_app_new",
     "ios": "appsflyer-onelink-ios-sample-apps",
 }
 

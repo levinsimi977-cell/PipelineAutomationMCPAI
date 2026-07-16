@@ -221,9 +221,18 @@ def _restore_scroll_position() -> None:
 
 
 def _apps_for_platform(platform: str) -> list[str]:
-    """Apps under data/application whose extension is valid for this platform."""
+    """Apps under data/application that are valid for this platform."""
     extensions = _PLATFORM_APP_EXTENSIONS.get(platform, ())
-    return [app for app in repo.list_available_apps() if app.lower().endswith(extensions)]
+    sample = repo.PLATFORM_SAMPLE_APPS.get(platform)
+
+    apps: list[str] = []
+    for app in repo.list_available_apps():
+        if sample and app == sample:
+            apps.append(app)
+            continue
+        if app.lower().endswith(extensions):
+            apps.append(app)
+    return apps
 
 
 def _selected_map() -> dict[str, dict]:
