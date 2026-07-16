@@ -6,7 +6,6 @@
 //
 
 #import <UIKit/UIKit.h>
-#import <AppsFlyerLib/AppsFlyerLib.h>
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 

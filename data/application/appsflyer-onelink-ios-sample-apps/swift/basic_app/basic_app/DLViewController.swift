@@ -7,12 +7,15 @@
 //
 
 import UIKit
-import AppsFlyerLib
 
 class DLViewController: UIViewController {
-    
+
     var deepLinkData: [String: Any]? = nil
     var fruitAmountStr: String = "000"
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+    }
 
     func attributionDataToString(data : [String: Any]) -> NSMutableAttributedString {
         let newString = NSMutableAttributedString()
@@ -24,10 +27,11 @@ class DLViewController: UIViewController {
         ]
         let sortedKeys = Array(data.keys).sorted(by: <)
         for key in sortedKeys {
+            print("ViewController", key, ":",data[key] ?? "null")
             let keyStr = key
             let boldKeyStr = NSAttributedString(string: keyStr, attributes: boldAttribute)
             newString.append(boldKeyStr)
-            
+
             var valueStr: String
             switch data[key] {
             case let s as String:
@@ -37,15 +41,14 @@ class DLViewController: UIViewController {
             default:
                 valueStr = "null"
             }
-            
+
             let normalValueStr = NSAttributedString(string: ": \(valueStr)\n", attributes: regularAttribute)
             newString.append(normalValueStr)
         }
         return newString
     }
-    
-    func showToast(message : String, font: UIFont) {
 
+    func showToast(message : String, font: UIFont) {
         let toastLabel = UILabel(frame: CGRect(x: self.view.frame.size.width/2 - 75, y: 20, width: 150, height: 35))
         toastLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         toastLabel.textColor = UIColor.white
@@ -62,60 +65,32 @@ class DLViewController: UIViewController {
             toastLabel.removeFromSuperview()
         })
     }
-    
+
     func copyShareInviteLink(fruitName: String){
-        AppsFlyerShareInviteHelper.generateInviteLink(linkGenerator:
-         {(_ generator: AppsFlyerLinkGenerator) -> AppsFlyerLinkGenerator in
-            generator.addParameterValue(fruitName, forKey: "deep_link_value")
-            generator.addParameterValue(self.fruitAmountStr, forKey: "deep_link_sub1")
-            generator.addParameterValue("THIS_USER_ID", forKey: "deep_link_sub2")
-            generator.setCampaign("share_invite")
-            generator.setChannel("mobile_share")
-          return generator },
-        completionHandler: {(_ url: URL?, _ error: Error?) -> Void in
-            if let error = error {
-                NSLog("[AFSDK] generateInviteLink failed: \(error)")
-                return
-            }
-            if url != nil{
-                //Copy url to clipboard
-                UIPasteboard.general.string = (url!.absoluteString)
-                //Show toast to let the user know link has been copied to clipboard
-                DispatchQueue.main.async {
-                    self.showToast(message: "Link copied to clipboard", font: .systemFont(ofSize: 12.0))
-                }
-                AppsFlyerShareInviteHelper.logInvite("mobile_share",
-                                                     eventParameters: ["referrerId": "THIS_USER_ID",
-                                                                  "campaign": "share_invite"])
-            }
-            else{
-                print("url is nil")
-            }
-        })
+        showToast(message: "Share invite requires AppsFlyer SDK", font: .systemFont(ofSize: 12.0))
     }
-    
+
     func getFruitAmount(data : [String: Any]) -> String? {
-        //Make sure either deep_link_sub1 or fruit_amount exists
         let keys = data.keys
         var fruitAmount: Any?
         if keys.contains("deep_link_value") && keys.contains("deep_link_sub1"){
             fruitAmount = data["deep_link_sub1"]
+            NSLog("deep_link_sub1 found and is \(fruitAmount!)")
         }
         else if keys.contains("fruit_name") && keys.contains("fruit_amount"){
             fruitAmount = data["fruit_amount"]
+            NSLog("fruit_amount found and is \(fruitAmount!)")
         }
         else {
             NSLog("deep_link_sub1/fruit_amount not found")
             return nil
         }
 
-        //Make sure fruitAmount is a valid number
         guard CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: fruitAmount as! String)) else {
-            NSLog("[AFSDK] Fruit amount is not a whole number")
+            NSLog("Fruit amount is not a whole number")
             return nil
         }
         fruitAmountStr = fruitAmount as? String ?? "000"
         return fruitAmount as? String
     }
 }
-

@@ -7,9 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict, get_args
 
-from typing_extensions import NotRequired
-
-from infra.application.app import run_tasks_3_and_4, setup_environment
+from infra.application.app import run_tasks_3_and_4, setup_environment, cleanup_environment
 from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
     prompt_agent_node as build_prompts,
 )
@@ -307,7 +305,6 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     Loads the active use case into state.
     """
-    
     current_path = state.get("current_use_case_path")
     if current_path and os.path.exists(current_path):
         with open(current_path, "r", encoding="utf-8") as f:
@@ -338,11 +335,11 @@ async def environment_setup_node(
     validates MCP,
     validates application.
     """
-
-    environment_result = setup_environment(
-        dict(state)
-    )
-
+    # Clean previous sandbox when looping to a new use case
+    previous = state.get("sandbox_path")
+    if previous:
+        cleanup_environment(previous)
+    environment_result = setup_environment(dict(state))
 
     if environment_result.get("test_status") == "FAIL":
 
@@ -930,9 +927,12 @@ def visual_report_node(
         else:
 
             state["current_use_case_path"] = None
-
-
-
+            sandbox_path = state.get("sandbox_path")
+            if sandbox_path:
+                cleanup_result = cleanup_environment(sandbox_path)
+                state["cleanup_status"] = cleanup_result.get("cleanup_status")
+                state["sandbox_path"] = ""
+        
     return state
 
 
