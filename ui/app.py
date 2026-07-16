@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import uuid
+import webbrowser
 from pathlib import Path
 from typing import Optional, get_args
 
@@ -338,6 +339,26 @@ def _display_validation_errors(exc: ValidationError) -> None:
     for err in exc.errors():
         field = ".".join(str(part) for part in err["loc"]) or "(top level)"
         st.error(f"- **{field}**: {err['msg']}")
+
+
+def _open_report_in_browser(report_path: str) -> None:
+    """
+    Open a finished report as its own full-page browser tab.
+
+    The report is a standalone HTML file on disk. Opening it through a file://
+    URL gives the user the full-width report in a brand-new tab, instead of
+    squeezing it into an embedded iframe inside this Streamlit page. Streamlit
+    runs locally here (server == the user's own machine), so file:// resolves
+    to exactly the report that visual_report_node just wrote.
+
+    Best-effort only: if no browser can be launched (e.g. a headless host) it
+    silently no-ops so a failed browser launch can never crash the app or hide
+    the run result shown on this page.
+    """
+    try:
+        webbrowser.open_new_tab(Path(report_path).resolve().as_uri())
+    except Exception:  # noqa: BLE001 - opening a browser must never crash the app
+        pass
 
 
 def render_use_case_form(
@@ -948,9 +969,15 @@ if selected_map:
                         st.session_state["_last_workflow_result"] = final_state
                         # report_path is captured regardless of pass/fail —
                         # visual_report_node always writes it — so the report
-                        # below can still be opened even on a failed run.
+                        # can still be opened even on a failed run.
                         report_path = final_state.get("report_path") or ""
                         st.session_state["_last_report_path"] = report_path
+                        # Open the finished report right away in its own full
+                        # browser tab (not embedded in this page) the moment
+                        # the run ends. The selection form on this page stays
+                        # put, so the user can go back and run other use cases.
+                        if report_path and Path(report_path).is_file():
+                            _open_report_in_browser(report_path)
                         if final_state.get("test_status") == "FAIL":
                             reason = (
                                 final_state.get("fail_reason")
@@ -976,6 +1003,14 @@ if selected_map:
             st.subheader("Pipeline Run Report")
             st.caption(f"Run ID: `{last_run_id}`")
             report_html = Path(last_report_path).read_text(encoding="utf-8")
+
+            # The report is opened automatically in its own full-page browser
+            # tab the moment the run finishes (see the run handler above) — it
+            # is never embedded in a small box here, and there is deliberately
+            # no "open report" button. The report tab itself carries a
+            # "🏠 Back to use cases" link back to this page. Only a download
+            # option is offered here for keeping a copy.
+            st.caption("The report opened in a new browser tab when the run finished.")
             st.download_button(
                 "Download report.html",
                 data=report_html,
@@ -983,12 +1018,6 @@ if selected_map:
                 mime="text/html",
                 use_container_width=True,
             )
-            with st.container(border=True):
-                st.components.v1.html(report_html, height=900, scrolling=True)
-
-        if last_result:
-            with st.expander("Last workflow run — nodes_log", expanded=False):
-                st.json(last_result.get("nodes_log", []))
 
 pending_runs = run_repo.list_pending_run_selections()
 

@@ -12,6 +12,7 @@ Writes HTML to:
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -25,6 +26,13 @@ if TYPE_CHECKING:
 
 DATA_REPORTS_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = DATA_REPORTS_DIR / "templates"
+
+# The Streamlit use-case entry page. A finished report opens as its own
+# standalone file:// browser tab, so a "back to use cases" link inside the
+# report needs an absolute URL to get back to where use cases are entered.
+# Defaults to the local Streamlit port; override with STREAMLIT_HOME_URL if
+# the app is served elsewhere.
+STREAMLIT_HOME_URL = os.environ.get("STREAMLIT_HOME_URL", "http://localhost:8501")
 
 
 @dataclass
@@ -183,6 +191,7 @@ class RunReportBuilder:
         output_path: Path,
         *,
         index_url: str | None = None,
+        home_url: str | None = None,
     ) -> Path:
         normalized = self._normalize_events(audit_events)
         summary = self._build_summary(state, normalized)
@@ -198,6 +207,10 @@ class RunReportBuilder:
             mcp_conversation=self._build_mcp_conversation(audit_events),
             mcp_validation=self._build_mcp_validation(state, audit_events),
             index_url=index_url,
+            # Absolute link back to the Streamlit use-case entry page, so a
+            # report opened in its own tab can return there. Falls back to the
+            # module default when the caller doesn't pass one.
+            home_url=home_url or STREAMLIT_HOME_URL,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(html, encoding="utf-8")
@@ -1348,6 +1361,10 @@ def generate_index_report(
         cards=cards,
         totals=totals,
         total_duration=_combined_duration(builder, cards),
+        # Absolute link back to the Streamlit use-case entry page — the index
+        # opens in its own tab, so it needs a way back to where use cases are
+        # entered.
+        home_url=STREAMLIT_HOME_URL,
     )
     output_path = output_dir / "index.html"
     output_path.parent.mkdir(parents=True, exist_ok=True)
