@@ -4,6 +4,7 @@ import json
 import sys
 import uuid
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, get_args
 
@@ -168,6 +169,34 @@ _CUSTOM_CSS = """
     .stButton button {
         border-radius: 8px;
         font-weight: 500;
+    }
+
+    /* ---- Previous-report links (green monospace, like a clickable file) ----- */
+    /* Tertiary buttons are only used in the "Previous reports" list, so styling
+       them here doesn't touch the primary/secondary buttons elsewhere. The
+       `kind` and `data-testid` selectors cover both older and newer Streamlit
+       button markup. */
+    .stButton button[kind="tertiary"],
+    .stButton button[data-testid="stBaseButton-tertiary"] {
+        color: #0F766E !important;
+        font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace !important;
+        font-weight: 600;
+        justify-content: flex-start;
+        padding-left: 0 !important;
+    }
+    .stButton button[kind="tertiary"]:hover,
+    .stButton button[data-testid="stBaseButton-tertiary"]:hover {
+        color: #0D9488 !important;
+        text-decoration: underline;
+    }
+
+    /* ---- History: run finish-time, right-aligned next to each run link ----- */
+    .history-time {
+        text-align: right;
+        color: #64748B;
+        font-size: 0.85rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
 
     /* ---- Divider breathing room --------------------------------------------- */
@@ -359,6 +388,59 @@ def _open_report_in_browser(report_path: str) -> None:
         webbrowser.open_new_tab(Path(report_path).resolve().as_uri())
     except Exception:  # noqa: BLE001 - opening a browser must never crash the app
         pass
+
+
+# All generated reports live under data/reports/<YYYY-MM-DD>/<run_id>/, written
+# by data/reports/build_report.py at the end of every run.
+_REPORTS_DIR = _PROJECT_ROOT / "data" / "reports"
+
+
+def _list_previous_reports(max_reports: int = 30) -> list[dict]:
+    """
+    Every previously generated run report on disk, newest first.
+
+    Scans data/reports/<date>/<run_id>/ and, for each run, picks the page to
+    open: the run's index.html (the multi-use-case overview) when present,
+    otherwise its single report.html. The "exact time the run happened" is
+    taken from that file's last-modified time — the report is written at the
+    very end of the run, so its mtime is effectively the run's finish time.
+
+    Capped at max_reports so a long history never floods the page; the most
+    recent runs are the ones anyone actually wants to reopen.
+    """
+    if not _REPORTS_DIR.is_dir():
+        return []
+
+    reports: list[dict] = []
+    for date_dir in _REPORTS_DIR.iterdir():
+        if not date_dir.is_dir():
+            continue
+        for run_dir in date_dir.iterdir():
+            if not run_dir.is_dir():
+                continue
+            # index.html (multi-use-case overview) is the preferred entry
+            # point; fall back to a lone report.html for single-state runs.
+            entry = run_dir / "index.html"
+            if not entry.is_file():
+                entry = run_dir / "report.html"
+            if not entry.is_file():
+                continue
+            mtime = entry.stat().st_mtime
+            reports.append(
+                {
+                    "run_id": run_dir.name,
+                    "date": date_dir.name,
+                    "entry_path": str(entry.resolve()),
+                    "when": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    # Time only — the date is already the folder heading it sits
+                    # under, so the row itself just needs the clock time.
+                    "time": datetime.fromtimestamp(mtime).strftime("%H:%M:%S"),
+                    "_sort": mtime,
+                }
+            )
+
+    reports.sort(key=lambda r: r["_sort"], reverse=True)
+    return reports[:max_reports]
 
 
 def render_use_case_form(
@@ -1018,6 +1100,59 @@ if selected_map:
                 mime="text/html",
                 use_container_width=True,
             )
+
+# --- Previous reports --------------------------------------------------------
+# Always available, independent of the current selection: lets the user reopen
+# the full HTML report of any earlier run straight from this entry page (this
+# is where the report's "🏠 Back to use cases" link brings them back to). Each
+# run is shown as a green, file-like link that opens the report in a new tab,
+# next to the exact time that run finished.
+previous_reports = _list_previous_reports()
+if previous_reports:
+    # Group by the data/reports/<date>/ folder so the history mirrors the
+    # on-disk layout: one collapsible folder per date, runs listed inside it —
+    # instead of one long undifferentiated row of every run ever.
+    reports_by_date: dict[str, list[dict]] = {}
+    for rep in previous_reports:
+        reports_by_date.setdefault(rep["date"], []).append(rep)
+    # Newest date first; the most recent folder starts expanded, the rest
+    # collapsed to keep the section compact.
+    ordered_dates = sorted(reports_by_date, reverse=True)
+
+    st.divider()
+    with st.container(border=True):
+        st.markdown('<div class="section-eyebrow">History</div>', unsafe_allow_html=True)
+        st.subheader("Previous reports")
+        st.caption("Browse earlier runs by date. Click a run to open its report in a new browser tab.")
+        st.write("")
+
+        for date_index, date in enumerate(ordered_dates):
+            runs = reports_by_date[date]
+            run_word = "run" if len(runs) == 1 else "runs"
+            with st.expander(
+                f"📁  {date}   ·   {len(runs)} {run_word}",
+                expanded=(date_index == 0),
+            ):
+                for rep in runs:
+                    # vertical_alignment keeps the green run link and its time
+                    # on the same baseline so every row lines up cleanly.
+                    col_run, col_when = st.columns([7, 3], vertical_alignment="center")
+                    with col_run:
+                        # A tertiary (link-style) button styled green + monospace
+                        # by the CSS above, so it reads like a clickable file
+                        # name. Clicking opens that run's report in its own tab.
+                        if st.button(
+                            f"📄  {rep['run_id']}",
+                            key=f"open_prev_report_{rep['date']}_{rep['run_id']}",
+                            type="tertiary",
+                            use_container_width=True,
+                        ):
+                            _open_report_in_browser(rep["entry_path"])
+                    with col_when:
+                        st.markdown(
+                            f"<div class='history-time'>🕒 {rep['time']}</div>",
+                            unsafe_allow_html=True,
+                        )
 
 pending_runs = run_repo.list_pending_run_selections()
 
