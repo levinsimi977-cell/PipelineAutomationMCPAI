@@ -30,8 +30,8 @@ load_project_env()
 
 APP_ID = os.getenv("APP_ID", "")
 DEV_KEY = os.getenv("DEV_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.1")
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
@@ -255,19 +255,19 @@ def _format_agent_context(state: dict[str, Any]) -> str:
 
 
 def _llm():
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_openai import ChatOpenAI
 
-    return ChatGoogleGenerativeAI(
-        model=GEMINI_MODEL,
+    return ChatOpenAI(
+        model=OPENAI_MODEL,
         temperature=0.1,
-        google_api_key=GEMINI_API_KEY,
+        api_key=OPENAI_API_KEY,
     )
 
 
 def _llm_answer(state: dict[str, Any], question: str) -> str | None:
     """Send one ANSWER_PROMPT call to the LLM. None on any failure (no API
     key, network/API error, empty reply) — caller raises UnansweredQuestionError."""
-    if not GEMINI_API_KEY:
+    if not OPENAI_API_KEY:
         return None
 
     prompt = ANSWER_PROMPT.format(
