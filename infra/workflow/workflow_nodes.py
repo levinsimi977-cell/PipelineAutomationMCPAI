@@ -873,7 +873,16 @@ def visual_report_node(
     """
     Node 11: Visual Report
 
-    Handles multiple use cases loop.
+    Handles multiple use cases loop. Every time this node runs, state still
+    reflects the use case that just finished (current_use_case_path hasn't
+    advanced yet) — so it first builds that use case's own detail report via
+    data/reports/build_report.py (RunReportBuilder, the same builder used by
+    the demo reports) and registers it as a card under
+    state["use_case_reports"]. Once every selected use case has been
+    processed (current_use_case_path is exhausted), it builds the run's
+    index page — cards for every use case, each linking to its own detail
+    report — and records its path under state["report_path"] — regardless
+    of whether the run passed or failed.
     """
 
     use_cases_dir = state.get(
@@ -883,6 +892,13 @@ def visual_report_node(
     current_path = state.get(
         "current_use_case_path"
     )
+
+    if current_path:
+        from data.reports.build_report import record_use_case_report
+
+        state = record_use_case_report(
+            state, audit_recorder=state.get("audit_recorder")
+        )
 
 
     if (
@@ -927,6 +943,10 @@ def visual_report_node(
             state["current_use_case_path"] = None
 
 
+    if not state.get("current_use_case_path"):
+        from data.reports.build_report import attach_index_report
+
+        state = attach_index_report(state)
 
     return state
 
