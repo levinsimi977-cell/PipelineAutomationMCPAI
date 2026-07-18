@@ -297,46 +297,56 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     points current_use_case_path to the first one.
     """
 
-    # New pipeline behavior: every run starts with a fresh sdk agent id
-    state.setdefault("agent_id", None)
+    try:
+        # New pipeline behavior: every run starts with a fresh sdk agent id
+        state.setdefault("agent_id", 0)
 
-    selected_cases = state.get("selected_use_cases") or []
-    run_id = state.get("run_id", "run")
+        selected_cases = state.get("selected_use_cases") or []
+        run_id = state.get("run_id", "run")
 
-    use_cases_dir = RUNS_DIR / run_id / "use_cases"
+        use_cases_dir = RUNS_DIR / run_id / "use_cases"
 
-    use_cases_dir.mkdir(parents=True, exist_ok=True)
+        use_cases_dir.mkdir(parents=True, exist_ok=True)
 
-    case_paths = []
+        case_paths = []
 
-    for index, case in enumerate(selected_cases):
-        case_id = case.get("id", str(index))
+        for index, case in enumerate(selected_cases):
+            case_id = case.get("id", str(index))
 
-        case_path = use_cases_dir / f"{case_id}.json"
+            case_path = use_cases_dir / f"{case_id}.json"
 
-        with case_path.open("w", encoding="utf-8") as f:
-            json.dump(
-                case,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+            with case_path.open("w", encoding="utf-8") as f:
+                json.dump(
+                    case,
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
-        case_paths.append(str(case_path))
+            case_paths.append(str(case_path))
 
-    state["use_cases_dir"] = str(use_cases_dir)
+        state["use_cases_dir"] = str(use_cases_dir)
 
-    state["current_use_case_path"] = (
-        case_paths[0]
-        if case_paths
-        else None
-    )
+        if not case_paths:
+            state["test_status"] = "FAIL"
+            state["fail_reason"] = "No use cases selected for this run."
+            state["current_use_case_path"] = None
 
-    if not case_paths:
+            return state
+
+        state["current_use_case_path"] = case_paths[0]
+
+        return state
+
+    except Exception as e:
         state["test_status"] = "FAIL"
-        state["fail_reason"] = "No use cases selected for this run."
+        state["error_detected"] = True
+        state["failed_node"] = "json_use_case_input_node"
+        state["error_message"] = str(e)
+        state["fail_reason"] = str(e)
+        state["current_use_case_path"] = None
 
-    return state
+        return state
 
 
 def artifact_generator_node(state: PipelineState) -> PipelineState:
@@ -350,6 +360,17 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     from infra.use_case_service.repositories.run_repository import (
         load_selected_use_cases,
     )
+    # Reset per-use-case state so previous use case data
+    # does not leak into the next one.
+    state["test_status"] = "READY"
+    state["error_detected"] = False
+    state["last_prompt_type"] = None
+    state["visited_user_actions"] = False
+    state["user_actions_is_visited"] = False
+    state.pop("fail_reason", None)
+    state.pop("error_reason", None)
+    state.pop("failed_node", None)
+    state.pop("error_message", None)
 
     selected = list(state.get("selected_use_cases") or [])
     current_path = state.get("current_use_case_path")
