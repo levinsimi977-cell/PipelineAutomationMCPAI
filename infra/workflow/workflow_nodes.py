@@ -71,6 +71,19 @@ def _next_prompt_type(current: PromptType) -> PromptType | None:
     return None
 
 
+def route_after_json_use_case_input(
+    state: PipelineState,
+) -> str:
+    """
+    Route after json_use_case_input.
+    """
+
+    if state.get("test_status") == "FAIL":
+        return "test_runner"
+
+    return "artifact_generator"
+
+
 class PipelineState(TypedDict, total=False):
     """
     Shared state threaded through every node of the workflow graph.
@@ -254,50 +267,61 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     points current_use_case_path to the first one.
     """
 
-    # New pipeline behavior: every run starts with a fresh sdk agent id
-    state.setdefault("agent_id", 0)
+    try:
+        # New pipeline behavior: every run starts with a fresh sdk agent id
+        state.setdefault("agent_id", 0)
 
-    selected_cases = state.get("selected_use_cases") or []
-    run_id = state.get("run_id", "run")
+        selected_cases = state.get("selected_use_cases") or []
+        run_id = state.get("run_id", "run")
 
-    use_cases_dir = os.path.join(
-        "data",
-        "runs",
-        run_id,
-        "use_cases",
-    )
-
-    os.makedirs(use_cases_dir, exist_ok=True)
-
-    case_paths = []
-
-    for index, case in enumerate(selected_cases):
-        case_id = case.get("id", str(index))
-
-        case_path = os.path.join(
-            use_cases_dir,
-            f"{case_id}.json",
+        use_cases_dir = os.path.join(
+            "data",
+            "runs",
+            run_id,
+            "use_cases",
         )
 
-        with open(case_path, "w", encoding="utf-8") as f:
-            json.dump(
-                case,
-                f,
-                ensure_ascii=False,
-                indent=2,
+        os.makedirs(use_cases_dir, exist_ok=True)
+
+        case_paths = []
+
+        for index, case in enumerate(selected_cases):
+            case_id = case.get("id", str(index))
+
+            case_path = os.path.join(
+                use_cases_dir,
+                f"{case_id}.json",
             )
 
-        case_paths.append(case_path)
+            with open(case_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    case,
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
-    state["use_cases_dir"] = use_cases_dir
+            case_paths.append(case_path)
 
-    state["current_use_case_path"] = (
-        case_paths[0]
-        if case_paths
-        else None
-    )
+        state["use_cases_dir"] = use_cases_dir
 
-    return state
+        state["current_use_case_path"] = (
+            case_paths[0]
+            if case_paths
+            else None
+        )
+
+        return state
+
+    except Exception as e:
+        state["test_status"] = "FAIL"
+        state["error_detected"] = True
+        state["failed_node"] = "json_use_case_input_node"
+        state["error_message"] = str(e)
+        state["fail_reason"] = str(e)
+        state["current_use_case_path"] = None
+
+        return state
 
 
 
