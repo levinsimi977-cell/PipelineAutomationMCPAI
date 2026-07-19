@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict, get_args
 
@@ -22,6 +21,14 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
+from infra.agents.userActions.deep_link import (
+    extract_deep_link_url_from_audit,
+    simulate_deep_link_click,
+)
+from infra.use_case_service.repositories.run_repository import RUNS_DIR
+from infra.workflow.nodes.nodeEmulator import (
+    emulator_node as _emulator_node_impl,
+    route_from_emulator as _route_from_emulator_impl,
 from infra.load_env import get_app_id_for_platform, get_dev_key
 from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
@@ -1008,6 +1015,9 @@ async  def sdk_agent_node(
         audit_recorder=audit_recorder,
     )
 
+    deep_link_url = extract_deep_link_url_from_audit(audit_recorder)
+    if deep_link_url:
+        state["deep_link_url"] = deep_link_url
 
     state["type_agent"] = "sdk_agent"
 
@@ -1154,6 +1164,10 @@ def compilation_check_node(
     return state
 
 
+def emulator_node(state: PipelineState) -> dict:
+    """Node 7: Emulator — launch compiled app (G5)"""
+    return _emulator_node_impl(state)
+
 
 def emulator_node(
     state: PipelineState,
@@ -1257,19 +1271,7 @@ def emulator_node(
 
     except Exception as exc:
 
-        steps.append(
-            f"[error] Node execution failed: {exc}"
-        )
 
-
-
-    return {
-        "available_devices": devices_listing,
-
-        "execution_result": "\n".join(steps),
-
-        "driver": driver_instance,
-    }
 def user_actions_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1291,7 +1293,8 @@ def deep_link_node(
     """
     Node 9: Deep Link
     """
-
+    state["deep_link_is_visited"] = True
+    state.update(simulate_deep_link_click(state))
     return state
 
 
@@ -1469,7 +1472,6 @@ def visual_report_node(
     return state
 
 
-
 def route_from_sdk_agent(
     state: PipelineState,
 ) -> str:
@@ -1496,19 +1498,17 @@ def route_from_sdk_agent(
 
 
 
-def route_from_emulator(
-    state: PipelineState,
-) -> str:
+def route_from_emulator(state: PipelineState) -> str:
     """
     Conditional edge from emulator.
 
     FAIL -> test_runner
-    event_prompt without user_actions -> user_actions
-    otherwise -> sdk_agent (next prompt pass)
+    otherwise delegate to nodeEmulator routing logic
     """
     if _is_pipeline_fail(state):
         return "test_runner"
 
+    return _route_from_emulator_impl(state)
     prompt_just_run = (
         state.get("prompt_just_run")
         or state.get("last_prompt_type")

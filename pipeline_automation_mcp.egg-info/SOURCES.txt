@@ -52,6 +52,7 @@ infra/workflow/run_launcher.py
 infra/workflow/use_case_loader.py
 infra/workflow/workflow_builder.py
 infra/workflow/workflow_nodes.py
+infra/workflow/nodes/nodeEmulator.py
 pipeline_automation_mcp.egg-info/PKG-INFO
 pipeline_automation_mcp.egg-info/SOURCES.txt
 pipeline_automation_mcp.egg-info/dependency_links.txt
