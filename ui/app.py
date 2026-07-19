@@ -49,7 +49,14 @@ _PLATFORM_APP_EXTENSIONS = {
 
 _CUSTOM_CSS = """
 <style>
-    /* ---- Global spacing & typography ------------------------------------ */
+    /* ---- Global look & feel — mirrors data/reports/templates/run_report.html.j2:
+       same body gradient, font stack, card radius/shadow and heading color as
+       the generated reports, so the builder and the reports it produces read
+       as one consistent product instead of two different tools. ------------ */
+    .stApp {
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+    }
     .block-container {
         padding-top: 2.25rem;
         padding-bottom: 3rem;
@@ -59,29 +66,32 @@ _CUSTOM_CSS = """
         font-weight: 700;
         letter-spacing: -0.02em;
         margin-bottom: 0.15rem !important;
+        color: #0369A1;
     }
     h2, h3 {
         font-weight: 600;
         letter-spacing: -0.01em;
+        color: #0369A1;
     }
     p, .stCaption, [data-testid="stCaptionContainer"] {
-        color: #475569;
+        color: #64748B;
+        line-height: 1.6;
     }
 
     /* ---- Segmented top-level navigation ---------------------------------- */
     div[role="radiogroup"][aria-label="__nav__"] {
         display: flex;
         gap: 0.35rem;
-        background: #F1F5F9;
+        background: #F0F7FF;
         padding: 0.3rem;
-        border-radius: 12px;
+        border-radius: 14px;
         margin-bottom: 1.5rem;
-        border: 1px solid #E2E8F0;
+        border: 1px solid #DBEAFE;
     }
     div[role="radiogroup"][aria-label="__nav__"] label {
         flex: 1;
         justify-content: center;
-        border-radius: 9px;
+        border-radius: 10px;
         padding: 0.45rem 0.75rem !important;
         margin: 0 !important;
         transition: background 0.15s ease, color 0.15s ease;
@@ -89,7 +99,7 @@ _CUSTOM_CSS = """
     }
     div[role="radiogroup"][aria-label="__nav__"] label:has(input:checked) {
         background: #FFFFFF;
-        box-shadow: 0 1px 3px rgba(13, 148, 136, 0.18);
+        box-shadow: 0 1px 3px rgba(2, 132, 199, 0.18);
     }
     div[role="radiogroup"][aria-label="__nav__"] label div[data-testid="stMarkdownContainer"] p {
         font-size: 0.95rem;
@@ -102,7 +112,7 @@ _CUSTOM_CSS = """
     div[role="radiogroup"][aria-label="__platform_tabs__"] {
         display: flex;
         gap: 1.25rem;
-        border-bottom: 1px solid #E2E8F0;
+        border-bottom: 1px solid #DBEAFE;
         margin-bottom: 0.75rem;
     }
     div[role="radiogroup"][aria-label="__platform_tabs__"] label {
@@ -114,27 +124,30 @@ _CUSTOM_CSS = """
         transition: color 0.15s ease, border-color 0.15s ease;
     }
     div[role="radiogroup"][aria-label="__platform_tabs__"] label:has(input:checked) {
-        color: #0F172A;
-        border-bottom-color: #0D9488;
+        color: #1E3A5F;
+        border-bottom-color: #0284C7;
     }
     div[role="radiogroup"][aria-label="__platform_tabs__"] input {
         display: none;
     }
 
     /* ---- Cards / containers ------------------------------------------------ */
+    /* radius/shadow match the report's --radius (14px) and --shadow
+       (0 4px 24px rgba(2,132,199,.08)) — same "card" language as .verdict
+       and details.panel there. */
     div[data-testid="stExpander"] {
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 12px !important;
+        border: 1px solid #DBEAFE !important;
+        border-radius: 14px !important;
         background: #FFFFFF;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        box-shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
         margin-bottom: 0.6rem;
     }
     div[data-testid="stExpander"] summary {
-        font-weight: 500;
+        font-weight: 600;
         padding: 0.65rem 0.9rem !important;
     }
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 12px !important;
+        border-radius: 14px !important;
     }
 
     /* ---- Badges (Custom / Seed) ------------------------------------------- */
@@ -149,12 +162,12 @@ _CUSTOM_CSS = """
         vertical-align: middle;
     }
     .badge-custom {
-        background: #CCFBF1;
-        color: #0F766E;
+        background: #E0F2FE;
+        color: #0369A1;
     }
     .badge-seed {
         background: #F1F5F9;
-        color: #475569;
+        color: #64748B;
     }
 
     /* ---- Section headers --------------------------------------------------- */
@@ -163,14 +176,15 @@ _CUSTOM_CSS = """
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #0D9488;
+        color: #0369A1;
         margin-bottom: 0.15rem;
     }
 
-    /* ---- Buttons ------------------------------------------------------------ */
+    /* ---- Buttons -------------------------------------------------------------- */
+    /* Pill-shaped, like the report's .back-link/.theme-toggle chips. */
     .stButton button {
-        border-radius: 8px;
-        font-weight: 500;
+        border-radius: 999px;
+        font-weight: 600;
     }
 
     /* ---- Previous-report links (green monospace, like a clickable file) ----- */
@@ -180,7 +194,7 @@ _CUSTOM_CSS = """
        button markup. */
     .stButton button[kind="tertiary"],
     .stButton button[data-testid="stBaseButton-tertiary"] {
-        color: #0F766E !important;
+        color: #0369A1 !important;
         font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace !important;
         font-weight: 600;
         display: flex !important;
@@ -205,7 +219,7 @@ _CUSTOM_CSS = """
     }
     .stButton button[kind="tertiary"]:hover,
     .stButton button[data-testid="stBaseButton-tertiary"]:hover {
-        color: #0D9488 !important;
+        color: #0284C7 !important;
         text-decoration: underline;
     }
 
@@ -217,9 +231,9 @@ _CUSTOM_CSS = """
         gap: 12px;
     }
     .uc-chip {
-        background: #F1F5F9;
-        color: #0F766E;
-        border: 1px solid #E2E8F0;
+        background: #E0F2FE;
+        color: #0369A1;
+        border: 1px solid #93C5FD;
         border-radius: 999px;
         padding: 2px 11px;
         font-size: 0.78rem;
@@ -234,13 +248,14 @@ _CUSTOM_CSS = """
     }
     .history-sep {
         border: none;
-        border-top: 1px solid #EEF2F6;
+        border-top: 1px solid #DBEAFE;
         margin: 0.4rem 0 !important;
     }
 
     /* ---- Divider breathing room --------------------------------------------- */
     hr {
         margin: 1.75rem 0 !important;
+        border-color: #DBEAFE !important;
     }
 </style>
 """
@@ -312,16 +327,17 @@ def _selected_map() -> dict[str, dict]:
 
 def _session_id() -> str:
     """
-    A stable id for this browser session, created once and reused for every
-    rerun of it.
+    Stable browser-session key (UI only). Not used as the pipeline run_id.
 
-    This is what makes a saved run selection map onto "one session" instead
-    of "one click of the Save button": every save this session ever performs
-    is written to run_repository.py's storage keyed by this same id, so
-    saving again always overwrites the same file rather than creating a new
-    one alongside it.
+    Pipeline runs use `_new_run_id()` so each "Save and run tests" click gets
+    its own isolated data/runs/<run_id>/ and report folder.
     """
     return st.session_state.setdefault("session_id", uuid.uuid4().hex)
+
+
+def _new_run_id() -> str:
+    """Fresh id for one pipeline run (one click of Save and run tests)."""
+    return uuid.uuid4().hex
 
 
 def _selected_concrete_platforms(exclude_id: Optional[str] = None) -> set[str]:
@@ -498,7 +514,7 @@ def _inject_back_bar(html: str, report_path: Path, report_date: Optional[str] = 
         home_url = f"{home_url}&open={report_date}"
 
     back_bar = (
-        '<div style="position:sticky;top:0;z-index:99999;background:#0f766e;'
+        '<div style="position:sticky;top:0;z-index:99999;background:#0369a1;'
         'padding:11px 20px;box-shadow:0 1px 6px rgba(0,0,0,.18);'
         'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">'
         f'<a href="{home_url}" '
@@ -1333,31 +1349,32 @@ if selected_map:
 
         if not locked:
             if st.button("🚀 Save and run tests", use_container_width=True, type="primary"):
-                session_id = _session_id()
+                # New run_id every click so runs never share data/runs/ or reports.
+                run_id = _new_run_id()
                 try:
-                    run_repo.save_selected_use_cases(session_id, selected_map)
+                    run_repo.save_selected_use_cases(run_id, selected_map)
                 except run_repo.RunRepositoryError as exc:
                     _flash("error", str(exc))
                 else:
                     st.session_state["workflow_running"] = True
-                    st.session_state["_pending_session_id"] = session_id
+                    st.session_state["_pending_run_id"] = run_id
                 st.rerun()
         else:
             from infra.workflow import run_launcher
 
-            session_id = st.session_state.get("_pending_session_id")
-            # try/finally (not just try/except) here on purpose: if session_id
+            run_id = st.session_state.get("_pending_run_id")
+            # try/finally (not just try/except) here on purpose: if run_id
             # is somehow missing, or anything below the actual start_workflow()
             # call raises (e.g. while reading the result), the page must still
             # unlock and rerun — otherwise workflow_running stays True forever
             # and the app looks permanently stuck with no report ever shown.
             try:
-                if not session_id:
+                if not run_id:
                     _flash("error", "No pending run found to start — please save the selection again.")
                 else:
                     with st.spinner("Running the workflow..."):
                         try:
-                            final_state = run_launcher.start_workflow(session_id)
+                            final_state = run_launcher.start_workflow(run_id)
                         except run_repo.RunRepositoryError as exc:
                             _flash("error", str(exc))
                         except Exception as exc:  # noqa: BLE001 - surface any node failure to the user
@@ -1394,6 +1411,8 @@ if selected_map:
                 # Back to unlocked regardless of outcome — a finished run
                 # (pass, fail, or exception) always unlocks the page again.
                 st.session_state["workflow_running"] = False
+                st.session_state.pop("_pending_run_id", None)
+                # Drop legacy key if an older UI session still has it.
                 st.session_state.pop("_pending_session_id", None)
             st.rerun()
 
