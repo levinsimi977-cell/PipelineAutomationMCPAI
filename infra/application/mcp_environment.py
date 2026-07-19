@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 DEFAULT_MCP_COMMAND = "npx"
 DEFAULT_MCP_ARGS = ["-y", "@appsflyer/sdk-mcp-server"]
+DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS = 180
 
 
 @dataclass
@@ -48,11 +49,13 @@ class MCPEnvironmentChecker:
         command: str = DEFAULT_MCP_COMMAND,
         args: Optional[List[str]] = None,
         env: Optional[Dict[str, str]] = None,
+        startup_timeout_seconds: int = DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS,
     ) -> None:
         self.workdir = Path(workdir).resolve()
         self.command = command
         self.args = args if args is not None else list(DEFAULT_MCP_ARGS)
         self.env = env or {}
+        self.startup_timeout_seconds = startup_timeout_seconds
 
     def _base_failure(self, error: str, details: Optional[Dict[str, Any]] = None) -> MCPHealthResult:
         return MCPHealthResult(
@@ -124,7 +127,9 @@ class MCPEnvironmentChecker:
                 }
             )
 
-            tools = await asyncio.wait_for(client.get_tools(), timeout=60)
+            tools = await asyncio.wait_for(
+                client.get_tools(), timeout=self.startup_timeout_seconds
+            )
 
             tool_names = [getattr(tool, "name", str(tool)) for tool in tools]
 
@@ -145,6 +150,19 @@ class MCPEnvironmentChecker:
                 details={"tool_count": len(tool_names)},
             )
 
+        except asyncio.TimeoutError:
+            return self._base_failure(
+                (
+                    f"MCP server did not start within {self.startup_timeout_seconds}s "
+                    f"(command: {self.command} {' '.join(self.args)}). "
+                    "This usually means `npx` is still resolving/installing the "
+                    "package; re-running after the npm cache is warm is typically faster."
+                ),
+                {
+                    "exception_type": "TimeoutError",
+                    "timeout_seconds": self.startup_timeout_seconds,
+                },
+            )
         except Exception as exc:
             return self._base_failure(
                 "MCP health check failed.",
@@ -159,6 +177,7 @@ async def check_mcp_alive(
     workdir: Path,
     app_id: Optional[str] = None,
     dev_key: Optional[str] = None,
+    startup_timeout_seconds: int = DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS,
 ) -> Dict[str, Any]:
     """Convenience function for Task 3."""
 
@@ -170,6 +189,8 @@ async def check_mcp_alive(
     if dev_key:
         env["DEV_KEY"] = dev_key
 
-    checker = MCPEnvironmentChecker(workdir=workdir, env=env)
+    checker = MCPEnvironmentChecker(
+        workdir=workdir, env=env, startup_timeout_seconds=startup_timeout_seconds
+    )
     result = await checker.check_alive()
     return result.to_dict()

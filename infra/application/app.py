@@ -221,6 +221,7 @@ async def run_tasks_3_and_4(
     *,
     app_id: str | None = None,
     dev_key: str | None = None,
+    mcp_startup_timeout_seconds: int | None = None,
 ) -> Dict[str, Any]:
     app_report = build_application_report(
         app_path=app_path,
@@ -228,10 +229,15 @@ async def run_tasks_3_and_4(
         run_build_check=run_build_check,
     )
 
+    mcp_kwargs: Dict[str, Any] = {}
+    if mcp_startup_timeout_seconds is not None:
+        mcp_kwargs["startup_timeout_seconds"] = mcp_startup_timeout_seconds
+
     mcp_report = await check_mcp_alive(
         workdir=workdir,
         app_id=app_id or os.getenv("APP_ID"),
         dev_key=dev_key or get_dev_key(),
+        **mcp_kwargs,
     )
 
     final_status = "OK"

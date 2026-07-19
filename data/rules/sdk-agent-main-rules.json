@@ -45,23 +45,19 @@
         "text": "You must prepare the full updated file content yourself."
       },
       {
-        "number": 9,
+        "number": 8,
         "text": "Do not ask the user to confirm paths. Use the file tools instead."
       },
       {
-        "number": 10,
+        "number": 9,
         "text": "If you need more information or are stuck, simply ask your question clearly in your text response."
       },
       {
+        "number": 10,
+        "text": "After calling integrateSdk, state that the integration finished successfully and instruct the user to prepare for emulator launch; do this before running any verification tool. Only later, once a verification tool actually confirms success, declare the process complete and instruct the user to launch the emulator."
+      },
+      {
         "number": 11,
-        "text": "After calling integrateSdk and before running any verification tool, explicitly state that the integration has finished successfully, and instruct the user to prepare for emulator launch."
-      },
-      {
-        "number": 12,
-        "text": "Once the verification tool confirms success, declare that the process is complete and instruct the user to launch the emulator."
-      },
-      {
-        "number": 13,
         "text": "At the end of each response, return the status you got like this: STATUS: SUCCESS/FAILURE/QUESTION"
       }
     ]

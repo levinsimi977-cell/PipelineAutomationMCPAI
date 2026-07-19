@@ -501,6 +501,7 @@ async def environment_setup_node(
         ),
         app_id=state.get("app_id"),
         dev_key=state.get("dev_key"),
+        mcp_startup_timeout_seconds=state.get("mcp_startup_timeout_seconds"),
     )
 
 
@@ -1176,8 +1177,13 @@ def route_from_emulator(
     if _is_pipeline_fail(state):
         return "test_runner"
 
+    prompt_just_run = (
+        state.get("prompt_just_run")
+        or state.get("last_prompt_type")
+    )
+
     if (
-        state.get("last_prompt_type")
+        prompt_just_run
         == "event_prompt"
         and not state.get(
             "visited_user_actions",
