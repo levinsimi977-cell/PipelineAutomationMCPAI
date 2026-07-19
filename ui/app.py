@@ -312,16 +312,17 @@ def _selected_map() -> dict[str, dict]:
 
 def _session_id() -> str:
     """
-    A stable id for this browser session, created once and reused for every
-    rerun of it.
+    Stable browser-session key (UI only). Not used as the pipeline run_id.
 
-    This is what makes a saved run selection map onto "one session" instead
-    of "one click of the Save button": every save this session ever performs
-    is written to run_repository.py's storage keyed by this same id, so
-    saving again always overwrites the same file rather than creating a new
-    one alongside it.
+    Pipeline runs use `_new_run_id()` so each "Save and run tests" click gets
+    its own isolated data/runs/<run_id>/ and report folder.
     """
     return st.session_state.setdefault("session_id", uuid.uuid4().hex)
+
+
+def _new_run_id() -> str:
+    """Fresh id for one pipeline run (one click of Save and run tests)."""
+    return uuid.uuid4().hex
 
 
 def _selected_concrete_platforms(exclude_id: Optional[str] = None) -> set[str]:
@@ -1333,31 +1334,32 @@ if selected_map:
 
         if not locked:
             if st.button("🚀 Save and run tests", use_container_width=True, type="primary"):
-                session_id = _session_id()
+                # New run_id every click so runs never share data/runs/ or reports.
+                run_id = _new_run_id()
                 try:
-                    run_repo.save_selected_use_cases(session_id, selected_map)
+                    run_repo.save_selected_use_cases(run_id, selected_map)
                 except run_repo.RunRepositoryError as exc:
                     _flash("error", str(exc))
                 else:
                     st.session_state["workflow_running"] = True
-                    st.session_state["_pending_session_id"] = session_id
+                    st.session_state["_pending_run_id"] = run_id
                 st.rerun()
         else:
             from infra.workflow import run_launcher
 
-            session_id = st.session_state.get("_pending_session_id")
-            # try/finally (not just try/except) here on purpose: if session_id
+            run_id = st.session_state.get("_pending_run_id")
+            # try/finally (not just try/except) here on purpose: if run_id
             # is somehow missing, or anything below the actual start_workflow()
             # call raises (e.g. while reading the result), the page must still
             # unlock and rerun — otherwise workflow_running stays True forever
             # and the app looks permanently stuck with no report ever shown.
             try:
-                if not session_id:
+                if not run_id:
                     _flash("error", "No pending run found to start — please save the selection again.")
                 else:
                     with st.spinner("Running the workflow..."):
                         try:
-                            final_state = run_launcher.start_workflow(session_id)
+                            final_state = run_launcher.start_workflow(run_id)
                         except run_repo.RunRepositoryError as exc:
                             _flash("error", str(exc))
                         except Exception as exc:  # noqa: BLE001 - surface any node failure to the user
@@ -1394,6 +1396,8 @@ if selected_map:
                 # Back to unlocked regardless of outcome — a finished run
                 # (pass, fail, or exception) always unlocks the page again.
                 st.session_state["workflow_running"] = False
+                st.session_state.pop("_pending_run_id", None)
+                # Drop legacy key if an older UI session still has it.
                 st.session_state.pop("_pending_session_id", None)
             st.rerun()
 

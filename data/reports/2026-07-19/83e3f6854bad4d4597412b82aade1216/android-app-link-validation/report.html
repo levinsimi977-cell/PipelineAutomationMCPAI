@@ -1,0 +1,2113 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Run Report — 83e3f6854bad4d4597412b82aade1216</title>
+  <style>
+    /* Light theme (default). Every color used below is a var(--...) instead
+       of a literal, so [data-theme="dark"] just below can override the same
+       variable names and repaint the whole page without touching any rule
+       that actually uses them. */
+    :root {
+      --bg: #f0f7ff;
+      --surface: #ffffff;
+      --surface-soft: #f8fbff;
+      --surface-inner: #ffffff;
+      --border: #dbeafe;
+      --border-strong: #93c5fd;
+      --text: #1e3a5f;
+      --muted: #64748b;
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --primary-dark: #0369a1;
+      --passed: #059669;
+      --passed-bg: #ecfdf5;
+      --failed: #dc2626;
+      --failed-bg: #fef2f2;
+      --unknown: #d97706;
+      --unknown-bg: #fffbeb;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
+      --body-gradient: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+      --font-base: 1.05rem;
+      --passed-border: #6ee7b7;
+      --failed-border: #fca5a5;
+      --unknown-border: #fcd34d;
+      --not-run-bg: #f1f5f9;
+      --chip-shadow: 0 1px 4px rgba(2,132,199,.06);
+    }
+
+    /* Dark theme override. Activated purely by the presence of the
+       data-theme="dark" attribute on <html> (set by the script at the
+       bottom of the page) — this file never needs two copies of any rule,
+       only two copies of the variable values. */
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: #151f32;
+      --surface-soft: #111827;
+      --surface-inner: #1a2438;
+      --border: #2d3a52;
+      --border-strong: #475569;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-light: #1e293b;
+      --primary-dark: #bae6fd;
+      --passed: #34d399;
+      --passed-bg: #064e3b;
+      --failed: #f87171;
+      --failed-bg: #450a0a;
+      --unknown: #fbbf24;
+      --unknown-bg: #451a03;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+      --body-gradient: linear-gradient(160deg, #0b1220 0%, #111827 45%, #0c4a6e 100%);
+      --passed-border: #059669;
+      --failed-border: #dc2626;
+      --unknown-border: #d97706;
+      --not-run-bg: #1e293b;
+      --chip-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: var(--font-base);
+      background: var(--body-gradient);
+      color: var(--text);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 36px 24px 52px; }
+
+    /* Header row: optional "← All use cases" link on the left (only exists
+       when this report was reached from an index page — see index_url in
+       the HTML below), theme toggle button on the right. */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .top-bar-left { display: flex; align-items: center; gap: 10px; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-dark);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: var(--chip-shadow);
+    }
+    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--chip-shadow);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .theme-toggle:hover {
+      background: var(--primary-light);
+      border-color: var(--border-strong);
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      letter-spacing: -0.02em;
+    }
+    .page-header .subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+
+    /* Big pass/fail banner at the top of the report. `.verdict.passed` /
+       `.verdict.failed` (the class Jinja inserts from validation.css_class)
+       is what actually picks the green vs. red color scheme below — the
+       plain `.verdict` rule only supplies the shared box styling. */
+    .verdict {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px 32px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .verdict-icon {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    .verdict.passed .verdict-icon { background: var(--passed-bg); color: var(--passed); border: 2px solid var(--passed-border); }
+    .verdict.failed .verdict-icon { background: var(--failed-bg); color: var(--failed); border: 2px solid var(--failed-border); }
+    /* .unknown is dead CSS: build_report.py's _build_validation() only ever
+       returns css_class "passed" or "failed" now (binary verdict, no
+       ambiguous state) — kept here in case that changes again later. */
+    .verdict.unknown .verdict-icon { background: var(--unknown-bg); color: var(--unknown); border: 2px solid var(--unknown-border); }
+
+    .verdict-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin: 0 0 10px;
+    }
+    .verdict.passed .verdict-title { color: var(--passed); }
+    .verdict.failed .verdict-title { color: var(--failed); }
+    .verdict.unknown .verdict-title { color: var(--unknown); }
+
+    .verdict-message {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 580px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .verdict-line {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.55;
+    }
+    .verdict-line:last-child { margin-bottom: 0; }
+    .verdict-sub {
+      font-size: 0.95rem;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Failed-run error box, styled like a terminal window — always these
+       fixed dark colors regardless of the page's own light/dark theme
+       toggle, same way a real terminal doesn't change with the OS theme.
+       Shows validation.error_output (see RunReportBuilder._build_error_output). */
+    .error-terminal {
+      margin: 6px 0 22px;
+      border-radius: 10px;
+      overflow: hidden;
+      text-align: left;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+    .error-terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 14px;
+      background: #2d2d2d;
+    }
+    .error-terminal-bar .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .error-terminal-bar .dot.red { background: #ff5f56; }
+    .error-terminal-bar .dot.yellow { background: #ffbd2e; }
+    .error-terminal-bar .dot.green { background: #27c93f; }
+    .error-terminal-title {
+      margin-left: 8px;
+      color: #9aa0a6;
+      font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .error-terminal-body {
+      margin: 0;
+      background: #1e1e1e;
+      color: #ff8a80;
+      padding: 16px 18px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 340px;
+      overflow: auto;
+      text-align: left;
+    }
+
+    /* The 3 small "chips" under the verdict banner: Platform / Use Case /
+       Duration — one <span class="chip"> per entry in summary.meta_chips. */
+    .meta-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+      align-items: stretch;
+    }
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 0.88rem;
+      color: var(--text);
+      box-shadow: var(--chip-shadow);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-width: 0;
+      white-space: normal;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .chip-label {
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .chip-value { font-size: 0.92rem; }
+    .run-id-line {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: -12px 0 28px;
+      word-break: break-word;
+    }
+    .run-id-line strong { color: var(--primary-dark); font-weight: 600; }
+
+    /* The 4 top-level collapsible sections (Workflow Overview / State
+       Variables / Audit communication / Full Timeline) are each a plain
+       HTML <details class="panel"> — no JS needed to expand/collapse them,
+       the browser does that natively; this block is just their styling. */
+    .accordion { display: grid; gap: 14px; }
+
+    details.panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    details.panel summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      font-weight: 700;
+      font-size: 1.08rem;
+      color: var(--primary-dark);
+      background: var(--surface-soft);
+      border-bottom: 1px solid transparent;
+      transition: background 0.15s;
+      user-select: none;
+    }
+    details.panel summary::-webkit-details-marker { display: none; }
+    details.panel summary:hover { background: var(--primary-light); }
+    details.panel[open] summary { border-bottom-color: var(--border); }
+
+    .summary-left { display: flex; align-items: center; gap: 12px; }
+    .arrow {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    details[open] .arrow { transform: rotate(90deg); }
+
+    .badge-count {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .panel-body { padding: 18px 22px 24px; }
+
+    .state-section { margin-bottom: 22px; }
+    .state-section:last-child { margin-bottom: 0; }
+    .state-section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 0 0 4px;
+    }
+    .state-section-desc {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+    .audit-group { margin-bottom: 18px; }
+    .audit-group-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 0 0 8px;
+    }
+    .audit-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--surface-inner);
+      font-size: 0.85rem;
+    }
+    .audit-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 600;
+      color: var(--primary-dark);
+      margin-bottom: 6px;
+    }
+    .state-table { width: 100%; border-collapse: collapse; }
+    .state-table th, .state-table td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.98rem;
+      vertical-align: top;
+    }
+    .state-table th {
+      color: var(--primary-dark);
+      font-weight: 600;
+      width: 28%;
+      background: var(--surface-soft);
+    }
+    .state-table td pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    /* "Paired LLM ↔ MCP exchanges" list inside the Audit panel: each
+       .exchange is one turn's request (left bubble) + result (right
+       bubble), from mcp_conversation (see _build_mcp_conversation()). */
+    .conversation { display: grid; gap: 12px; }
+    .exchange {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+    .exchange-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--primary-light);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--primary-dark);
+    }
+    .exchange-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .bubble { padding: 14px 16px; }
+    .bubble.llm { border-left: 3px solid var(--primary); }
+    .bubble.mcp { border-right: 3px solid var(--primary); background: var(--surface-inner); }
+    .bubble-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .bubble.mcp .bubble-label { color: var(--primary); }
+    pre.code {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-height: 200px;
+      overflow: auto;
+    }
+
+    .call-log { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .call-chip {
+      background: var(--primary-light);
+      border: 1px solid var(--border-strong);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 0.88rem;
+    }
+
+    .timeline-table { width: 100%; border-collapse: collapse; }
+    .timeline-table th, .timeline-table td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.95rem;
+      vertical-align: top;
+    }
+    .timeline-table th { color: var(--primary-dark); background: var(--surface-soft); font-weight: 600; }
+    .timeline-table td.details-cell {
+      max-width: 320px;
+      word-break: break-word;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      margin-left: 8px;
+    }
+    .status-dot.passed { background: var(--passed); }
+    .status-dot.failed { background: var(--failed); }
+    .status-dot.info { background: var(--primary); }
+
+    .workflow-list { display: grid; gap: 10px; }
+    .workflow-item {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.98rem;
+    }
+    .workflow-item .node { font-weight: 700; color: var(--primary-dark); }
+    .empty { color: var(--muted); font-style: italic; font-size: 1rem; }
+
+    /* ── Workflow (inside accordion) ── */
+    .panel-hint {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .workflow-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .wf-stat {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.9rem;
+    }
+    .wf-stat strong { color: var(--primary-dark); }
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    .context-item {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .context-item .ctx-key {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .context-item .ctx-val {
+      font-size: 0.92rem;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .workflow-timeline { display: grid; gap: 8px; }
+    .wf-node {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+    .wf-node > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+    }
+    .wf-node > summary::-webkit-details-marker { display: none; }
+    .wf-node > summary .arrow {
+      flex: 0 0 20px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      transition: transform 0.15s ease;
+      text-align: center;
+    }
+    .wf-node[open] > summary .arrow { transform: rotate(90deg); }
+    .wf-node-body {
+      border-top: 1px solid var(--border);
+      background: var(--surface-inner);
+    }
+    .wf-node-header {
+      display: contents;
+    }
+    .wf-step {
+      flex: 0 0 36px;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+    .wf-node.not_run .wf-step { background: var(--not-run-bg); color: var(--muted); }
+    .wf-node.passed .wf-step { background: var(--passed-bg); color: var(--passed); }
+    .wf-node.failed .wf-step { background: var(--failed-bg); color: var(--failed); }
+    .wf-node.warning .wf-step { background: var(--unknown-bg); color: var(--unknown); }
+    .wf-node-label {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .wf-node-name {
+      font-weight: 700;
+      color: var(--primary-dark);
+      font-size: 0.98rem;
+      text-align: left;
+    }
+    .wf-node-id { font-size: 0.82rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .wf-node-summary {
+      font-size: 0.92rem;
+      color: var(--muted);
+      margin: 0;
+      padding: 10px 16px 0;
+    }
+    .wf-state-fields {
+      border-top: 1px solid var(--border);
+      background: var(--surface-soft);
+      padding: 10px 14px 12px;
+    }
+    .wf-state-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .wf-state-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    .wf-state-table th {
+      text-align: left;
+      width: 28%;
+      padding: 6px 8px;
+      vertical-align: top;
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
+    .wf-state-table td {
+      padding: 6px 8px;
+      vertical-align: top;
+      color: var(--muted);
+    }
+    .wf-state-table tr + tr th,
+    .wf-state-table tr + tr td { border-top: 1px solid var(--border); }
+    .status-pill {
+      flex: 0 0 96px;
+      display: block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .status-pill.passed { background: var(--passed-bg); color: var(--passed); }
+    .status-pill.failed { background: var(--failed-bg); color: var(--failed); }
+    .status-pill.warning { background: var(--unknown-bg); color: var(--unknown); }
+    .status-pill.info { background: var(--primary-light); color: var(--primary-dark); }
+    .status-pill.not_run { background: var(--not-run-bg); color: var(--muted); }
+    .wf-node-runs { border-top: 1px solid var(--border); }
+    .wf-node-runs-title {
+      padding: 10px 16px 0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary-dark);
+    }
+    .wf-run {
+      padding: 12px 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .wf-run-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .wf-fields { width: 100%; border-collapse: collapse; }
+    .wf-fields th, .wf-fields td {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      vertical-align: top;
+    }
+    .wf-fields th { width: 30%; color: var(--muted); font-weight: 600; }
+
+    @media (max-width: 640px) {
+      .exchange-body { grid-template-columns: 1fr; }
+      .workflow-item { grid-template-columns: 1fr; }
+      .page-header h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Only "index_url" and the theme-toggle button live outside the
+         accordion — everything else on the page is one of the 4 collapsible
+         panels below (Workflow / State / Audit communication / Timeline). -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <a class="back-link" href="http://localhost:8501/?goto=history">🏠 Back to use cases</a>
+        <a class="back-link" data-theme-link href="../index.html">← All use cases</a>
+      </div>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
+        <span id="theme-toggle-icon">🌙</span>
+        <span id="theme-toggle-label">Dark mode</span>
+      </button>
+    </div>
+
+    <header class="page-header">
+      <h1>Pipeline Run Report</h1>
+      <p class="subtitle">Report generated on July 19, 2026 at 01:05 PM</p>
+    </header>
+
+    <!-- Top verdict banner. `validation` comes from
+         RunReportBuilder._build_validation() — .css_class is "passed" or
+         "failed" (drives the color via the CSS above), .label is the
+         "Passed"/"Failed" heading text, and .message_lines is the list of
+         explanatory sentences (tool order + workflow completion) rendered
+         one per <p> below. -->
+    <section class="verdict failed">
+      <div class="verdict-icon">
+✗      </div>
+      <h2 class="verdict-title">Failed</h2>
+      <!-- Terminal-style box, shown first thing on a failed run — right
+           under the "Failed" heading, before the explanatory lines below
+           — with whatever real error text was captured (fail_reason/
+           error_reason, compilation stderr, or the failing node's own
+           detail; see RunReportBuilder._build_error_output() for the
+           exact priority order). -->
+      <div class="error-terminal">
+        <div class="error-terminal-bar">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="error-terminal-title">error output</span>
+        </div>
+        <pre class="error-terminal-body">Gradle build exceeded the 900s timeout.
+
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\sandboxes\run_20260719_122845_034a1d90\basic_app\app\src\main\java\com\appsflyer\onelink\appsflyeronelinkbasicapp\AppsflyerBasicApp.java:24: error: incompatible types: AppsflyerBasicApp cannot be converted to AppsFlyerRequestListener
+        AppsFlyerLib.getInstance().start(this);
+                                         ^
+Note: Some messages have been simplified; recompile with -Xdiags:verbose to get full output
+1 error
+3 warnings
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugJavaWithJavac'.
+> Compilation failed; see the compiler output below.
+  warning: [options] source value 8 is obsolete and will be removed in a future release
+  warning: [options] target value 8 is obsolete and will be removed in a future release
+  warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+  C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\sandboxes\run_20260719_122845_034a1d90\basic_app\app\src\main\java\com\appsflyer\onelink\appsflyeronelinkbasicapp\AppsflyerBasicApp.java:24: error: incompatible types: AppsflyerBasicApp cannot be converted to AppsFlyerRequestListener
+          AppsFlyerLib.getInstance().start(this);
+                                           ^
+  Note: Some messages have been simplified; recompile with -Xdiags:verbose to get full output
+  1 error
+  3 warnings
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights.
+
+BUILD FAILED in 33m 42s</pre>
+      </div>
+      <div class="verdict-message">
+        <p class="verdict-line">MCP tool order could not be verified for this run.</p>
+        <p class="verdict-line">Workflow incomplete — Failed at Compilation Check (Failed); Not executed: JSON Use Case Input, User Actions, Emulator, Deep Link, Test Runner, Visual Report.</p>
+      </div>
+    </section>
+
+    <!-- summary.meta_chips is a fixed 3-item list (Platform / Use Case /
+         Duration) built in RunReportBuilder._build_summary(). -->
+    <div class="meta-row">
+      <span class="chip">
+        <span class="chip-label">Platform</span>
+        <span class="chip-value">android</span>
+      </span>
+      <span class="chip">
+        <span class="chip-label">Use Case</span>
+        <span class="chip-value">C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\data\runs\83e3f6854bad4d4597412b82aade1216\use_cases\android-app-link-validation.json</span>
+      </span>
+      <span class="chip">
+        <span class="chip-label">Duration</span>
+        <span class="chip-value">—</span>
+      </span>
+    </div>
+
+    <div class="accordion">
+
+      <!-- Panel 1: one row per LangGraph node, in pipeline order, from
+           workflow_detail.nodes (built by _build_workflow_detail()).
+           Clicking a node's own <details> below (not this outer panel)
+           expands that node's individual checks. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            Workflow Overview
+          </span>
+          <span class="badge-count">4/11 passed</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Expand a node to see what was checked and the outcome.</p>
+
+          <div class="workflow-stats">
+            <span class="wf-stat"><strong>Nodes:</strong> 11</span>
+            <span class="wf-stat"><strong>Passed:</strong> 4</span>
+            <span class="wf-stat"><strong>Failed:</strong> 1</span>
+            <span class="wf-stat"><strong>Skipped:</strong> 6</span>
+          </div>
+
+          <div class="workflow-timeline">
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">1</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">JSON Use Case Input</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node passed">
+              <summary>
+                <div class="wf-step">2</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Artifact Generator</div>
+                </div>
+                <span class="status-pill passed">Success</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Success</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Loaded use case 'android-app-link-validation' from C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\data\runs\83e3f6854bad4d4597412b82aade1216\use_cases\android-app-link-validation.json.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "artifact_generator",
+    "status": "Success",
+    "message": "Loaded use case 'android-app-link-validation' from C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\data\\runs\\83e3f6854bad4d4597412b82aade1216\\use_cases\\android-app-link-validation.json."
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node passed">
+              <summary>
+                <div class="wf-step">3</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Environment Setup</div>
+                </div>
+                <span class="status-pill passed">Success</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Success</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Sandbox created; MCP and application validation passed.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "environment_setup",
+    "status": "Success",
+    "message": "Sandbox created; MCP and application validation passed.",
+    "mcp_status": "OK",
+    "app_validation_status": "OK"
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node passed">
+              <summary>
+                <div class="wf-step">4</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Prompt Agent</div>
+                </div>
+                <span class="status-pill passed">Success</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">SUCCESS</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Prompt Agent generated prompts successfully.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "prompt_agent",
+    "status": "SUCCESS",
+    "message": "Prompt Agent generated prompts successfully."
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node passed">
+              <summary>
+                <div class="wf-step">5</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">SDK Agent</div>
+                </div>
+                <span class="status-pill passed">Success</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Success</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "sdk_agent",
+    "status": "Success",
+    "prompt_type": "integrate_prompt"
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node failed">
+              <summary>
+                <div class="wf-step">6</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Compilation Check</div>
+                </div>
+                <span class="status-pill failed">Failed</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">FAIL</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "compilation_check",
+    "status": "FAIL"
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">7</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">User Actions</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">8</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Emulator</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">9</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Deep Link</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">10</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Test Runner</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">11</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Visual Report</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 2: the raw `state` dict, grouped into named sections by
+           RunReportBuilder._build_state_sections() (STATE_SECTIONS above),
+           plus an auto-generated "Other State" catch-all so nothing in
+           state is ever left unshown. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            State Variables
+          </span>
+          <span class="badge-count">8 groups</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Pipeline state grouped by spec. Only keys present in the run state are shown.</p>
+          <div class="state-section">
+            <h3 class="state-section-title">Use Cases</h3>
+<p class="state-section-desc">General use-case selection and paths for the current run.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>selected_use_cases</td>
+                  <td><pre>[
+  {
+    "app_path": "data/application/banana.apk",
+    "platform": "android",
+    "prompt_goal": "Validate Android app link intent resolution and destination routing.",
+    "rules_policy": {
+      "default_profiles": [
+        "common",
+        "android"
+      ],
+      "allow_user_override": true,
+      "allowed_profiles": [
+        "common",
+        "android",
+        "strict"
+      ]
+    },
+    "answer_policy": {
+      "deeplink": {
+        "use_deep_linking": true,
+        "onelink_url": "https://example.onelink.me/abc1",
+        "url_identifier": "android-offers",
+        "uri_scheme": "myapp",
+        "use_custom_uri_scheme": true
+      },
+      "in_app_event": {
+        "inapp_event_method": "none",
+        "event_params": {}
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      },
+      "android": {
+        "device_id": "emulator-5554",
+        "has_sha256": false
+      }
+    },
+    "installation_answers": [],
+    "agent_messages": [
+      "App link invoked",
+      "Android target screen validated"
+    ],
+    "installation_agent_summary": "Android app link validation passed.",
+    "app_id": "com.appsflyer.onelink.appsflyeronelinkbasicapp",
+    "dev_key": "sQ84wpdxRTR4RMCaE9YqS4",
+    "llm_model": "gpt-4o-mini",
+    "run_platform": "android",
+    "id": "android-app-link-validation"
+  }
+]</pre></td>
+                </tr>
+                <tr>
+                  <td>selected_use_cases_path</td>
+                  <td><pre>C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\data\runs\83e3f6854bad4d4597412b82aade1216\use_cases\android-app-link-validation.json</pre></td>
+                </tr>
+                <tr>
+                  <td>use_cases_dir</td>
+                  <td><pre>C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\data\runs\83e3f6854bad4d4597412b82aade1216\use_cases</pre></td>
+                </tr>
+                <tr>
+                  <td>current_use_case_path</td>
+                  <td><pre>C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\data\runs\83e3f6854bad4d4597412b82aade1216\use_cases\android-app-link-validation.json</pre></td>
+                </tr>
+                <tr>
+                  <td>current_use_case</td>
+                  <td><pre>{
+  "app_path": "data/application/banana.apk",
+  "platform": "android",
+  "prompt_goal": "Validate Android app link intent resolution and destination routing.",
+  "rules_policy": {
+    "default_profiles": [
+      "common",
+      "android"
+    ],
+    "allow_user_override": true,
+    "allowed_profiles": [
+      "common",
+      "android",
+      "strict"
+    ]
+  },
+  "answer_policy": {
+    "deeplink": {
+      "use_deep_linking": true,
+      "onelink_url": "https://example.onelink.me/abc1",
+      "url_identifier": "android-offers",
+      "uri_scheme": "myapp",
+      "use_custom_uri_scheme": true
+    },
+    "in_app_event": {
+      "inapp_event_method": "none",
+      "event_params": {}
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "android": {
+      "device_id": "emulator-5554",
+      "has_sha256": false
+    }
+  },
+  "installation_answers": [],
+  "agent_messages": [
+    "App link invoked",
+    "Android target screen validated"
+  ],
+  "installation_agent_summary": "Android app link validation passed.",
+  "app_id": "com.appsflyer.onelink.appsflyeronelinkbasicapp",
+  "dev_key": "sQ84wpdxRTR4RMCaE9YqS4",
+  "llm_model": "gpt-4o-mini",
+  "run_platform": "android",
+  "id": "android-app-link-validation"
+}</pre></td>
+                </tr>
+                <tr>
+                  <td>answer_policy</td>
+                  <td><pre>{
+  "deeplink": {
+    "use_deep_linking": true,
+    "onelink_url": "https://example.onelink.me/abc1",
+    "url_identifier": "android-offers",
+    "uri_scheme": "myapp",
+    "use_custom_uri_scheme": true
+  },
+  "in_app_event": {
+    "inapp_event_method": "none",
+    "event_params": {}
+  },
+  "verify_sdk": {
+    "verify_logs_ready": true,
+    "app_launched": true
+  },
+  "android": {
+    "device_id": "emulator-5554",
+    "has_sha256": false
+  }
+}</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Run & Application</h3>
+<p class="state-section-desc">Run identity, platform, and application credentials.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>run_id</td>
+                  <td><pre>83e3f6854bad4d4597412b82aade1216</pre></td>
+                </tr>
+                <tr>
+                  <td>platform</td>
+                  <td><pre>android</pre></td>
+                </tr>
+                <tr>
+                  <td>app_id</td>
+                  <td><pre>com.appsflyer.onelink.appsflyeronelinkbasicapp</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Sandbox & Infrastructure</h3>
+<p class="state-section-desc">Cloned app, Appium server, devices, and automation driver.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>app_path</td>
+                  <td><pre>C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\sandboxes\run_20260719_122845_034a1d90\basic_app</pre></td>
+                </tr>
+                <tr>
+                  <td>sandbox_path</td>
+                  <td><pre>C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\sandboxes\run_20260719_122845_034a1d90\basic_app</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Agent Orchestration</h3>
+<p class="state-section-desc">Prompt types, rounds, installation answers, and agent status.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>type_agent</td>
+                  <td><pre>sdk_agent</pre></td>
+                </tr>
+                <tr>
+                  <td>agent_prompts</td>
+                  <td><pre>{
+  "integrate_prompt": "You are an AI “SDK Integration Agent” operating in a multi-tool automation environment. Your task in this run is to **install and integrate the AppsFlyer SDK only** for an Android project, using AppsFlyer MCP tools as the single source of truth.\n\nYou must produce and apply concrete code and configuration changes to the project to enable AppsFlyer SDK integration required for validating **Android app link intent resolution and destination routing** (deep linking / OneLink / custom URI scheme), but you must **not** perform final SDK verification in this step.\n\n---\n\n## 1. Scope and Objective\n\n**Primary objective**\n\n- Install and integrate the AppsFlyer SDK into the given Android app so that the app is correctly set up for:\n  - Android app link intent resolution\n  - Destination routing via:\n    - OneLink URL: `https://example.onelink.me/abc1`\n    - URL identifier: `android-offers`\n    - Custom URI scheme: `myapp` (with `use_custom_uri_scheme = true`)\n- Ensure that the integration satisfies the project’s **deep linking** requirements, and that SDK lifecycle and deep link callbacks are correctly wired so they can be tested later.\n\n**Out of scope**\n\n- Do **not** define or track custom in-app events except if the AppsFlyer MCP integration tool explicitly requires boilerplate.\n- Do **not** run or design final verification/validation flows of the SDK integration (no end-to-end tests, no log verification beyond minimal sanity where needed for code correctness).\n- Do **not** guess about AppsFlyer integration details; you must rely on MCP tools.\n\n---\n\n## 2. Execution Context\n\n- **Platform:** Android\n- **Local app path (project root):**  \n  `C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app`\n\n- **Device / platform policy:**\n  - `device_id`: `emulator-5554`\n  - `has_sha256`: `false`\n\n- **Use case configuration:**\n  - **Deep linking configuration:**\n    - `use_deep_linking`: `true`\n    - `onelink_url`: `https://example.onelink.me/abc1`\n    - `url_identifier`: `android-offers`\n    - `uri_scheme`: `myapp`\n    - `use_custom_uri_scheme`: `true`\n  - **In-app events:**\n    - `inapp_event_method`: `none`\n    - `event_params`: `{}` (ignore unless MCP requires boilerplate)\n  - **SDK verification flags (for later stages, not to be executed here):**\n    - `verify_logs_ready`: `true`\n    - `app_launched`: `true`\n\n---\n\n## 3. Non‑Negotiable MCP Requirements\n\nYou must adhere strictly to these:\n\n1. **MCP as source of truth**\n   - Use **AppsFlyer MCP tools** whenever SDK guidance or validation is needed.\n   - You must **not** rely on your own memory or generic knowledge for:\n     - Installation steps\n     - Required Gradle configuration\n     - Manifest configuration\n     - API usage patterns\n     - Deep link / OneLink integration flows\n   - If you need any AppsFlyer-related instructions, call the relevant MCP tool and follow its response.\n\n2. **Inspection before modification**\n   - Before editing any file, you **must inspect** the relevant project files.\n   - Use the file-system/tools provided by your environment (e.g., list/read files) to:\n     - Identify existing Gradle files, manifest, and source sets.\n     - Detect current SDKs and deeplink configuration to avoid conflicting changes.\n   - Do not blindly overwrite; adapt MCP-provided snippets to the current project structure and language.\n\n3. **No invented steps**\n   - You **must not invent** any AppsFlyer SDK setup or verification steps that are not given by the AppsFlyer MCP integration tools.\n   - You may only:\n     - Apply the exact steps from MCP tools, and\n     - Perform **mechanical translation** if needed (e.g., convert Java snippet to Kotlin or vice versa) as long as:\n       - APIs, parameters, and logical flow remain identical.\n       - No new or inferred AppsFlyer behavior is introduced.\n\n4. **Failure on MCP/tool unavailability**\n   - If the required AppsFlyer MCP tool (especially `integrateSdk`) is unavailable, returns an error, or provides incomplete data that makes safe integration impossible:\n     - Abort with a **clear failure report**.\n     - Do **not** fall back to best-effort or guessed steps.\n\n---\n\n## 4. Stage-Specific Instructions for This Run\n\nThis run is an **SDK integration stage**. Apply the following:\n\n1. **Use `integrateSdk` for SDK integration**\n   - Call the AppsFlyer MCP tool: `integrateSdk` with parameters consistent with:\n     - Platform: Android\n     - Deep linking enabled with OneLink and custom URI scheme\n     - No in-app events (unless boilerplate is mandated)\n   - Use the tool’s output as the canonical sequence of integration steps:\n     - Dependencies\n     - Gradle / Kotlin DSL or Groovy snippets\n     - Manifest entries\n     - Initialization code\n     - Deep link / OneLink / URI scheme handling code\n\n2. **Apply all relevant integration requirements**\n   - From the `integrateSdk` response, determine all integration tasks relevant to:\n     - AppsFlyer Android SDK installation.\n     - App launch and lifecycle initialization.\n     - OneLink deep linking and deferred deep linking support.\n     - Android App Links (intent filter, host, path, etc.) and routing to correct destinations.\n     - Custom URI scheme (`myapp://...`) handling.\n   - Integrate **only** those features that are required for:\n     - Ensuring that incoming OneLink URLs and app links can be resolved by the app.\n     - Ensuring AppsFlyer receives and processes deep link data necessary for routing decisions.\n\n3. **No in-app events unless required**\n   - Do not add any in-app event tracking calls (`logEvent` etc.) unless:\n     - The `integrateSdk` tool explicitly provides boilerplate indicating they must be added for a valid minimal integration.\n   - If boilerplate events are mandatory in the tool’s instructions, include them as specified, but do not extend or customize them.\n\n4. **Do not run final verification**\n   - **Do not**:\n     - Run or script final SDK verification or validation sequences.\n     - Assert on logs or AppsFlyer dashboards.\n     - Execute automated tests for deep link flows.\n   - You may add brief internal comments in code to note where deep link verification will occur later, but should not implement or trigger it in this stage.\n\n---\n\n## 5. Concrete Tasks to Perform\n\nFollow this high-level sequence, strictly guided by the `integrateSdk` tool:\n\n1. **Project inspection**\n   - From `C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app`:\n     - Enumerate and inspect:\n       - `settings.gradle` / `settings.gradle.kts`\n       - Root `build.gradle` / `build.gradle.kts`\n       - App module `build.gradle` / `build.gradle.kts` (typically `app/`)\n       - `AndroidManifest.xml` (main and any productFlavor- or buildType-specific manifests)\n       - Primary Application class (e.g., `MyApplication.kt` or `Application` subclass if present)\n       - Main Activity entrypoints that handle intents (e.g., `MainActivity.kt`/`.java`)\n   - Determine:\n     - Current minSdk/targetSdk.\n     - Whether Kotlin, Java, or mixed.\n     - Existing intent filters for deep links or app links.\n     - Any existing AppsFlyer-related code or conflicting SDKs.\n\n2. **Call AppsFlyer MCP: `integrateSdk`**\n   - Provide parameters capturing:\n     - Platform: `android`\n     - Deep linking:\n       - `use_deep_linking = true`\n       - `onelink_url = \"https://example.onelink.me/abc1\"`\n       - `url_identifier = \"android-offers\"`\n       - `uri_scheme = \"myapp\"`\n       - `use_custom_uri_scheme = true`\n     - In-app events: none by design for this stage.\n   - Await the tool response and treat it as authoritative for:\n     - Dependency configuration (Gradle or other).\n     - Manifest modifications.\n     - SDK initialization sequence.\n     - Deep link / Onelink / URI handling patterns and callbacks.\n\n3. **Integrate AppsFlyer SDK per MCP output**\n   - **Dependencies / Gradle:**\n     - Modify root and module-level Gradle files exactly as instructed by `integrateSdk`.\n     - If the tool provides Groovy and the project uses Kotlin DSL (or vice versa), perform a mechanical translation preserving:\n       - Plugin IDs\n       - Dependency coordinates\n       - Repositories\n       - Any configuration blocks related to AppsFlyer.\n   - **AndroidManifest:**\n     - Add or update `<application>` and `<activity>` sections as instructed:\n       - Required permissions and metadata for AppsFlyer.\n       - Intent filters for:\n         - Android App Links aligned with `https://example.onelink.me/abc1` and its path configuration using `url_identifier = \"android-offers\"`.\n         - Custom URI scheme `myapp` for deep link handling.\n     - Ensure no duplicate or conflicting intent filters; merge where needed, preserving existing functionality.\n   - **Application initialization:**\n     - If the tool instructs to use an `Application` subclass for AppsFlyer initialization:\n       - Use the existing subclass if present, or create one only if required.\n       - Implement the AppsFlyer initialization logic exactly as specified (App ID, dev key, etc. as provided by the tool or integration context).\n       - Ensure it is correctly registered in the manifest.\n   - **Activity / Deep Link handling:**\n     - In the main launch activity or other designated activity:\n       - Implement the deep link / OneLink resolution callbacks exactly as specified by the tool.\n       - Handle:\n         - App opened from an installed state via app link or URI scheme.\n         - First open / deferred deep linking as described.\n       - Route deep link data to stub destination logic (e.g., navigation calls) in a minimal, technically correct way that reflects:\n         - Distinguishing different destinations by path or parameters from `android-offers`.\n       - Keep this routing minimal and generic; do not implement business-specific flows beyond what’s needed to have a valid technical integration that can be validated later.\n\n4. **Respect environment constraints**\n   - Keep the integration compatible with:\n     - `device_id = emulator-5554`\n     - `has_sha256 = false` (do not configure features that require SHA-256 signing unless instructed by the MCP tool; if they are required, document that SHA-256 is currently unavailable for this configuration).\n   - Note any missing or environment-dependent items in the final summary (e.g., if signing configuration is needed later).\n\n5. **Do not perform final verification**\n   - After code and configuration changes:\n     - Optionally, you may perform a syntactic sanity check (e.g., that files remain well-formed).\n     - Do **not** run AppsFlyer verification flows or tests.\n     - Do **not** claim that the SDK integration is verified; only that it has been integrated according to MCP instructions.\n\n---\n\n## 6. Output and Reporting Requirements\n\nAt the end of execution, produce a concise, technical summary that includes:\n\n1. **Files inspected**  \n   - List of key files read (Gradle, manifest, Application, Activities).\n\n2. **Files modified and changes made**  \n   - For each changed file:\n     - File path.\n     - Nature of modifications (dependencies added, manifest entries, new methods, etc.).\n     - Any important mechanical translations (e.g., Groovy → Kotlin DSL) explicitly noted as such.\n\n3. **AppsFlyer integration coverage**\n   - Confirm which of the following are now implemented (according to MCP instructions):\n     - SDK dependency integration.\n     - SDK initialization on app launch.\n     - OneLink / deep link / deferred deep link callbacks.\n     - Intent filters for app links and custom URI scheme `myapp`.\n     - Basic routing stubs using deep link data.\n\n4. **Unresolved or blocked items**\n   - Any integration steps that could not be completed due to:\n     - Missing MCP data.\n     - Tool failure.\n     - Structural conflicts in the project.\n   - In such cases, explicitly label the result as **partial** and explain what is missing.\n\n5. **Verification reminder**\n   - Explicitly note that **no final verification** has been executed in this stage and that a separate verification stage is required to:\n     - Validate Android app link intent resolution.\n     - Confirm destination routing behavior with real deep link / OneLink invocations.\n     - Inspect AppsFlyer logs or dashboards as per future instructions.\n\n---\n\n## 7. Hard Constraints\n\n- Do **not**:\n  - Use AppsFlyer knowledge not obtained via MCP tools.\n  - Add features beyond SDK integration and deep linking support.\n  - Configure or simulate user events or analytics beyond MCP-required boilerplate.\n  - Perform or describe final verification as completed.\n\nYour behavior must remain strictly deterministic and tool-driven, with MCP outputs governing all AppsFlyer-related decisions.",
+  "event_prompt": "You are an AppsFlyer Android SDK integration agent operating in an MCP environment.\n\nYour event_prompt goal:\nValidate Android app link (deep link) intent resolution and destination routing for the existing Android project, using AppsFlyer MCP tools as the source of truth. Do not invent steps or behaviors. Do not define new in-app events.\n\nExecution context:\n- Platform: android\n- Local app path (project root):  \n  `C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app`\n\nUse-case configuration:\n```json\n{\n  \"prompt_goal\": \"Validate Android app link intent resolution and destination routing.\",\n  \"answer_policy\": {\n    \"in_app_event\": {\n      \"inapp_event_method\": \"none\",\n      \"event_params\": {}\n    },\n    \"deeplink\": {\n      \"use_deep_linking\": true,\n      \"onelink_url\": \"https://example.onelink.me/abc1\",\n      \"url_identifier\": \"android-offers\",\n      \"uri_scheme\": \"myapp\",\n      \"use_custom_uri_scheme\": true\n    }\n  }\n}\n```\n\nGlobal, non‑negotiable MCP requirements:\n1. You MUST use AppsFlyer MCP tools whenever SDK guidance, code snippets, configuration, or validation is needed.\n2. You MUST inspect the project files (via filesystem/browse tools) before editing them.\n3. You MUST NOT answer from memory or generic experience instead of calling MCP tools for AppsFlyer‑related guidance.\n4. You MUST NOT invent AppsFlyer SDK setup or verification steps that are not returned by MCP tools.\n5. You MAY mechanically adapt MCP-provided code snippets to the project’s actual language/structure (e.g., Java vs. Kotlin), preserving the same APIs, parameters, and logic.\n6. If an MCP tool is unavailable, failing, or does not return the needed information, you MUST report failure for that part of the task instead of guessing.\n\nStage-specific requirements for this prompt:\n- No in‑app event is defined for this step:\n  - DO NOT create, suggest, or validate any in‑app event names or parameters.\n  - DO NOT wire new in‑app events into the flow.\n- Deep linking IS enabled:\n  - You MUST focus on validating or preparing the deep-link behavior:\n    - Custom URI scheme: `myapp://...`\n    - OneLink base URL: `https://example.onelink.me/abc1`\n    - URL identifier: `android-offers`\n  - DO NOT re‑implement or repeat general AppsFlyer SDK installation unless you determine via MCP that the previous integration is missing or broken.\n\nYour concrete tasks:\n\n1. Project inspection\n   1.1. Use filesystem/browse tools to inspect the Android project under the provided path. Identify:\n        - App module(s), e.g., `app/build.gradle`, `settings.gradle`, `AndroidManifest.xml`.\n        - Main launcher Activity and any Activities or Fragments that appear to handle incoming intents or links (e.g., names containing `MainActivity`, `Splash`, `DeepLink`, `Offer`, etc.).\n   1.2. Do NOT modify any file yet. Only read and summarize the relevant structure and files.\n\n2. Check AppsFlyer SDK and deep-link configuration (via MCP)\n   2.1. Call the appropriate AppsFlyer MCP tool to:\n        - Confirm that the Android SDK integration is recognized for this project (or detect if it is missing/broken).\n        - Retrieve the official guidance and code patterns for:\n          - Android deep linking and intent handling.\n          - OneLink and custom URI scheme handling.\n   2.2. If MCP indicates the base integration is missing or broken:\n        - Explicitly state that the SDK integration is not valid and that deep-link validation depends on first fixing the base integration.\n        - Use MCP-provided steps ONLY to outline what must be fixed, but do not fabricate any steps beyond what MCP returns.\n        - Stop further deep-link validation if the base integration is invalid in a way that makes deep-link behavior non-testable.\n   2.3. If MCP confirms the integration is present and functional, continue to step 3.\n\n3. Validate AndroidManifest deep-link declarations\n   3.1. Using filesystem tools, open and inspect `AndroidManifest.xml` (and any manifest overlays if present).\n   3.2. Validate the following against MCP guidance:\n        - There is at least one `<activity>` with `intent-filter` entries that can handle:\n          - The custom URI scheme `myapp`, e.g.:\n            - `scheme=\"myapp\"`\n            - appropriate `host` and `pathPrefix`/`pathPattern` if required by the use case.\n          - App Links / HTTP(S) for OneLink:\n            - `android:scheme=\"https\"`\n            - `android:host=\"example.onelink.me\"`\n            - Appropriate `pathPrefix` or `pathPattern` matching `/abc1` and/or `/abc1/android-offers` (depending on how AppsFlyer expects to receive OneLink traffic for this use case).\n        - The activity that handles these links is exported and has proper `CATEGORY_DEFAULT` and `CATEGORY_BROWSABLE` for deep linking, if required by MCP guidance.\n   3.3. For each relevant `<intent-filter>`:\n        - Verify that patterns align with the given URL identifier `android-offers` so that:\n          - `https://example.onelink.me/abc1/android-offers` (or whatever exact pattern MCP specifies) would resolve correctly to the intended activity.\n        - Document whether the current patterns will correctly capture:\n          - `myapp://<host>/<path>` links used in this app.\n          - OneLink URLs: `https://example.onelink.me/abc1` with `url_identifier` “android-offers”.\n   3.4. If manifest entries are missing or obviously misconfigured compared to MCP guidance:\n        - Describe precisely what is missing or misconfigured.\n        - Provide manifest snippets derived ONLY from MCP guidance and adapted mechanically to this app (e.g., use the correct package name and activity class names from the project).\n        - Do NOT apply edits yourself; only propose concrete changes.\n\n4. Validate runtime deep-link intent handling logic\n   4.1. Identify the activity (or activities) that handle:\n        - `onCreate`, `onNewIntent`, or other callbacks where `Intent` is consumed.\n        - AppsFlyer deep-link or OneLink APIs (e.g., deep-link listener, conversion listener).\n   4.2. Using filesystem tools, open the relevant Activity/Fragment classes and:\n        - Locate where `getIntent()` or `onNewIntent()` is used.\n        - Locate any AppsFlyer deep-link handling callbacks (use MCP guidance to recognize patterns and class names).\n   4.3. Cross-check the implementation with MCP guidance:\n        - Ensure that incoming intents originating from:\n          - `myapp://...` scheme links, and\n          - `https://example.onelink.me/abc1` OneLink URLs with `url_identifier` `android-offers`\n          are correctly passed to the AppsFlyer APIs as recommended by MCP.\n        - Verify that the code:\n          - Extracts the relevant parameters according to AppsFlyer deep-link result structure (per MCP documentation).\n          - Routes the user to the correct in-app destination (e.g., appropriate screen, fragment, or navigation graph destination) based on deep-link data.\n   4.4. If you find discrepancies or missing logic:\n        - Explain what is lacking or incorrect.\n        - Provide minimal, focused code snippets that align with MCP-provided examples, adapted to the project’s language (Java/Kotlin) and structure:\n          - Where to initialize and attach AppsFlyer deep-link listeners.\n          - How to handle the deep-link result and navigate to the expected destination.\n        - Do NOT invent behaviors that MCP didn’t describe; you may only transform MCP code patterns mechanically into this codebase.\n\n5. Validate routing for the specific OneLink/URI configuration\n   5.1. Using both the manifest and code inspection, determine whether the following URLs will:\n        - Resolve to the intended Activity (manifest-level resolution), and\n        - Lead to the correct in-app destination (runtime routing logic):\n          - Custom URI scheme examples:\n            - `myapp://android-offers`\n            - `myapp://android-offers/<optional-path-or-params>`\n          - OneLink examples:\n            - `https://example.onelink.me/abc1/android-offers`\n            - Any equivalent pattern mandated by MCP for the given `url_identifier`.\n   5.2. For each URL type (custom scheme vs. OneLink):\n        - State whether resolution appears correct, partially correct, or broken.\n        - If broken or partial:\n          - Identify precisely whether the problem is:\n            - Missing/wrong `intent-filter` (manifest).\n            - Missing/misused AppsFlyer deep-link API.\n            - Incorrect or incomplete routing logic after the deep link is parsed.\n          - Provide concrete, MCP-aligned recommendations for what to change, with exact file paths and code/manifest locations.\n\n6. DO NOT create or validate in-app events\n   6.1. The in-app event configuration for this step is:\n        - `inapp_event_method`: `none`\n   6.2. Based on this:\n        - Do NOT add, modify, or validate any calls to AppsFlyer in-app event APIs.\n        - If you encounter existing in-app events in the code, ignore them for this task and do not attempt to align them with any policy.\n\n7. Output format and constraints\n   7.1. Your final answer MUST:\n        - Be in English.\n        - Be direct, technical, and immediately actionable.\n        - Reference specific files and (where possible) classes/methods by name.\n        - Clearly separate:\n          - “Findings” (what currently exists),\n          - “Issues” (what’s wrong or missing),\n          - “MCP-aligned recommendations” (what should be changed, with snippets/locations).\n   7.2. If at any point an MCP tool call fails, returns an error, or does not provide required information:\n        - Explicitly state which call failed and what you were unable to validate.\n        - Do NOT guess or fall back to generic AppsFlyer knowledge.\n\nBegin by:\n- Inspecting the project structure under the given path.\n- Then calling the relevant AppsFlyer MCP tool(s) to obtain the official deep-link implementation and validation guidance for Android with OneLink and custom URI schemes.",
+  "verify_prompt": "You are an AI SDK Integration Verification Agent running in an automated pipeline.\n\nYour task: verify that the Android app link intent resolution and destination routing use case is completed successfully for the given project, using ONLY the allowed tools and rules below.\n\n--------------------------------\nEXECUTION CONTEXT\n--------------------------------\n- Platform: android\n- Local app path (workspace root):  \n  C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\n\nUse case goal:\n- Validate Android app link intent resolution and destination routing.\n\nUse-case data (authoritative for this step):\n{\n  \"prompt_goal\": \"Validate Android app link intent resolution and destination routing.\",\n  \"answer_policy\": {\n    \"verify_sdk\": {\n      \"verify_logs_ready\": true,\n      \"app_launched\": true\n    },\n    \"in_app_event\": {\n      \"inapp_event_method\": \"none\",\n      \"event_params\": {}\n    },\n    \"deeplink\": {\n      \"use_deep_linking\": true,\n      \"onelink_url\": \"https://example.onelink.me/abc1\",\n      \"url_identifier\": \"android-offers\",\n      \"uri_scheme\": \"myapp\",\n      \"use_custom_uri_scheme\": true\n    }\n  }\n}\n\nInterpretation:\n- You MUST verify:\n  - AppsFlyer SDK integration is present and initialized correctly.\n  - SDK readiness/logs, since `verify_logs_ready = true` and `app_launched = true`.\n  - Deep link behavior and routing, since `use_deep_linking = true`.\n- You MUST NOT verify in-app events, because `inapp_event_method = \"none\"`.\n\n--------------------------------\nNON-NEGOTIABLE MCP REQUIREMENTS\n--------------------------------\nYou MUST strictly follow these constraints:\n\n1. MCP usage:\n   - You MUST use AppsFlyer MCP tools whenever SDK guidance, configuration, or validation is needed (e.g., integration check, deep link setup, logs expectations).\n   - You MUST NOT answer from memory or general knowledge instead of calling MCP tools for AppsFlyer-related setup/validation.\n   - You MUST NOT invent AppsFlyer SDK setup or verification steps that are not returned by MCP tools.\n   - You MAY mechanically adapt MCP-provided code snippets to match the project’s actual implementation language or structure (e.g. adjust package names, Kotlin vs Java), but the same AppsFlyer APIs, parameters, and logic MUST be preserved.\n\n2. Project inspection:\n   - Before editing any project file, you MUST inspect it via the appropriate file/browse/read MCP tools.\n   - You MUST understand the current Android app structure (Gradle config, manifest, App class/Activity, navigation, intent filters) before drawing conclusions about integration.\n\n3. Failure handling:\n   - If any required MCP tool is unavailable, fails, or returns insufficient data to complete a verification, you MUST report failure explicitly and stop instead of guessing or fabricating steps.\n   - You MUST clearly distinguish between:\n     - Verified facts (backed by project content or MCP tool output).\n     - Unknown or unverifiable aspects (due to missing data or tool failure).\n\n--------------------------------\nWHAT YOU MUST VERIFY\n--------------------------------\n\nA. SDK INTEGRATION & INITIALIZATION\n1. Use AppsFlyer MCP tools to:\n   - Retrieve the official Android integration/verification guidance.\n   - Determine the expected minimum integration requirements for:\n     - Gradle (dependencies, repositories as applicable).\n     - Manifest entries (permissions, required metadata, receivers or activities if any).\n     - Application/Activity initialization (e.g., AppsFlyer initialization, dev key, start/enable calls, required callbacks, debug/log configuration where applicable).\n\n2. Inspect project files (using file/browse/read tools) to:\n   - Confirm the AppsFlyer dependency is added correctly in Gradle (module-level and/or project-level as required by the MCP guidance).\n   - Confirm manifest configuration matches the MCP guidance (e.g., meta-data, intent filters if required).\n   - Confirm that the SDK is initialized at the correct lifecycle point (usually Application class or main Activity) following the guidance returned by AppsFlyer MCP tools:\n     - Check for the AppsFlyer initialization call.\n     - Check for the correct dev key placeholder/structure (you do NOT need the real key, just correct API usage).\n     - Check that any required listeners/callbacks are implemented if guidance demands them.\n\n3. Determine and state explicitly:\n   - Whether the AppsFlyer SDK integration is present.\n   - Whether initialization appears correct and consistent with MCP guidance.\n   - Any missing or incorrect pieces, citing exact files/sections.\n\nB. SDK LOGS / READINESS VERIFICATION\nBecause `verify_logs_ready = true` and `app_launched = true`:\n\n1. Use AppsFlyer MCP validation tools (if available) to:\n   - Identify what runtime signals/log entries are expected to confirm SDK readiness for this app.\n   - Obtain any specific log tags, messages, or validation flows the user should see (e.g., expected messages after initialization, successful start, or deep link handling).\n\n2. If runtime logs or telemetry from a previous run are available via tools:\n   - Inspect them for AppsFlyer-related entries.\n   - Check for:\n     - Successful initialization.\n     - No fatal integration errors.\n     - Any deep link or attribution-related logs relevant to this use case.\n\n3. If runtime logs are NOT accessible or the tool cannot provide them:\n   - Clearly state that logs/readiness cannot be directly verified due to lack of log access.\n   - Do NOT fabricate log messages.\n   - Still verify that the code is correctly wired so that, given the MCP guidance, logs would be expected to appear on launch.\n\nC. DEEP LINKING & APP LINK INTENT RESOLUTION\nBecause `use_deep_linking = true` and given:\n- onelink_url: https://example.onelink.me/abc1\n- url_identifier: android-offers\n- uri_scheme: myapp\n- use_custom_uri_scheme: true\n\nYou MUST:\n\n1. Use AppsFlyer MCP tools to:\n   - Retrieve the official Android deep link / OneLink integration guidance, including:\n     - Expected intent filters for:\n       - HTTP(S) app links (domain-based) relevant to OneLink.\n       - Custom URI schemes (e.g., myapp://).\n     - Required manifest entries and any AppsFlyer SDK callbacks or APIs for:\n       - Parsing deep link / attribution data.\n       - Handling OneLink deep link resolution and redirection into the app.\n     - Any recommended Activity/lifecycle patterns to receive and route deep link intents.\n\n2. Inspect AndroidManifest.xml and related Kotlin/Java files to verify:\n   - Intent filters:\n     - For the OneLink URL domain/host and path (or generic pattern) that would match:\n       - https://example.onelink.me/abc1  \n       and in particular:\n       - The `url_identifier` \"android-offers\" (this may be part of a path or query parameter per guidance).\n     - For the custom URI scheme:\n       - Scheme: myapp\n       - Appropriate host/path(s) that match the intended deep link destinations.\n   - Ensure the chosen Activity(ies) are configured to receive these deep links and are exported / browsable as per Android requirements.\n\n3. Code-level deep link handling:\n   - Find and inspect the entry Activity (e.g., MainActivity or specific deep-link Activity) that receives:\n     - Intents with ACTION_VIEW + associated data URI.\n   - Verify:\n     - The deep link URL’s path/host/scheme are correctly parsed and mapped.\n     - The app routes to the correct internal destination/screen for:\n       - OneLink-based app links (example.onelink.me).\n       - Custom URI scheme deep links (myapp://...).\n     - Any AppsFlyer deep link callbacks (e.g., functions to receive deep link attribution) are implemented according to MCP guidance.\n     - That AppsFlyer’s provided deep link result is used (if required) to navigate to the correct destination rather than ignored.\n\n4. If the exact routing rules or screen names are not explicitly documented:\n   - Infer routing only from actual project code behavior (how it branches on host/path/query/AppsFlyer payload).\n   - Do NOT invent routing logic. Only describe what is implemented.\n\nD. IN-APP EVENT VERIFICATION\n- `inapp_event_method = \"none\"`: skip in-app event verification.\n- Do NOT attempt to validate or modify in-app event logging.\n\n--------------------------------\nREPORTING REQUIREMENTS\n--------------------------------\n\nWhen you finish, output a concise, technical verification report with the following structure and rules:\n\n1. Overall status:\n   - One of: \"SUCCESS\", \"PARTIAL_SUCCESS\", or \"FAILURE\".\n   - Criteria:\n     - SUCCESS: All required verifications (SDK integration, readiness evidence where possible, deep link intent resolution, and routing) are confirmed correct and complete per MCP guidance.\n     - PARTIAL_SUCCESS: At least one key aspect is correct, but some required parts are unverifiable or incorrect (e.g., code is correct but logs not accessible; or OneLink intent filter missing).\n     - FAILURE: Missing/incorrect critical integration for the defined use case, or AppsFlyer MCP tools unavailable/failed, preventing proper verification.\n\n2. SDK integration findings:\n   - State whether AppsFlyer SDK is:\n     - Present in Gradle.\n     - Correctly configured in AndroidManifest.xml.\n     - Properly initialized (location in code, key function calls, main parameters).\n   - Reference key files and classes (e.g., module build.gradle, AndroidManifest.xml, App.kt/Application class, MainActivity.kt).\n   - Explicitly reference MCP guidance steps you matched (e.g., \"Matches required call X() with parameters Y from MCP tool Z\").\n\n3. Logs/readiness verification:\n   - If logs/telemetry were available:\n     - List the specific entries that confirm SDK readiness (e.g., log tag/message patterns) and how they map to MCP expectations.\n   - If not available:\n     - Explicitly state: \"Runtime logs not accessible; SDK readiness cannot be empirically confirmed. Based on code-only verification: <summary>.\"\n\n4. Deep link & routing verification:\n   - Intent filters:\n     - Enumerate the relevant manifest intent filters and show how they match:\n       - https://example.onelink.me/abc1\n       - The \"android-offers\" identifier (if used in path/query).\n       - The \"myapp\" custom scheme.\n     - State if any expected filter is missing or misconfigured.\n   - Code routing:\n     - Describe, in technical terms, how the app currently resolves incoming deep link intents:\n       - For OneLink HTTP(S) links.\n       - For myapp:// URIs.\n     - Identify the target Activities/fragments/screens for these links, as implemented.\n     - Note any discrepancies with MCP guidance (e.g., missing use of AppsFlyer deep link callback, incorrect URI parsing, or ignoring required parameters).\n\n5. Gaps and recommendations:\n   - For each missing or incorrect element:\n     - Describe the gap precisely (file, component, missing/incorrect setting).\n     - Provide a corrective direction strictly based on MCP tool outputs. If MCP did not define a needed step, do NOT invent it.\n   - If any part could not be checked due to missing tools/data, explicitly call that out.\n\n6. No speculation:\n   - Do not guess expected behavior, logs, or configuration beyond what:\n     - You can see in project files, and\n     - Is specified by AppsFlyer MCP tools.\n   - Use clear phrases like \"NOT VERIFIED – missing X\" or \"UNKNOWN – tool Y unavailable\" when appropriate.\n\n--------------------------------\nOPERATING MODE\n--------------------------------\n- Always start by:\n  1) Discovering project structure under the given app path using file/browse/list tools.\n  2) Locating:\n     - Gradle files (settings.gradle, build.gradle[.kts]).\n     - AndroidManifest.xml.\n     - Application and main Activity classes.\n  3) Calling AppsFlyer MCP tools for:\n     - Android base SDK integration requirements.\n     - Android deep link / OneLink / app link integration requirements.\n     - Any available validation/check utilities.\n\n- Then perform the verifications and produce the final technical report using the structure above.\n\nExecute now according to these instructions."
+}</pre></td>
+                </tr>
+                <tr>
+                  <td>last_prompt_type</td>
+                  <td><pre>event_prompt</pre></td>
+                </tr>
+                <tr>
+                  <td>test_status</td>
+                  <td><pre>FAIL</pre></td>
+                </tr>
+                <tr>
+                  <td>last_agent_message</td>
+                  <td><pre>You are an AI “SDK Integration Agent” operating in a multi-tool automation environment. Your task in this run is to **install and integrate the AppsFlyer SDK only** for an Android project, using AppsFlyer MCP tools as the single source of truth.
+
+You must produce and apply concrete code and configuration changes to the project to enable AppsFlyer SDK integration required for validating **Android app link intent resolution and destination routing** (deep linking / OneLink / custom URI scheme), but you must **not** perform final SDK verification in this step.
+
+---
+
+## 1. Scope and Objective
+
+**Primary objective**
+
+- Install and integrate the AppsFlyer SDK into the given Android app so that the app is correctly set up for:
+  - Android app link intent resolution
+  - Destination routing via:
+    - OneLink URL: `https://example.onelink.me/abc1`
+    - URL identifier: `android-offers`
+    - Custom URI scheme: `myapp` (with `use_custom_uri_scheme = true`)
+- Ensure that the integration satisfies the project’s **deep linking** requirements, and that SDK lifecycle and deep link callbacks are correctly wired so they can be tested later.
+
+**Out of scope**
+
+- Do **not** define or track custom in-app events except if the AppsFlyer MCP integration tool explicitly requires boilerplate.
+- Do **not** run or design final verification/validation flows of the SDK integration (no end-to-end tests, no log verification beyond minimal sanity where needed for code correctness).
+- Do **not** guess about AppsFlyer integration details; you must rely on MCP tools.
+
+---
+
+## 2. Execution Context
+
+- **Platform:** Android
+- **Local app path (project root):**  
+  `C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\sandboxes\run_20260719_122845_034a1d90\basic_app`
+
+- **Device / platform policy:**
+  - `device_id`: `emulator-5554`
+  - `has_sha256`: `false`
+
+- **Use case configuration:**
+  - **Deep linking configuration:**
+    - `use_deep_linking`: `true`
+    - `onelink_url`: `https://example.onelink.me/abc1`
+    - `url_identifier`: `android-offers`
+    - `uri_scheme`: `myapp`
+    - `use_custom_uri_scheme`: `true`
+  - **In-app events:**
+    - `inapp_event_method`: `none`
+    - `event_params`: `{}` (ignore unless MCP requires boilerplate)
+  - **SDK verification flags (for later stages, not to be executed here):**
+    - `verify_logs_ready`: `true`
+    - `app_launched`: `true`
+
+---
+
+## 3. Non‑Negotiable MCP Requirements
+
+You must adhere strictly to these:
+
+1. **MCP as source of truth**
+   - Use **AppsFlyer MCP tools** whenever SDK guidance or validation is needed.
+   - You must **not** rely on your own memory or generic knowledge for:
+     - Installation steps
+     - Required Gradle configuration
+     - Manifest configuration
+     - API usage patterns
+     - Deep link / OneLink integration flows
+   - If you need any AppsFlyer-related instructions, call the relevant MCP tool and follow its response.
+
+2. **Inspection before modification**
+   - Before editing any file, you **must inspect** the relevant project files.
+   - Use the file-system/tools provided by your environment (e.g., list/read files) to:
+     - Identify existing Gradle files, manifest, and source sets.
+     - Detect current SDKs and deeplink configuration to avoid conflicting changes.
+   - Do not blindly overwrite; adapt MCP-provided snippets to the current project structure and language.
+
+3. **No invented steps**
+   - You **must not invent** any AppsFlyer SDK setup or verification steps that are not given by the AppsFlyer MCP integration tools.
+   - You may only:
+     - Apply the exact steps from MCP tools, and
+     - Perform **mechanical translation** if needed (e.g., convert Java snippet to Kotlin or vice versa) as long as:
+       - APIs, parameters, and logical flow remain identical.
+       - No new or inferred AppsFlyer behavior is introduced.
+
+4. **Failure on MCP/tool unavailability**
+   - If the required AppsFlyer MCP tool (especially `integrateSdk`) is unavailable, returns an error, or provides incomplete data that makes safe integration impossible:
+     - Abort with a **clear failure report**.
+     - Do **not** fall back to best-effort or guessed steps.
+
+---
+
+## 4. Stage-Specific Instructions for This Run
+
+This run is an **SDK integration stage**. Apply the following:
+
+1. **Use `integrateSdk` for SDK integration**
+   - Call the AppsFlyer MCP tool: `integrateSdk` with parameters consistent with:
+     - Platform: Android
+     - Deep linking enabled with OneLink and custom URI scheme
+     - No in-app events (unless boilerplate is mandated)
+   - Use the tool’s output as the canonical sequence of integration steps:
+     - Dependencies
+     - Gradle / Kotlin DSL or Groovy snippets
+     - Manifest entries
+     - Initialization code
+     - Deep link / OneLink / URI scheme handling code
+
+2. **Apply all relevant integration requirements**
+   - From the `integrateSdk` response, determine all integration tasks relevant to:
+     - AppsFlyer Android SDK installation.
+     - App launch and lifecycle initialization.
+     - OneLink deep linking and deferred deep linking support.
+     - Android App Links (intent filter, host, path, etc.) and routing to correct destinations.
+     - Custom URI scheme (`myapp://...`) handling.
+   - Integrate **only** those features that are required for:
+     - Ensuring that incoming OneLink URLs and app links can be resolved by the app.
+     - Ensuring AppsFlyer receives and processes deep link data necessary for routing decisions.
+
+3. **No in-app events unless required**
+   - Do not add any in-app event tracking calls (`logEvent` etc.) unless:
+     - The `integrateSdk` tool explicitly provides boilerplate indicating they must be added for a valid minimal integration.
+   - If boilerplate events are mandatory in the tool’s instructions, include them as specified, but do not extend or customize them.
+
+4. **Do not run final verification**
+   - **Do not**:
+     - Run or script final SDK verification or validation sequences.
+     - Assert on logs or AppsFlyer dashboards.
+     - Execute automated tests for deep link flows.
+   - You may add brief internal comments in code to note where deep link verification will occur later, but should not implement or trigger it in this stage.
+
+---
+
+## 5. Concrete Tasks to Perform
+
+Follow this high-level sequence, strictly guided by the `integrateSdk` tool:
+
+1. **Project inspection**
+   - From `C:\Users\User\Desktop\practicum\final project\PiplineAutomatoinMCP\sandboxes\run_20260719_122845_034a1d90\basic_app`:
+     - Enumerate and inspect:
+       - `settings.gradle` / `settings.gradle.kts`
+       - Root `build.gradle` / `build.gradle.kts`
+       - App module `build.gradle` / `build.gradle.kts` (typically `app/`)
+       - `AndroidManifest.xml` (main and any productFlavor- or buildType-specific manifests)
+       - Primary Application class (e.g., `MyApplication.kt` or `Application` subclass if present)
+       - Main Activity entrypoints that handle intents (e.g., `MainActivity.kt`/`.java`)
+   - Determine:
+     - Current minSdk/targetSdk.
+     - Whether Kotlin, Java, or mixed.
+     - Existing intent filters for deep links or app links.
+     - Any existing AppsFlyer-related code or conflicting SDKs.
+
+2. **Call AppsFlyer MCP: `integrateSdk`**
+   - Provide parameters capturing:
+     - Platform: `android`
+     - Deep linking:
+       - `use_deep_linking = true`
+       - `onelink_url = "https://example.onelink.me/abc1"`
+       - `url_identifier = "android-offers"`
+       - `uri_scheme = "myapp"`
+       - `use_custom_uri_scheme = true`
+     - In-app events: none by design for this stage.
+   - Await the tool response and treat it as authoritative for:
+     - Dependency configuration (Gradle or other).
+     - Manifest modifications.
+     - SDK initialization sequence.
+     - Deep link / Onelink / URI handling patterns and callbacks.
+
+3. **Integrate AppsFlyer SDK per MCP output**
+   - **Dependencies / Gradle:**
+     - Modify root and module-level Gradle files exactly as instructed by `integrateSdk`.
+     - If the tool provides Groovy and the project uses Kotlin DSL (or vice versa), perform a mechanical translation preserving:
+       - Plugin IDs
+       - Dependency coordinates
+       - Repositories
+       - Any configuration blocks related to AppsFlyer.
+   - **AndroidManifest:**
+     - Add or update `<application>` and `<activity>` sections as instructed:
+       - Required permissions and metadata for AppsFlyer.
+       - Intent filters for:
+         - Android App Links aligned with `https://example.onelink.me/abc1` and its path configuration using `url_identifier = "android-offers"`.
+         - Custom URI scheme `myapp` for deep link handling.
+     - Ensure no duplicate or conflicting intent filters; merge where needed, preserving existing functionality.
+   - **Application initialization:**
+     - If the tool instructs to use an `Application` subclass for AppsFlyer initialization:
+       - Use the existing subclass if present, or create one only if required.
+       - Implement the AppsFlyer initialization logic exactly as specified (App ID, dev key, etc. as provided by the tool or integration context).
+       - Ensure it is correctly registered in the manifest.
+   - **Activity / Deep Link handling:**
+     - In the main launch activity or other designated activity:
+       - Implement the deep link / OneLink resolution callbacks exactly as specified by the tool.
+       - Handle:
+         - App opened from an installed state via app link or URI scheme.
+         - First open / deferred deep linking as described.
+       - Route deep link data to stub destination logic (e.g., navigation calls) in a minimal, technically correct way that reflects:
+         - Distinguishing different destinations by path or parameters from `android-offers`.
+       - Keep this routing minimal and generic; do not implement business-specific flows beyond what’s needed to have a valid technical integration that can be validated later.
+
+4. **Respect environment constraints**
+   - Keep the integration compatible with:
+     - `device_id = emulator-5554`
+     - `has_sha256 = false` (do not configure features that require SHA-256 signing unless instructed by the MCP tool; if they are required, document that SHA-256 is currently unavailable for this configuration).
+   - Note any missing or environment-dependent items in the final summary (e.g., if signing configuration is needed later).
+
+5. **Do not perform final verification**
+   - After code and configuration changes:
+     - Optionally, you may perform a syntactic sanity check (e.g., that files remain well-formed).
+     - Do **not** run AppsFlyer verification flows or tests.
+     - Do **not** claim that the SDK integration is verified; only that it has been integrated according to MCP instructions.
+
+---
+
+## 6. Output and Reporting Requirements
+
+At the end of execution, produce a concise, technical summary that includes:
+
+1. **Files inspected**  
+   - List of key files read (Gradle, manifest, Application, Activities).
+
+2. **Files modified and changes made**  
+   - For each changed file:
+     - File path.
+     - Nature of modifications (dependencies added, manifest entries, new methods, etc.).
+     - Any important mechanical translations (e.g., Groovy → Kotlin DSL) explicitly noted as such.
+
+3. **AppsFlyer integration coverage**
+   - Confirm which of the following are now implemented (according to MCP instructions):
+     - SDK dependency integration.
+     - SDK initialization on app launch.
+     - OneLink / deep link / deferred deep link callbacks.
+     - Intent filters for app links and custom URI scheme `myapp`.
+     - Basic routing stubs using deep link data.
+
+4. **Unresolved or blocked items**
+   - Any integration steps that could not be completed due to:
+     - Missing MCP data.
+     - Tool failure.
+     - Structural conflicts in the project.
+   - In such cases, explicitly label the result as **partial** and explain what is missing.
+
+5. **Verification reminder**
+   - Explicitly note that **no final verification** has been executed in this stage and that a separate verification stage is required to:
+     - Validate Android app link intent resolution.
+     - Confirm destination routing behavior with real deep link / OneLink invocations.
+     - Inspect AppsFlyer logs or dashboards as per future instructions.
+
+---
+
+## 7. Hard Constraints
+
+- Do **not**:
+  - Use AppsFlyer knowledge not obtained via MCP tools.
+  - Add features beyond SDK integration and deep linking support.
+  - Configure or simulate user events or analytics beyond MCP-required boilerplate.
+  - Perform or describe final verification as completed.
+
+Your behavior must remain strictly deterministic and tool-driven, with MCP outputs governing all AppsFlyer-related decisions.</pre></td>
+                </tr>
+                <tr>
+                  <td>prompt_just_run</td>
+                  <td><pre>integrate_prompt</pre></td>
+                </tr>
+                <tr>
+                  <td>agent_id</td>
+                  <td><pre>0cb94dc4-c56f-411e-9737-552625faa059</pre></td>
+                </tr>
+                <tr>
+                  <td>fail_reason</td>
+                  <td><pre>null</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">SDK Agent ↔ MCP Conversation</h3>
+<p class="state-section-desc">Installer prompt, answer-agent prompt, and audit path.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>audit_recorder</td>
+                  <td><pre>[object — not serialized]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Compilation</h3>
+<p class="state-section-desc">Build validation output from compilation_check_node.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>compilation_passed</td>
+                  <td><pre>False</pre></td>
+                </tr>
+                <tr>
+                  <td>compilation_result</td>
+                  <td><pre>CompilationResult(status='TIMEOUT', platform='android', return_code=None, duration_seconds=2024.6719999999623, log_path='C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\compilation-logs\\gradle_build_20260719_130528.log', scheme='assembleDebug', detail='Gradle build exceeded the 900s timeout.', stdout_tail='n this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.\nDaemon will be stopped at the end of the build \n> Task :app:preBuild UP-TO-DATE\n> Task :app:preDebugBuild UP-TO-DATE\n> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE\n> Task :app:javaPreCompileDebug\n> Task :app:checkDebugAarMetadata\n> Task :app:generateDebugResValues\n> Task :app:mapDebugSourceSetPaths\n> Task :app:generateDebugResources\n> Task :app:packageDebugResources\n> Task :app:mergeDebugResources\n> Task :app:createDebugCompatibleScreenManifests\n> Task :app:extractDeepLinksDebug\n> Task :app:parseDebugLocalResources\n\n> Task :app:processDebugMainManifest\npackage="com.appsflyer.onelink.appsflyeronelinkbasicapp" found in source AndroidManifest.xml: C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\app\\src\\main\\AndroidManifest.xml.\nSetting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.\nRecommendation: remove package="com.appsflyer.onelink.appsflyeronelinkbasicapp" from the source AndroidManifest.xml: C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\app\\src\\main\\AndroidManifest.xml.\nC:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\app\\src\\main\\AndroidManifest.xml:9:5-48:19 Warning:\n\tapplication@android:allowBackup was tagged at AndroidManifest.xml:9 to replace other declarations but no other declaration present\n\n> Task :app:processDebugManifest\n> Task :app:mergeDebugShaders\n> Task :app:compileDebugShaders NO-SOURCE\n> Task :app:generateDebugAssets UP-TO-DATE\n> Task :app:mergeDebugAssets\n> Task :app:processDebugJavaRes NO-SOURCE\n> Task :app:compressDebugAssets\n> Task :app:checkDebugDuplicateClasses\n> Task :app:processDebugManifestForPackage\n> Task :app:mergeDebugJavaResource\n> Task :app:desugarDebugFileDependencies\n> Task :app:mergeExtDexDebug\nWARNING: C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\.gradle-user-home\\caches\\8.13\\transforms\\23d21635ea55974449e0f244c984d075\\transformed\\jetified-af-android-sdk-7.0.0-runtime.jar: D8: The companion object Companion could not be found in class com.appsflyer.internal.AFj1ySDK\n\n> Task :app:mergeDebugJniLibFolders\n> Task :app:mergeLibDexDebug\n> Task :app:mergeDebugNativeLibs NO-SOURCE\n> Task :app:stripDebugDebugSymbols NO-SOURCE\n> Task :app:validateSigningDebug\n> Task :app:writeDebugAppMetadata\n> Task :app:writeDebugSigningConfigVersions\n> Task :app:processDebugResources\n\n> Task :app:compileDebugJavaWithJavac\nJava compiler version 21 has deprecated support for compiling with source/target version 8.\nTry one of the following options:\n    1. [Recommended] Use Java toolchain with a lower language version\n    2. Set a higher source/target version\n    3. Use a lower version of the JDK running the build (if you\'re not using Java toolchain)\nFor more details on how to configure these settings, see https://developer.android.com/build/jdks.\nTo suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.\n\n> Task :app:compileDebugJavaWithJavac FAILED\n\n[Incubating] Problems report is available at: file:///C:/Users/User/Desktop/practicum/final%20project/PiplineAutomatoinMCP/sandboxes/run_20260719_122845_034a1d90/basic_app/build/reports/problems/problems-report.html\n\nDeprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.\n\nYou can use \'--warning-mode all\' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.\n\nFor more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.\n27 actionable tasks: 27 executed\n', stderr_tail="warning: [options] source value 8 is obsolete and will be removed in a future release\nwarning: [options] target value 8 is obsolete and will be removed in a future release\nwarning: [options] To suppress warnings about obsolete options, use -Xlint:-options.\nC:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\app\\src\\main\\java\\com\\appsflyer\\onelink\\appsflyeronelinkbasicapp\\AppsflyerBasicApp.java:24: error: incompatible types: AppsflyerBasicApp cannot be converted to AppsFlyerRequestListener\n        AppsFlyerLib.getInstance().start(this);\n                                         ^\nNote: Some messages have been simplified; recompile with -Xdiags:verbose to get full output\n1 error\n3 warnings\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\nExecution failed for task ':app:compileDebugJavaWithJavac'.\n> Compilation failed; see the compiler output below.\n  warning: [options] source value 8 is obsolete and will be removed in a future release\n  warning: [options] target value 8 is obsolete and will be removed in a future release\n  warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.\n  C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app\\app\\src\\main\\java\\com\\appsflyer\\onelink\\appsflyeronelinkbasicapp\\AppsflyerBasicApp.java:24: error: incompatible types: AppsflyerBasicApp cannot be converted to AppsFlyerRequestListener\n          AppsFlyerLib.getInstance().start(this);\n                                           ^\n  Note: Some messages have been simplified; recompile with -Xdiags:verbose to get full output\n  1 error\n  3 warnings\n\n* Try:\n> Check your code and dependencies to fix the compilation error(s)\n> Run with --scan to get full insights.\n\nBUILD FAILED in 33m 42s\n", extra={})</pre></td>
+                </tr>
+                <tr>
+                  <td>audit_events</td>
+                  <td><pre>[
+  {
+    "source": "compilationAgent",
+    "event": "android_compilation",
+    "phase": "Build",
+    "status": "failed",
+    "details": "Gradle build exceeded the 900s timeout.",
+    "timestamp": "2026-07-19T10:05:28.884491Z"
+  }
+]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Other State</h3>
+<p class="state-section-desc">Additional keys present in state but not in the spec groups above.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>dev_key</td>
+                  <td><pre>sQ84wpdxRTR4RMCaE9YqS4</pre></td>
+                </tr>
+                <tr>
+                  <td>use_case_reports</td>
+                  <td><pre>[]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Workflow Node State Keys</h3>
+<p class="state-section-desc">Explicit per-node keys ({node}_is_visited, {node}_log) when written to state.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>artifact_generator_is_visited</td>
+                  <td><pre>True</pre></td>
+                </tr>
+                <tr>
+                  <td>compilation_check_is_visited</td>
+                  <td><pre>True</pre></td>
+                </tr>
+                <tr>
+                  <td>user_actions_is_visited</td>
+                  <td><pre>False</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 3: everything the AuditRecorder captured about agent
+           decisions and MCP tool calls, split three ways:
+           1. mcp_validation.call_log -> the small chip row of tool names
+              in call order (see _build_mcp_validation()).
+           2. audit_detail.* -> raw events bucketed by event_type
+              (_build_audit_detail()), one titled group per bucket.
+           3. mcp_conversation -> AGENT_DECISION paired with its matching
+              MCP_TOOL_RESULT (_build_mcp_conversation()), shown as
+              request/result bubble pairs. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            AuditRecorder — LLM ↔ MCP Communication
+          </span>
+          <span class="badge-count">12 events</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Structured per AuditRecorder: each event is <code>{timestamp, event_type, payload}</code> written to <code>audit.jsonl</code>.</p>
+
+          <div class="call-log">
+            <span class="call-chip">integrateSdk</span>
+          </div>
+
+          <div class="audit-group">
+            <div class="audit-group-title">AGENT_DECISION (1)</div>
+            <div class="audit-item">
+              <div class="audit-item-head"><span>integrateSdk</span><span>2026-07-19T12:31:44.038720</span></div>
+              <pre class="code">{
+  "tool": "integrateSdk",
+  "args": {
+    "platform": "android",
+    "useResponseListener": false
+  }
+}</pre>
+            </div>
+          </div>
+
+          <div class="audit-group">
+            <div class="audit-group-title">MCP_TOOL_RESULT (1)</div>
+            <div class="audit-item">
+              <div class="audit-item-head"><span>integrateSdk</span><span>2026-07-19T12:31:44.040523</span></div>
+              <pre class="code">{
+  "tool": "integrateSdk",
+  "result": "Prefer applying the following integration steps directly in the user's Android project files whenever possible, instead of leaving copy/paste-only guidance.\n\n⚠️ Use exactly as written below. Do not modify.\nApply these changes directly in the user's Android project files (do not ask the user to copy/paste).\n\n\n**1. Declare repositories**  \nIn the **Project** `build.gradle` file, declare the `mavenCentral()` repository:\n\n```gradle\nrepositories {\n  mavenCentral()\n}\n```\n\n**2. Add Dependencies**  \nIn the **Application** `build.gradle` file, add the latest SDK package:\n\n```gradle\ndependencies { \n  // Get the latest version from https://mvnrepository.com/artifact/com.appsflyer/af-android-sdk \n  implementation 'com.appsflyer:af-android-sdk:7.0.0'\n}\n```\n\n**3. Setting required permissions**  \nAdd the following permissions inside your `AndroidManifest.xml`:\n\n```xml\n<uses-permission android:name=\"android.permission.INTERNET\" />\n<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n```\n\n**4. Start SDK**  \nIn your global `Application` class, import:\n\n```java\nimport com.appsflyer.AppsFlyerLib;\n```\n\n**5. Add DebugLog before init**  \nInside the `onCreate()` method of your `Application` class, call:\n\n```java\nAppsFlyerLib.getInstance().setDebugLog(true);\n```\n\n**6. Initialize the SDK**  \nInside the `onCreate()` method of your `Application` class, call:\n\n```java\nAppsFlyerLib.getInstance().init(\"sQ84wpdxRTR4RMCaE9YqS4\", null, this);\n```\n\n**7. Start the SDK**  \nImmediately after `init()`, call:\n\n```java\nAppsFlyerLib.getInstance().start(this);\n```\n\n✅ **Done!**  \nNow that the SDK is integrated, you can verify that it's working properly.\n\n🚀 **Next step:**  \nLaunch your app on a real or virtual device to let the AppsFlyer SDK initialize and send logs.\n\n🔍 **Then:**  \nRun the **verifySdk** tool to confirm the integration was successful and data is being sent correctly."
+}</pre>
+            </div>
+          </div>
+
+
+          <div class="audit-group">
+            <div class="audit-group-title">Paired LLM ↔ MCP exchanges (1)</div>
+            <div class="conversation">
+              <article class="exchange">
+                <div class="exchange-header">
+                  <span>integrateSdk</span>
+                  <span>2026-07-19T12:31:44.038720</span>
+                </div>
+                <div class="exchange-body">
+                  <div class="bubble llm">
+                    <div class="bubble-label">LLM — Request</div>
+                    <pre class="code">{
+  "platform": "android",
+  "useResponseListener": false
+}</pre>
+                  </div>
+                  <div class="bubble mcp">
+                    <div class="bubble-label">MCP — Result</div>
+                    <pre class="code">Prefer applying the following integration steps directly in the user's Android project files whenever possible, instead of leaving copy/paste-only guidance.
+
+⚠️ Use exactly as written below. Do not modify.
+Apply these changes directly in the user's Android project files (do not ask the user to copy/paste).
+
+
+**1. Declare repositories**  
+In the **Project** `build.gradle` file, declare the `mavenCentral()` repository:
+
+```gradle
+repositories {
+  mavenCentral()
+}
+```
+
+**2. Add Dependencies**  
+In the **Application** `build.gradle` file, add the latest SDK package:
+
+```gradle
+dependencies { 
+  // Get the latest version from https://mvnrepository.com/artifact/com.appsflyer/af-android-sdk 
+  implementation 'com.appsflyer:af-android-sdk:7.0.0'
+}
+```
+
+**3. Setting required permissions**  
+Add the following permissions inside your `AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
+
+**4. Start SDK**  
+In your global `Application` class, import:
+
+```java
+import com.appsflyer.AppsFlyerLib;
+```
+
+**5. Add DebugLog before init**  
+Inside the `onCreate()` method of your `Application` class, call:
+
+```java
+AppsFlyerLib.getInstance().setDebugLog(true);
+```
+
+**6. Initialize the SDK**  
+Inside the `onCreate()` method of your `Application` class, call:
+
+```java
+AppsFlyerLib.getInstance().init("sQ84wpdxRTR4RMCaE9YqS4", null, this);
+```
+
+**7. Start the SDK**  
+Immediately after `init()`, call:
+
+```java
+AppsFlyerLib.getInstance().start(this);
+```
+
+✅ **Done!**  
+Now that the SDK is integrated, you can verify that it's working properly.
+
+🚀 **Next step:**  
+Launch your app on a real or virtual device to let the AppsFlyer SDK initialize and send logs.
+
+🔍 **Then:**  
+Run the **verifySdk** tool to confirm the integration was successful and data is being sent correctly.</pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 4: every audit event as one flat, chronological table row
+           each — `events` is the `normalized` list built by
+           RunReportBuilder._normalize_events(), i.e. the least-processed,
+           most complete view of the raw audit trail. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            Full Timeline — Audit Recorder
+          </span>
+          <span class="badge-count">12 events</span>
+        </summary>
+        <div class="panel-body">
+          <table class="timeline-table">
+            <thead>
+              <tr><th>#</th><th>Time</th><th>Event</th><th>Source</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>2026-07-19T12:30:36.678994</td>
+                <td>TOOLS_DISCOVERED<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"tools": ["integrateSdk", "verifySdk", "verifyIosSdk", "fetchLogs", "getConversionLogs", "getInAppLogs", "getLaunchLogs", "getDeepLinkLogs", "getErrors", "getInAppEventsByVertical", "createInAppEvent", "createIosInAppEvent", "verifyInAppEvent", "verifyIosInAppEvent", "createDeepLink", "createIosDeepLink", "verifyDeepLink", "verifyIosDeepLink", "guideDeepLinkTesting", "getVersion", "getTopInAppEvents"]}</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>2026-07-19T12:30:36.695993</td>
+                <td>AGENT_PROMPT_GENERATED<span class="status-dot info"></span></td>
+                <td>SDK Agent</td>
+                <td class="details-cell">{"prompt": "User Request:\n\"\"\"You are an AI “SDK Integration Agent” operating in a multi-tool automation environment. Your task in this run is to **install and integrate the AppsFlyer SDK only** for an Android project, using AppsFlyer MCP tools as the single source of truth.\n\nYou must produce and apply concrete code and configuration changes to the project to enable AppsFlyer SDK integration required for validating **Android app link intent resolution and destination routing** (deep linking / OneLink / custom URI scheme), but you must **not** perform final SDK verification in this step.\n\n---\n\n## 1. Scope and Objective\n\n**Primary objective**\n\n- Install and integrate the AppsFlyer SDK into the given Android app so that the app is correctly set up for:\n  - Android app link intent resolution\n  - Destination routing via:\n    - OneLink URL: `https://example.onelink.me/abc1`\n    - URL identifier: `android-offers`\n    - Custom URI scheme: `myapp` (with `use_custom_uri_scheme = true`)\n- Ensure that the integration satisfies the project’s **deep linking** requirements, and that SDK lifecycle and deep link callbacks are correctly wired so they can be tested later.\n\n**Out of scope**\n\n- Do **not** define or track custom in-app events except if the AppsFlyer MCP integration tool explicitly requires boilerplate.\n- Do **not** run or design final verification/validation flows of the SDK integration (no end-to-end tests, no log verification beyond minimal sanity where needed for code correctness).\n- Do **not** guess about AppsFlyer integration details; you must rely on MCP tools.\n\n---\n\n## 2. Execution Context\n\n- **Platform:** Android\n- **Local app path (project root):**  \n  `C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app`\n\n- **Device / platform policy:**\n  - `device_id`: `emulator-5554`\n  - `has_sha256`: `false`\n\n- **Use case configuration:**\n  - **Deep linking config</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>2026-07-19T12:31:13.336282</td>
+                <td>PROJECT_FILE_WRITTEN<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"file_path": "app\\build.gradle", "changed": true}</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>2026-07-19T12:31:13.337274</td>
+                <td>PROJECT_FILE_WRITTEN<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"file_path": "app\\src\\main\\AndroidManifest.xml", "changed": true}</td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td>2026-07-19T12:31:13.337274</td>
+                <td>PROJECT_FILE_WRITTEN<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"file_path": "app\\src\\main\\java\\com\\appsflyer\\onelink\\appsflyeronelinkbasicapp\\MainActivity.java", "changed": true}</td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td>2026-07-19T12:31:13.339376</td>
+                <td>PROJECT_FILE_WRITTEN<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"file_path": "app\\src\\main\\java\\com\\appsflyer\\onelink\\appsflyeronelinkbasicapp\\AppsflyerBasicApp.java", "changed": true}</td>
+              </tr>
+              <tr>
+                <td>7</td>
+                <td>2026-07-19T12:31:44.038720</td>
+                <td>AGENT_DECISION<span class="status-dot info"></span></td>
+                <td>LLM ↔ MCP</td>
+                <td class="details-cell">{"tool": "integrateSdk", "args": {"platform": "android", "useResponseListener": false}}</td>
+              </tr>
+              <tr>
+                <td>8</td>
+                <td>2026-07-19T12:31:44.040523</td>
+                <td>MCP_TOOL_RESULT<span class="status-dot passed"></span></td>
+                <td>LLM ↔ MCP</td>
+                <td class="details-cell">{"tool": "integrateSdk", "result": "Prefer applying the following integration steps directly in the user's Android project files whenever possible, instead of leaving copy/paste-only guidance.\n\n⚠️ Use exactly as written below. Do not modify.\nApply these changes directly in the user's Android project files (do not ask the user to copy/paste).\n\n\n**1. Declare repositories**  \nIn the **Project** `build.gradle` file, declare the `mavenCentral()` repository:\n\n```gradle\nrepositories {\n  mavenCentral()\n}\n```\n\n**2. Add Dependencies**  \nIn the **Application** `build.gradle` file, add the latest SDK package:\n\n```gradle\ndependencies { \n  // Get the latest version from https://mvnrepository.com/artifact/com.appsflyer/af-android-sdk \n  implementation 'com.appsflyer:af-android-sdk:7.0.0'\n}\n```\n\n**3. Setting required permissions**  \nAdd the following permissions inside your `AndroidManifest.xml`:\n\n```xml\n<uses-permission android:name=\"android.permission.INTERNET\" />\n<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n```\n\n**4. Start SDK**  \nIn your global `Application` class, import:\n\n```java\nimport com.appsflyer.AppsFlyerLib;\n```\n\n**5. Add DebugLog before init**  \nInside the `onCreate()` method of your `Application` class, call:\n\n```java\nAppsFlyerLib.getInstance().setDebugLog(true);\n```\n\n**6. Initialize the SDK**  \nInside the `onCreate()` method of your `Application` class, call:\n\n```java\nAppsFlyerLib.getInstance().init(\"sQ84wpdxRTR4RMCaE9YqS4\", null, this);\n```\n\n**7. Start the SDK**  \nImmediately after `init()`, call:\n\n```java\nAppsFlyerLib.getInstance().start(this);\n```\n\n✅ **Done!**  \nNow that the SDK is integrated, you can verify that it's working properly.\n\n🚀 **Next step:**  \nLaunch your app on a real or virtual device to let the AppsFlyer SDK initialize and send logs.\n\n🔍 **Then:**  \nRun the **verifySdk** tool to confirm the integration was successful and data is being sent correctl</td>
+              </tr>
+              <tr>
+                <td>9</td>
+                <td>2026-07-19T12:31:44.140661</td>
+                <td>MCP_CALL_LOG<span class="status-dot info"></span></td>
+                <td>LLM ↔ MCP</td>
+                <td class="details-cell">{"tool": "integrateSdk"}</td>
+              </tr>
+              <tr>
+                <td>10</td>
+                <td>2026-07-19T12:31:44.150730</td>
+                <td>MCP_SEQUENCE<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"platform": "android", "call_log": [{"tool": "integrateSdk"}]}</td>
+              </tr>
+              <tr>
+                <td>11</td>
+                <td>2026-07-19T12:31:44.156484</td>
+                <td>LISTENER_DECISION<span class="status-dot info"></span></td>
+                <td>Listener</td>
+                <td class="details-cell">{"node": "sdk_agent", "listener": "SUCCESS", "status": "INFO", "message": "Classifier reported SUCCESS; continuing node operation.", "text_preview": "Here’s what has been done in this integration stage.\n\n---\n\n## 1. Files inspected\n\nFrom the project root  \n`C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122"}</td>
+              </tr>
+              <tr>
+                <td>12</td>
+                <td>2026-07-19T12:31:44.161009</td>
+                <td>LISTENER_TURN<span class="status-dot info"></span></td>
+                <td>Listener</td>
+                <td class="details-cell">{"node": "sdk_agent", "action": "done", "test_status": null, "question_rounds": null, "agent_text_preview": "Here’s what has been done in this integration stage.\n\n---\n\n## 1. Files inspected\n\nFrom the project root  \n`C:\\Users\\User\\Desktop\\practicum\\final project\\PiplineAutomatoinMCP\\sandboxes\\run_20260719_122845_034a1d90\\basic_app`  \nI inspected:\n\n- `build.gradle` (project-level)\n- `settings.gradle`\n- `app/build.gradle`\n- `app/src/main/AndroidManifest.xml`\n- `app/src/main/java/com/appsflyer/onelink/appsflyeronelinkbasicapp/AppsflyerBasicApp.java`\n- `app/src/main/java/com/appsflyer/onelink/appsflyeroneli", "new_mcp_calls": 1}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+    </div>
+  </div>
+  <script>
+    /*
+     * Theme handling for this page. Intentionally does NOT use
+     * localStorage — that would make every report a user has ever opened
+     * remember dark mode forever, so a report opened fresh (e.g. double-
+     * clicked from Finder) always starts in light mode (see themeFromQuery()
+     * default below). Instead, the *current* light/dark choice is only
+     * carried forward through explicit navigation: this page's own links
+     * (marked with the data-theme-link attribute, e.g. the "← All use
+     * cases" back-link) get a "?theme=dark"/"?theme=light" query parameter
+     * appended live, right before the user clicks, matching whatever this
+     * page is showing at that moment. Same mechanism lives in
+     * index_report.html.j2 so the two pages stay in sync while navigating
+     * between them, without ever affecting some other report opened later.
+     */
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      var label = document.getElementById("theme-toggle-label");
+      var icon = document.getElementById("theme-toggle-icon");
+      // Any link on the page tagged data-theme-link (currently only the
+      // "← All use cases" back-link) gets its href rewritten below.
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto any link to another report page
+        // (card / back-to-overview) so navigating between them keeps the
+        // same light/dark choice, without affecting any other report.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
+
+      // Sets/removes the data-theme="dark" attribute on <html> (which is
+      // what the CSS variable overrides at the top of this file key off
+      // of), flips the toggle button's own icon/label to describe the
+      // *next* click's action, and re-propagates the new theme onto links.
+      function applyTheme(theme) {
+        if (theme === "dark") {
+          root.setAttribute("data-theme", "dark");
+          label.textContent = "Light mode";
+          icon.textContent = "☀️";
+        } else {
+          root.removeAttribute("data-theme");
+          label.textContent = "Dark mode";
+          icon.textContent = "🌙";
+        }
+        propagateTheme(theme);
+      }
+
+      // Reads ?theme=dark|light from this page's own URL. Anything other
+      // than exactly "dark" (including no query param at all) resolves to
+      // "light" — this is what makes light the default for a freshly
+      // opened report.
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via a card or the "All use
+      // cases" link carries whichever theme was active on the linking page.
+      applyTheme(themeFromQuery());
+
+      // Manual toggle click: just flip whatever the current state is.
+      btn.addEventListener("click", function () {
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+      });
+    })();
+  </script>
+</body>
+</html>

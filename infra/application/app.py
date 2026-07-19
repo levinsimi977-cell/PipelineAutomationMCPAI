@@ -140,6 +140,16 @@ def setup_environment(state: dict) -> dict:
     try:
         platform_name = extract_platform_from_json(state)        
         sandbox_app_path = resolve_and_replicate_app(platform_name)
+        # Register immediately so teardown can delete even if this node
+        # crashes before LangGraph commits sandbox_path into state.
+        run_id = state.get("run_id")
+        if run_id:
+            try:
+                from infra.workflow.run_resource_registry import register_sandbox
+
+                register_sandbox(str(run_id), sandbox_app_path)
+            except Exception:
+                pass
         
         # Return state compatible with downstream pipeline components
         return {
@@ -183,6 +193,7 @@ def cleanup_environment(sandbox_path: str) -> dict:
         if run_folder.exists() and run_folder.is_dir() and "run_" in run_folder.name:
             shutil.rmtree(run_folder)
             print(f"🛡️ Cleanup Success: Fully deleted sandbox run environment at: {run_folder}")
+            _forget_sandbox_path(sandbox_path)
             return {"cleanup_status": "SUCCESS"}
             
         # Fallback: Safely delete the specific app path instead if the parent layout differs
@@ -192,15 +203,27 @@ def cleanup_environment(sandbox_path: str) -> dict:
             else:
                 app_path.unlink()
             print(f"🛡️ Cleanup Success: Deleted atomic sandbox application target at: {app_path}")
+            _forget_sandbox_path(sandbox_path)
             return {"cleanup_status": "SUCCESS"}
             
         else:
             print(f"⚠️ Cleanup Warning: Target path does not exist, skipping deletion: {sandbox_path}")
+            _forget_sandbox_path(sandbox_path)
             return {"cleanup_status": "SKIPPED", "reason": "Path not found"}
             
     except Exception as exc:
         print(f"❌ Critical Error during environment cleanup: {exc}")
         return {"cleanup_status": "FAILED", "error_reason": str(exc)}
+
+
+def _forget_sandbox_path(sandbox_path: str) -> None:
+    """Drop a sandbox path from the run-resource registry (best-effort)."""
+    try:
+        from infra.workflow.run_resource_registry import forget_sandbox_path
+
+        forget_sandbox_path(sandbox_path)
+    except Exception:
+        pass
 def build_application_report(
     app_path: Path,
     workdir: Path,
