@@ -10,6 +10,9 @@ env/
 .env
 sandboxes/
 
+# Shared local tool caches (Gradle wrapper dists, etc.)
+.cache/
+
 # Packaging / distribution
 *.egg-info/
 dist/
@@ -23,6 +26,7 @@ data/runs/
 .env
 sandboxes/
 data/runs/
+data/useCases/custom/
 .env.*
 # Compiled Python bytecode caches -- always regenerated automatically, never
 # meant to be kept or committed.
