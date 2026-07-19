@@ -92,7 +92,7 @@
       gap: 10px;
       margin-bottom: 12px;
     }
-    .top-bar-left { display: flex; align-items: center; }
+    .top-bar-left { display: flex; align-items: center; gap: 10px; }
     .back-link {
       display: inline-flex;
       align-items: center;
@@ -704,6 +704,12 @@
          panels below (Workflow / State / Audit communication / Timeline). -->
     <div class="top-bar">
       <div class="top-bar-left">
+        {# home_url points at the Streamlit use-case entry page. This report
+           opens as its own file:// tab, so this link is how the user gets
+           back to where use cases are chosen/run. Always rendered. #}
+        {% if home_url %}
+        <a class="back-link" href="{{ home_url }}">🏠 Back to use cases</a>
+        {% endif %}
         {# index_url is only set when this report was built via
            record_use_case_report() (multi-use-case run) — a report built
            through generate_and_attach_report() (single-state, no index)
