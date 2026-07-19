@@ -73,6 +73,73 @@ def build_initial_state(run_id: str) -> PipelineState:
     return state
 
 
+def _teardown_after_run(state: dict[str, Any] | None, run_id: str) -> None:
+    """
+    Best-effort cleanup after a workflow invoke (success, FAIL, or crash).
+
+    Keeps each run isolated for the next click:
+    - close SDK agents / Appium drivers / sandboxes (state + mid-node registry)
+    - stop Appium / emulator processes this run started
+    - drop in-memory answer_policy for this run_id
+    - delete data/runs/<run_id>/ if visual_report did not already
+
+    Never raises — teardown must not hide the original workflow error.
+    """
+    state = state or {"run_id": run_id}
+
+    # Registry covers resources allocated mid-node before LangGraph committed
+    # them into the streamed state (also covers handles still on `state`).
+    try:
+        from infra.workflow.run_resource_registry import release_run_resources
+
+        release_run_resources(run_id, state)
+    except Exception:
+        pass
+
+    try:
+        from infra.agents.sdkAgent.tools.emulator import stop_owned_device_processes
+
+        stop_owned_device_processes()
+    except Exception:
+        pass
+
+    try:
+        from infra.agents.answerAgent.answer_policy_repository import (
+            get_answer_policy_repository,
+        )
+
+        get_answer_policy_repository().clear(run_id)
+    except Exception:
+        pass
+
+    try:
+        run_repo.delete_run_selection(run_id)
+    except Exception:
+        pass
+
+
+async def _ainvoke_tracking_latest(
+    app: Any,
+    initial_state: dict[str, Any],
+    latest: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Run the graph with stream_mode="values", copying each full state snapshot
+    into `latest` as nodes complete.
+
+    Unlike ainvoke (which returns nothing on raise), this keeps the last known
+    sandbox_path / agent_id / driver available for `_teardown_after_run` even
+    when a node crashes mid-run.
+    """
+    latest.clear()
+    latest.update(initial_state)
+    async for values in app.astream(initial_state, stream_mode="values"):
+        if isinstance(values, dict):
+            latest.clear()
+            latest.update(values)
+    return latest
+
+
 def start_workflow(run_id: str) -> dict[str, Any]:
     """
     Build the initial state for `run_id` and run it through the compiled
@@ -83,9 +150,20 @@ def start_workflow(run_id: str) -> dict[str, Any]:
     (langgraph, langchain, the Appium emulator helpers). Keeping the import
     local means the rest of the app keeps working even if those aren't
     installed yet — the error only surfaces when this function actually runs.
+
+    Always runs `_teardown_after_run` in finally so the next Save and run
+    starts clean even if this invoke crashed mid-way. Uses astream so the
+    finally block still sees the last known runtime resources on crash.
     """
     from infra.workflow.workflow_builder import workflow_app
 
     load_project_env()
     initial_state = build_initial_state(run_id)
-    return asyncio.run(workflow_app.ainvoke(initial_state))
+    # Mutable bag: updated after every node so crash mid-run still teardowns.
+    latest_state: dict[str, Any] = dict(initial_state)
+    try:
+        return asyncio.run(
+            _ainvoke_tracking_latest(workflow_app, initial_state, latest_state)
+        )
+    finally:
+        _teardown_after_run(latest_state, run_id)

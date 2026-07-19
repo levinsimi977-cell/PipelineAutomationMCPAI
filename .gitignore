@@ -46,8 +46,9 @@ sandboxes/
 TEAM_STATUS_COMPILATION_BLOCKER.md
 TEAM_STATUS_COMPILATION_BLOCKER_HE.md
 
-# Generated local run reports
-data/reports/2026-07-16/
+# Generated local run reports (HTML output from pipeline runs — not source)
+data/reports/20*/
+artifacts/reports/
 
 # Personal custom use-case experiments (local only)
 data/useCases/custom/custom-merav-use-case.json
