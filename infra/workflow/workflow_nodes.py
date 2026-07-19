@@ -28,7 +28,7 @@ from infra.agents.userActions.deep_link import (
 )
 from infra.workflow.nodes.nodeEmulator import (
     emulator_node as _emulator_node_impl,
-    route_from_emulator as _route_from_emulator_impl,
+    route_from_emulator as _route_from_emulator_impl,)
 from infra.load_env import get_app_id_for_platform, get_dev_key
 from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
@@ -621,22 +621,22 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     # Repo was cleared in _reset_runtime_fields_for_next_use_case; reload
     # only when this UC actually ships a policy (empty/missing → stay clear).
-    if current_use_case.get("answer_policy"):
-        get_answer_policy_repository().load_from_use_case(
-            run_id or "run",
-            current_use_case,
-        )
-        state["test_status"] = "FAIL"
-        state["fail_reason"] = reason
-        state["nodes_log"] = [
-            *(state.get("nodes_log") or []),
-            {
-                "node": "artifact_generator",
-                "status": "Failure",
-                "message": reason,
-            },
-        ]
-        return state
+    # if current_use_case.get("answer_policy"):
+    #     get_answer_policy_repository().load_from_use_case(
+    #         run_id or "run",
+    #         current_use_case,
+    #     )
+    #     state["test_status"] = "FAIL"
+    #     state["fail_reason"] = reason
+    #     state["nodes_log"] = [
+    #         *(state.get("nodes_log") or []),
+    #         {
+    #             "node": "artifact_generator",
+    #             "status": "Failure",
+    #             "message": reason,
+    #         },
+    #     ]
+    #     return state
 
     use_case = selected[0] if isinstance(selected[0], dict) else None
     if current_path:
@@ -1169,107 +1169,107 @@ def emulator_node(state: PipelineState) -> dict:
     return _emulator_node_impl(state)
 
 
-def emulator_node(
-    state: PipelineState,
-) -> dict:
-    """
-    Node 7: Emulator
+# def emulator_node(
+#     state: PipelineState,
+# ) -> dict:
+#     """
+#     Node 7: Emulator
 
-    Starts Appium,
-    starts device,
-    launches application.
-    """
+#     Starts Appium,
+#     starts device,
+#     launches application.
+#     """
 
-    device_id = state.get(
-        "device_id"
-    )
+#     device_id = state.get(
+#         "device_id"
+#     )
 
-    app_id = state.get(
-        "app_id"
-    )
+#     app_id = state.get(
+#         "app_id"
+#     )
 
-    remote_url = state.get(
-        "remote_url",
-        "http://127.0.0.1:4723",
-    )
-
-
-    steps = []
-
-    driver_instance = None
-
-    devices_listing = ""
+#     remote_url = state.get(
+#         "remote_url",
+#         "http://127.0.0.1:4723",
+#     )
 
 
-    try:
+#     steps = []
 
-        steps.append(
-            f"[setup] {setup_appium_environment()}"
-        )
+#     driver_instance = None
 
-
-        steps.append(
-            f"[server] {start_appium_server()}"
-        )
+#     devices_listing = ""
 
 
-        devices_listing = list_devices()
+#     try:
+
+#         steps.append(
+#             f"[setup] {setup_appium_environment()}"
+#         )
 
 
-        steps.append(
-            f"[devices] {devices_listing}"
-        )
+#         steps.append(
+#             f"[server] {start_appium_server()}"
+#         )
 
 
-        if not device_id:
-
-            steps.append(
-                "[device] Skipped: device_id missing."
-            )
-
-        else:
-
-            steps.append(
-                f"[device] {start_device(device_id)}"
-            )
+#         devices_listing = list_devices()
 
 
-            driver_result = launch_app_on_device(
-                state.get("platform"),
-                device_id,
-                app_id,
-                remote_url,
-            )
+#         steps.append(
+#             f"[devices] {devices_listing}"
+#         )
 
 
-            if isinstance(driver_result, str):
+#         if not device_id:
 
-                steps.append(
-                    f"[launch] {driver_result}"
-                )
+#             steps.append(
+#                 "[device] Skipped: device_id missing."
+#             )
 
-            else:
+#         else:
 
-                driver_instance = driver_result
-                # Register before return so teardown can quit even if this
-                # node crashes after launch (or stream misses the update).
-                run_id = state.get("run_id")
-                if run_id:
-                    try:
-                        from infra.workflow.run_resource_registry import (
-                            register_driver,
-                        )
-
-                        register_driver(str(run_id), driver_instance)
-                    except Exception:
-                        pass
-
-                steps.append(
-                    "[launch] App launched successfully."
-                )
+#             steps.append(
+#                 f"[device] {start_device(device_id)}"
+#             )
 
 
-    except Exception as exc:
+#             driver_result = launch_app_on_device(
+#                 state.get("platform"),
+#                 device_id,
+#                 app_id,
+#                 remote_url,
+#             )
+
+
+#             if isinstance(driver_result, str):
+
+#                 steps.append(
+#                     f"[launch] {driver_result}"
+#                 )
+
+#             else:
+
+#                 driver_instance = driver_result
+#                 # Register before return so teardown can quit even if this
+#                 # node crashes after launch (or stream misses the update).
+#                 run_id = state.get("run_id")
+#                 if run_id:
+#                     try:
+#                         from infra.workflow.run_resource_registry import (
+#                             register_driver,
+#                         )
+
+#                         register_driver(str(run_id), driver_instance)
+#                     except Exception:
+#                         pass
+
+#                 steps.append(
+#                     "[launch] App launched successfully."
+#                 )
+
+
+#     except Exception as exc:
 
 
 def user_actions_node(
