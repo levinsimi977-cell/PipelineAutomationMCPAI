@@ -10,6 +10,9 @@ env/
 .env
 sandboxes/
 
+# Shared local tool caches (Gradle wrapper dists, etc.)
+.cache/
+
 # Packaging / distribution
 *.egg-info/
 dist/

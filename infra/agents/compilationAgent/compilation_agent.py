@@ -47,6 +47,11 @@ DEFAULT_IOS_SDK = "iphonesimulator"
 DEFAULT_TIMEOUT_SECONDS = 900  # 15 min: a first/clean build downloads the whole toolchain + deps
 LOG_TAIL_CHARS = 4000
 
+# Repo-root shared Gradle cache. Per-sandbox GRADLE_USER_HOME forced a full
+# Gradle distribution download on every run; one cache serves all sandboxes.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_SHARED_GRADLE_USER_HOME = _PROJECT_ROOT / ".cache" / "gradle"
+
 # State keys checked (in order) to find the project to compile. Kept
 # flexible on purpose: the pre-build pipeline state is a plain dict (not
 # the pydantic UseCaseContract yet), and different teams/stages may name
@@ -189,9 +194,13 @@ def _run_gradle_command(
     """
     args = [str(gradlew), "--no-daemon", task, *extra_args]
 
-    gradle_user_home = project_root / ".gradle-user-home"
-    gradle_user_home.mkdir(parents=True, exist_ok=True)
+    # Prefer an explicit GRADLE_USER_HOME from the environment; otherwise use
+    # the shared repo cache so wrapper dists / deps are downloaded once.
     env = os.environ.copy()
+    gradle_user_home = Path(
+        env.get("GRADLE_USER_HOME") or _SHARED_GRADLE_USER_HOME
+    )
+    gradle_user_home.mkdir(parents=True, exist_ok=True)
     env["GRADLE_USER_HOME"] = str(gradle_user_home)
 
     if os.name == "nt":

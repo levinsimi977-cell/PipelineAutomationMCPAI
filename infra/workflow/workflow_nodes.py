@@ -9,7 +9,11 @@ from typing import Any, Literal, Optional, TypedDict, get_args
 
 from typing_extensions import NotRequired
 
-from infra.application.app import run_tasks_3_and_4, setup_environment
+from infra.application.app import (
+    cleanup_environment,
+    run_tasks_3_and_4,
+    setup_environment,
+)
 from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
     prompt_agent_node as build_prompts,
 )
@@ -171,6 +175,7 @@ class PipelineState(TypedDict, total=False):
     original_app_path: NotRequired[str]
 
     sandbox_path: NotRequired[str]
+    cleanup_status: NotRequired[str]
 
 
     dev_key_configured: NotRequired[bool]
@@ -396,6 +401,12 @@ async def environment_setup_node(
         if extra:
             entry.update(extra)
         return [*(state.get("nodes_log") or []), entry]
+
+    # Drop leftover sandbox from a previous use-case loop iteration.
+    previous = state.get("sandbox_path")
+    if previous:
+        cleanup_environment(previous)
+        state["sandbox_path"] = ""
 
     environment_result = setup_environment(
         dict(state)
@@ -1051,6 +1062,12 @@ def visual_report_node(
 
             state["current_use_case_path"] = None
 
+    # Always delete this use case's sandbox (pass or fail) after its report step.
+    sandbox_path = state.get("sandbox_path")
+    if sandbox_path:
+        cleanup_result = cleanup_environment(sandbox_path)
+        state["cleanup_status"] = cleanup_result.get("cleanup_status")
+        state["sandbox_path"] = ""
 
     if not state.get("current_use_case_path"):
         from data.reports.build_report import attach_index_report
