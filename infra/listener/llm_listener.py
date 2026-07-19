@@ -37,6 +37,8 @@ def _state_for_classifier(
         "last_agent_message": last_message,
         "agent_messages": agent_messages,
     }
+_IOS_TWO_STEP_TOOLS = frozenset({"verifyIosSdk", "verifyIosInAppEvent", "verifyIosDeepLink"})
+
 def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
     """Convert one agent tool_call to validator call_log entry."""
     if isinstance(tool_call, dict):
@@ -49,7 +51,7 @@ def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
     entry: Dict[str, Any] = {"tool": name}
 
     # iOS verify — action חובה לפי הפורמט של הקולגה
-    if platform == "ios" and name == "verifyIosSdk":
+    if platform == "ios" and name  in _IOS_TWO_STEP_TOOLS:
         action = args.get("action")
         if action:
             entry["action"] = action
@@ -387,8 +389,14 @@ def _extract_message_audit_events(messages: Optional[List[Any]]) -> List[Tuple[s
             if not tool_name or tool_name in _SDK_FILE_TOOLS:
                 continue
             result_text = _agent_content_text(getattr(msg, "content", ""))
+            # ToolMessage.status is ground truth from the MCP protocol itself
+            # (langchain_mcp_adapters sets "error" from CallToolResult.isError,
+            # "success" otherwise) - not a guess from scanning result_text.
+            status = getattr(msg, "status", "success") or "success"
             events.append(("MCP_TOOL_RESULT", {
                 "tool": tool_name,
+                "status": status,
+                "is_error": status == "error",
                 "result": result_text[:2000],
             }))
 
