@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict, get_args
 
@@ -25,7 +26,6 @@ from infra.agents.userActions.deep_link import (
     extract_deep_link_url_from_audit,
     simulate_deep_link_click,
 )
-from infra.use_case_service.repositories.run_repository import RUNS_DIR
 from infra.workflow.nodes.nodeEmulator import (
     emulator_node as _emulator_node_impl,
     route_from_emulator as _route_from_emulator_impl,

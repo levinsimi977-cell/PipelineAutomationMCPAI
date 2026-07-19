@@ -33,6 +33,39 @@ def _load_agent_rules_text() -> str:
     return "\n".join(f"{r['number']}. {r['text']}" for r in rules)
 
 
+def _tool_accepts_device_id(mcp_tool: Any) -> bool:
+    """True when this MCP tool's schema declares a `deviceId` argument."""
+    schema = getattr(mcp_tool, "args_schema", None)
+    if schema is None:
+        return False
+    fields = getattr(schema, "model_fields", None)
+    if fields is None:
+        fields = getattr(schema, "__fields__", None) or {}
+    return "deviceId" in fields
+
+
+def _bind_live_device_id(mcp_tools: list, device_id_holder: Dict[str, Any]) -> None:
+    """Forces every device-aware MCP tool's `deviceId` kwarg from `device_id_holder["device_id"]`
+    (a mutable container refreshed live by run_sdk_integration_agent) instead of trusting the LLM's
+    guess, since tools are built once during integrate_prompt, before a real device is known."""
+    for mcp_tool in mcp_tools:
+        if not _tool_accepts_device_id(mcp_tool):
+            continue
+        original = mcp_tool.coroutine
+        if original is None:
+            continue
+
+        async def _coroutine_with_live_device_id(_original=original, **kwargs: Any) -> Any:
+            current_device_id = device_id_holder.get("device_id")
+            if current_device_id:
+                kwargs["deviceId"] = current_device_id
+            else:
+                kwargs.pop("deviceId", None)
+            return await _original(**kwargs)
+
+        mcp_tool.coroutine = _coroutine_with_live_device_id
+
+
 def safe_project_path(project_root: Path, requested_path: str) -> Path:
     """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
     Raises: ValueError: If the resolved path is outside project_root.
@@ -70,6 +103,7 @@ async def create_sdk_integration_agent(
     *,
     app_id: str | None = None,
     dev_key: str | None = None,
+    device_id_holder: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Builds (but does not run) the SDK integration agent: loads API keys,
     connects to the AppsFlyer MCP server, registers file tools, builds the
@@ -99,6 +133,7 @@ async def create_sdk_integration_agent(
             "env": {"APP_ID": resolved_app_id, "DEV_KEY": resolved_dev_key},
         }
     })
+<<<<<<< Updated upstream
     # get_tools() spawns/handshakes with the MCP subprocess - a communication
     # failure here (npx missing, server crash on startup, timeout, ...) is a
     # transport error, not a tool-level failure, so it is recorded distinctly
@@ -114,6 +149,11 @@ async def create_sdk_integration_agent(
         raise RuntimeError(
             f"Failed to connect to AppsFlyer MCP server: {exc}"
         ) from exc
+=======
+    mcp_tools = await mcp_client.get_tools()
+    if device_id_holder is not None:
+        _bind_live_device_id(mcp_tools, device_id_holder)
+>>>>>>> Stashed changes
     audit_recorder.write("TOOLS_DISCOVERED", {
         "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
     })
@@ -251,35 +291,32 @@ async def run_sdk_integration_agent(
     resolved_app_id = state.get("app_id") or get_app_id_for_platform(platform)
     resolved_dev_key = state.get("dev_key") or get_dev_key()
     if agent_id is None:
-        # No agent yet for this use case: build one and mint its id now.
+        # Build a new agent/session; device_id_holder is refreshed from state on
+        # every call below since emulator_node sets state["device_id"] later.
         agent_id = str(uuid.uuid4())
+        device_id_holder: Dict[str, Any] = {"device_id": state.get("device_id")}
         setup = await create_sdk_integration_agent(
-            project_root_str,
-            platform,
-            user_prompt,
-            audit_recorder,
-            app_id=resolved_app_id,
-            dev_key=resolved_dev_key,
+            project_root_str, platform, user_prompt, audit_recorder,
+            app_id=resolved_app_id, dev_key=resolved_dev_key, device_id_holder=device_id_holder,
         )
         session = {
-            "agent": setup["agent"],
-            "tools": setup["tools"],
-            "turn_offset": 0,   # Keeps turn_index continuous across separate calls
+            "agent": setup["agent"], "tools": setup["tools"],
+            "turn_offset": 0, "device_id_holder": device_id_holder,
         }
         _AGENT_SESSIONS[agent_id] = session
-        state["agent_id"] = agent_id  # Write back so the workflow can resume this conversation later
+        state["agent_id"] = agent_id
         prompt = setup["initial_prompt"]
     else:
-        # agent_id is expected to point at an existing conversation.
         session = _AGENT_SESSIONS.get(agent_id)
         if session is None:
             audit_recorder.write("AGENT_SESSION_LOST", {"agent_id": agent_id})
-            return {
-                "status": "FAIL",
-                "agent_id": agent_id,
-                "reason": f"Conversation for agent_id={agent_id} no longer exists (session lost).",
-            }
+            reason = f"Conversation for agent_id={agent_id} no longer exists (session lost)."
+            return {"status": "FAIL", "agent_id": agent_id, "reason": reason}
         prompt = user_prompt
+        # Refresh in case emulator_node has changed state["device_id"] since.
+        device_id_holder = session.get("device_id_holder")
+        if device_id_holder is not None:
+            device_id_holder["device_id"] = state.get("device_id")
     sdk_agent = session["agent"]
     # inner_state IS the outer PipelineState (same object, not a copy) - so it
     # already has run_id, app_path, etc. Mutations here persist back to the
