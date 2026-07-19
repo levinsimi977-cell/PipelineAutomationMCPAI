@@ -11,7 +11,7 @@
     "ios_minimal": null,
     "deeplink": {
       "use_deep_linking": true,
-      "onelink_url": "https://example.onelink.me/abc1",
+      "onelink_url": "https://example.onelink.me/abc1/androidLink",
       "url_identifier": "android-offers",
       "uri_scheme": "myapp",
       "use_custom_uri_scheme": true

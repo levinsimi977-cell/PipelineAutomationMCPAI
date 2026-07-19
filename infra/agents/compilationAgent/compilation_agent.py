@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import stat
 import subprocess
 import time
@@ -162,18 +163,75 @@ def _ensure_executable(executable: Path) -> None:
     executable.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _find_android_sdk_root() -> Optional[str]:
+    """
+    Locate the Android SDK root directory:
+    1. ANDROID_HOME / ANDROID_SDK_ROOT, if already set and pointing at a
+       real directory.
+    2. Common default install locations per Operating System (matches
+       infra/agents/sdkAgent/tools/emulator.py's `_find_android_sdk_root`,
+       and what CONFIG.md documents as the guessed fallback).
+    Returns None if no valid SDK root could be found either way.
+    """
+    for var in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        path = os.environ.get(var)
+        if path and os.path.isdir(path):
+            return path
+
+    system = platform.system()
+    if system == "Windows":
+        candidate = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Android", "Sdk")
+    elif system == "Darwin":
+        candidate = os.path.expanduser("~/Library/Android/sdk")
+    else:
+        candidate = os.path.expanduser("~/Android/Sdk")
+
+    return candidate if os.path.isdir(candidate) else None
+
+
+def _find_built_apk(project_root: Path, task: str) -> Optional[str]:
+    """
+    Locate the APK produced by `task` under the standard Gradle output
+    layout `<module>/build/outputs/apk/<buildType>/*.apk`. Prefers a path
+    matching the build type implied by `task` (e.g. "assembleDebug" ->
+    "debug"), falling back to the most recently modified APK found anywhere
+    under build/outputs/apk if nothing matches (custom task names/flavors).
+
+    Without this, the pipeline built an APK that was never installed on the
+    emulator: emulator_node only ever called `driver.activate_app(...)` on
+    a package that didn't exist on the freshly-booted device, leaving the
+    emulator sitting on its home screen instead of showing the app.
+    """
+    candidates = sorted(
+        project_root.glob("*/build/outputs/apk/**/*.apk"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        return None
+
+    build_type = task.lower().removeprefix("assemble") or "debug"
+    for apk in candidates:
+        if build_type in apk.parent.as_posix().lower():
+            return str(apk)
+    return str(candidates[0])
+
+
 def _ensure_android_sdk_location(project_root: Path) -> None:
     """
     Make sure Gradle can find the Android SDK. `local.properties` is always
     git-ignored, so a freshly cloned/copied sandbox never has it; if it's
-    missing, write `sdk.dir` from ANDROID_HOME / ANDROID_SDK_ROOT so the
-    build doesn't fail with "SDK location not found".
+    missing, write `sdk.dir` from ANDROID_HOME / ANDROID_SDK_ROOT — or, if
+    neither is set, from the OS's common default SDK install location — so
+    the build doesn't fail with "SDK location not found". Leaves
+    `local.properties` unwritten (and the Gradle build to fail with its own
+    clear error) only when no SDK install could be found at all.
     """
     local_properties = project_root / "local.properties"
     if local_properties.exists():
         return
 
-    sdk_dir = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+    sdk_dir = _find_android_sdk_root()
     if not sdk_dir:
         return
 
@@ -277,6 +335,12 @@ def run_gradle_build(
     success = result.returncode == 0
     log_path = _write_log(log_dir, result.stdout or "", result.stderr or "", prefix="gradle_build")
 
+    extra: dict[str, Any] = {}
+    if success:
+        apk_path = _find_built_apk(project_root, gradle_task)
+        if apk_path:
+            extra["apk_path"] = apk_path
+
     return CompilationResult(
         status="PASSED" if success else "FAILED",
         platform="android",
@@ -291,6 +355,7 @@ def run_gradle_build(
         ),
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
+        extra=extra,
     )
 
 
@@ -364,6 +429,31 @@ def _detect_scheme(workspace: Optional[Path], project: Optional[Path]) -> Option
     return (non_pods_schemes or schemes)[0]
 
 
+def _find_built_app_bundle(derived_data_path: Path, configuration: str, sdk: str) -> Optional[str]:
+    """
+    Locate the .app bundle xcodebuild just produced, at the deterministic
+    `-derivedDataPath` location: `<derivedDataPath>/Build/Products/<configuration>-<sdk>/*.app`.
+    Falls back to the most recently modified .app anywhere under
+    `<derivedDataPath>/Build/Products` if that exact folder doesn't match
+    (e.g. a device SDK instead of a simulator one).
+    """
+    products_dir = derived_data_path / "Build" / "Products"
+    exact_dir = products_dir / f"{configuration}-{sdk}"
+    if exact_dir.is_dir():
+        bundles = sorted(exact_dir.glob("*.app"))
+        if bundles:
+            return str(bundles[0])
+
+    if not products_dir.is_dir():
+        return None
+    candidates = sorted(
+        products_dir.glob("*/*.app"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return str(candidates[0]) if candidates else None
+
+
 def run_xcodebuild(
     app_path: str | Path,
     log_dir: str | Path,
@@ -400,12 +490,18 @@ def run_xcodebuild(
 
     target = workspace or project
     flag = "-workspace" if workspace is not None else "-project"
+    # Pinning -derivedDataPath inside the sandbox (instead of the default,
+    # shared ~/Library/Developer/Xcode/DerivedData/<hash>/) makes the built
+    # .app's location deterministic, so it can be found afterwards and
+    # installed on a simulator — see _find_built_app_bundle below.
+    derived_data_path = root / "DerivedData"
     command = [
         "xcodebuild",
         flag, str(target),
         "-scheme", resolved_scheme,
         "-configuration", configuration,
         "-sdk", sdk,
+        "-derivedDataPath", str(derived_data_path),
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGNING_REQUIRED=NO",
         "build",
@@ -437,6 +533,12 @@ def run_xcodebuild(
     success = result.returncode == 0
     log_path = _write_log(log_dir, result.stdout or "", result.stderr or "", prefix="xcodebuild")
 
+    extra: dict[str, Any] = {}
+    if success:
+        app_bundle_path = _find_built_app_bundle(derived_data_path, configuration, sdk)
+        if app_bundle_path:
+            extra["app_bundle_path"] = app_bundle_path
+
     return CompilationResult(
         status="PASSED" if success else "FAILED",
         platform="ios",
@@ -451,6 +553,7 @@ def run_xcodebuild(
         ),
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
+        extra=extra,
     )
 
 
