@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Run Report — {{ run_id }}</title>
+  <title>Run Report — b45c39ddbba9446482f3d0c2e4d6b38e</title>
   <style>
     /*
      * This is the run-level "overview" page: data/reports/<date>/<run_id>/index.html.
@@ -84,24 +84,9 @@
 
     .container { max-width: 1160px; margin: 0 auto; padding: 36px 24px 52px; }
 
-    /* Left: "back to use cases" link to the Streamlit entry page (this index
-       opens in its own tab, so it needs a way back). Right: the theme toggle. */
-    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--surface);
-      color: var(--text);
-      font-size: 0.88rem;
-      font-weight: 600;
-      text-decoration: none;
-      box-shadow: var(--chip-shadow);
-    }
-    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
+    /* Only the theme toggle lives up here — unlike run_report.html.j2 this
+       page has no "back" link (it IS the top of the navigation hierarchy). */
+    .top-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
     .theme-toggle {
       display: inline-flex;
       align-items: center;
@@ -263,14 +248,6 @@
   <div class="container">
 
     <div class="top-bar">
-      {# home_url points at the Streamlit use-case entry page. This index opens
-         as its own file:// tab, so this link is how the user gets back to
-         where use cases are chosen/run. #}
-      {% if home_url %}
-      <a class="back-link" href="{{ home_url }}">🏠 Back to use cases</a>
-      {% else %}
-      <span></span>
-      {% endif %}
       <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
         <span id="theme-toggle-icon">🌙</span>
         <span id="theme-toggle-label">Dark mode</span>
@@ -279,60 +256,36 @@
 
     <header class="page-header">
       <h1>Pipeline Run Report</h1>
-      <p class="subtitle">Report generated on {{ generated_at }}</p>
+      <p class="subtitle">Report generated on July 19, 2026 at 10:31 AM</p>
     </header>
 
     <!-- totals is a plain dict built in generate_index_report():
          {total, passed, failed} — a simple count over `cards`, computed
          once in Python rather than doing arithmetic in the template. -->
     <div class="totals-row">
-      <div class="total-chip"><div class="num">{{ totals.total }}</div><div class="lbl">Use cases</div></div>
-      <div class="total-chip passed"><div class="num">{{ totals.passed }}</div><div class="lbl">Passed</div></div>
-      <div class="total-chip failed"><div class="num">{{ totals.failed }}</div><div class="lbl">Failed</div></div>
+      <div class="total-chip"><div class="num">1</div><div class="lbl">Use cases</div></div>
+      <div class="total-chip passed"><div class="num">0</div><div class="lbl">Passed</div></div>
+      <div class="total-chip failed"><div class="num">1</div><div class="lbl">Failed</div></div>
       <!-- total_duration is the whole run's wall-clock span (earliest
            started_at to latest ended_at across every use case), computed
            by _combined_duration() in build_report.py — NOT a sum of each
            use case's individual duration. -->
-      <div class="total-chip"><div class="num text">{{ total_duration }}</div><div class="lbl">Total duration</div></div>
+      <div class="total-chip"><div class="num text">—</div><div class="lbl">Total duration</div></div>
     </div>
 
-    {% if cards %}
     <div class="cards-grid">
-      {# Each `card` dict was appended by record_use_case_report() while the
-         workflow ran (one call per use case, right after that use case's
-         own detail report.html was written) — see build_report.py for the
-         exact shape: id, platform, prompt_goal, status_label, css_class,
-         report_path, relative_path, duration, started_at, ended_at. #}
-      {% for card in cards %}
-      {# relative_path is "<use-case-slug>/report.html" — always one path
-         segment, since every use case's report.html lives directly under
-         this index.html's own folder. target="_blank" opens it in a new
-         tab so the overview page stays open behind it. data-theme-link
-         marks this <a> for the theme-propagation script at the bottom. #}
-      <a class="card" data-theme-link href="{{ card.relative_path }}" target="_blank" rel="noopener">
+      <a class="card" data-theme-link href="android-app-link-validation/report.html" target="_blank" rel="noopener">
         <div class="card-head">
-          <span class="card-title">{{ card.id }}</span>
-          <span class="status-badge {{ card.css_class }}">
-            {% if card.css_class == "passed" %}✓{% else %}✗{% endif %}
-            {{ card.status_label }}
+          <span class="card-title">android-app-link-validation</span>
+          <span class="status-badge failed">
+✗            Failed
           </span>
         </div>
-        <span class="card-platform">{{ card.platform }}</span>
-        {% if card.duration and card.duration != "—" %}
-        <span class="card-duration">⏱ {{ card.duration }}</span>
-        {% endif %}
-        {% if card.prompt_goal %}
-        <p class="card-desc">{{ card.prompt_goal }}</p>
-        {% endif %}
+        <span class="card-platform">android</span>
+        <p class="card-desc">Validate Android app link intent resolution and destination routing.</p>
         <div class="card-footer">Open detail report →</div>
       </a>
-      {% endfor %}
     </div>
-    {% else %}
-    <!-- Shown if attach_index_report() ran but use_case_reports was empty
-         — e.g. the run failed before any use case finished its pipeline. -->
-    <div class="empty">No use cases were recorded for this run.</div>
-    {% endif %}
 
   </div>
   <script>

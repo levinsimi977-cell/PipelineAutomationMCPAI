@@ -47,6 +47,13 @@ DEFAULT_IOS_SDK = "iphonesimulator"
 DEFAULT_TIMEOUT_SECONDS = 900  # 15 min: a first/clean build downloads the whole toolchain + deps
 LOG_TAIL_CHARS = 4000
 
+# Fixed, dedicated cache dir shared across all sandbox runs. Only the Gradle
+# distribution/dependency cache lives here — project source files stay inside
+# each sandbox, so run isolation is unaffected. Without this, every sandbox
+# re-downloaded the full Gradle distribution + deps from scratch.
+# Override with the GRADLE_USER_HOME env var (e.g. in .env) if needed.
+SHARED_GRADLE_USER_HOME = os.environ.get("GRADLE_USER_HOME") or r"C:\Shared_CI_Cache\.gradle-user-home"
+
 # State keys checked (in order) to find the project to compile. Kept
 # flexible on purpose: the pre-build pipeline state is a plain dict (not
 # the pydantic UseCaseContract yet), and different teams/stages may name
@@ -189,10 +196,9 @@ def _run_gradle_command(
     """
     args = [str(gradlew), "--no-daemon", task, *extra_args]
 
-    gradle_user_home = project_root / ".gradle-user-home"
-    gradle_user_home.mkdir(parents=True, exist_ok=True)
+    Path(SHARED_GRADLE_USER_HOME).mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
-    env["GRADLE_USER_HOME"] = str(gradle_user_home)
+    env["GRADLE_USER_HOME"] = SHARED_GRADLE_USER_HOME
 
     if os.name == "nt":
         command: Any = " ".join(f'"{part}"' for part in args)

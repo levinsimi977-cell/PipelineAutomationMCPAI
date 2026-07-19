@@ -50,4 +50,15 @@ infra/agents/answerAgent/config.py
 .streamlit/secrets.toml
 # Sandbox app replicas created at runtime during pipeline execution.
 sandboxes/
+
+# Local team notes / handoff docs (keep on machine, not GitHub)
+TEAM_STATUS_COMPILATION_BLOCKER.md
+TEAM_STATUS_COMPILATION_BLOCKER_HE.md
+
+# Generated local run reports
+data/reports/2026-07-16/
+
+# Personal custom use-case experiments (local only)
+data/useCases/custom/custom-merav-use-case.json
+data/useCases/custom/custom-merav-use-case-2.json
 .idea/
