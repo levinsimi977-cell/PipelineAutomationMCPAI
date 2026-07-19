@@ -1,0 +1,1593 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Run Report — 9d67c427e4f14d9fad2589b1a0f34be7</title>
+  <style>
+    /* Light theme (default). Every color used below is a var(--...) instead
+       of a literal, so [data-theme="dark"] just below can override the same
+       variable names and repaint the whole page without touching any rule
+       that actually uses them. */
+    :root {
+      --bg: #f0f7ff;
+      --surface: #ffffff;
+      --surface-soft: #f8fbff;
+      --surface-inner: #ffffff;
+      --border: #dbeafe;
+      --border-strong: #93c5fd;
+      --text: #1e3a5f;
+      --muted: #64748b;
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --primary-dark: #0369a1;
+      --passed: #059669;
+      --passed-bg: #ecfdf5;
+      --failed: #dc2626;
+      --failed-bg: #fef2f2;
+      --unknown: #d97706;
+      --unknown-bg: #fffbeb;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
+      --body-gradient: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+      --font-base: 1.05rem;
+      --passed-border: #6ee7b7;
+      --failed-border: #fca5a5;
+      --unknown-border: #fcd34d;
+      --not-run-bg: #f1f5f9;
+      --chip-shadow: 0 1px 4px rgba(2,132,199,.06);
+    }
+
+    /* Dark theme override. Activated purely by the presence of the
+       data-theme="dark" attribute on <html> (set by the script at the
+       bottom of the page) — this file never needs two copies of any rule,
+       only two copies of the variable values. */
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: #151f32;
+      --surface-soft: #111827;
+      --surface-inner: #1a2438;
+      --border: #2d3a52;
+      --border-strong: #475569;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-light: #1e293b;
+      --primary-dark: #bae6fd;
+      --passed: #34d399;
+      --passed-bg: #064e3b;
+      --failed: #f87171;
+      --failed-bg: #450a0a;
+      --unknown: #fbbf24;
+      --unknown-bg: #451a03;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+      --body-gradient: linear-gradient(160deg, #0b1220 0%, #111827 45%, #0c4a6e 100%);
+      --passed-border: #059669;
+      --failed-border: #dc2626;
+      --unknown-border: #d97706;
+      --not-run-bg: #1e293b;
+      --chip-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: var(--font-base);
+      background: var(--body-gradient);
+      color: var(--text);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 36px 24px 52px; }
+
+    /* Header row: optional "← All use cases" link on the left (only exists
+       when this report was reached from an index page — see index_url in
+       the HTML below), theme toggle button on the right. */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .top-bar-left { display: flex; align-items: center; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-dark);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: var(--chip-shadow);
+    }
+    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--chip-shadow);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .theme-toggle:hover {
+      background: var(--primary-light);
+      border-color: var(--border-strong);
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      letter-spacing: -0.02em;
+    }
+    .page-header .subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+
+    /* Big pass/fail banner at the top of the report. `.verdict.passed` /
+       `.verdict.failed` (the class Jinja inserts from validation.css_class)
+       is what actually picks the green vs. red color scheme below — the
+       plain `.verdict` rule only supplies the shared box styling. */
+    .verdict {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px 32px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .verdict-icon {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    .verdict.passed .verdict-icon { background: var(--passed-bg); color: var(--passed); border: 2px solid var(--passed-border); }
+    .verdict.failed .verdict-icon { background: var(--failed-bg); color: var(--failed); border: 2px solid var(--failed-border); }
+    /* .unknown is dead CSS: build_report.py's _build_validation() only ever
+       returns css_class "passed" or "failed" now (binary verdict, no
+       ambiguous state) — kept here in case that changes again later. */
+    .verdict.unknown .verdict-icon { background: var(--unknown-bg); color: var(--unknown); border: 2px solid var(--unknown-border); }
+
+    .verdict-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin: 0 0 10px;
+    }
+    .verdict.passed .verdict-title { color: var(--passed); }
+    .verdict.failed .verdict-title { color: var(--failed); }
+    .verdict.unknown .verdict-title { color: var(--unknown); }
+
+    .verdict-message {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 580px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .verdict-line {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.55;
+    }
+    .verdict-line:last-child { margin-bottom: 0; }
+    .verdict-sub {
+      font-size: 0.95rem;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Failed-run error box, styled like a terminal window — always these
+       fixed dark colors regardless of the page's own light/dark theme
+       toggle, same way a real terminal doesn't change with the OS theme.
+       Shows validation.error_output (see RunReportBuilder._build_error_output). */
+    .error-terminal {
+      margin: 6px 0 22px;
+      border-radius: 10px;
+      overflow: hidden;
+      text-align: left;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+    .error-terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 14px;
+      background: #2d2d2d;
+    }
+    .error-terminal-bar .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .error-terminal-bar .dot.red { background: #ff5f56; }
+    .error-terminal-bar .dot.yellow { background: #ffbd2e; }
+    .error-terminal-bar .dot.green { background: #27c93f; }
+    .error-terminal-title {
+      margin-left: 8px;
+      color: #9aa0a6;
+      font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .error-terminal-body {
+      margin: 0;
+      background: #1e1e1e;
+      color: #ff8a80;
+      padding: 16px 18px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 340px;
+      overflow: auto;
+      text-align: left;
+    }
+
+    /* The 3 small "chips" under the verdict banner: Platform / Use Case /
+       Duration — one <span class="chip"> per entry in summary.meta_chips. */
+    .meta-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+      align-items: stretch;
+    }
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 0.88rem;
+      color: var(--text);
+      box-shadow: var(--chip-shadow);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-width: 0;
+      white-space: normal;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .chip-label {
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .chip-value { font-size: 0.92rem; }
+    .run-id-line {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: -12px 0 28px;
+      word-break: break-word;
+    }
+    .run-id-line strong { color: var(--primary-dark); font-weight: 600; }
+
+    /* The 4 top-level collapsible sections (Workflow Overview / State
+       Variables / Audit communication / Full Timeline) are each a plain
+       HTML <details class="panel"> — no JS needed to expand/collapse them,
+       the browser does that natively; this block is just their styling. */
+    .accordion { display: grid; gap: 14px; }
+
+    details.panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    details.panel summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      font-weight: 700;
+      font-size: 1.08rem;
+      color: var(--primary-dark);
+      background: var(--surface-soft);
+      border-bottom: 1px solid transparent;
+      transition: background 0.15s;
+      user-select: none;
+    }
+    details.panel summary::-webkit-details-marker { display: none; }
+    details.panel summary:hover { background: var(--primary-light); }
+    details.panel[open] summary { border-bottom-color: var(--border); }
+
+    .summary-left { display: flex; align-items: center; gap: 12px; }
+    .arrow {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    details[open] .arrow { transform: rotate(90deg); }
+
+    .badge-count {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .panel-body { padding: 18px 22px 24px; }
+
+    .state-section { margin-bottom: 22px; }
+    .state-section:last-child { margin-bottom: 0; }
+    .state-section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 0 0 4px;
+    }
+    .state-section-desc {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+    .audit-group { margin-bottom: 18px; }
+    .audit-group-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 0 0 8px;
+    }
+    .audit-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--surface-inner);
+      font-size: 0.85rem;
+    }
+    .audit-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 600;
+      color: var(--primary-dark);
+      margin-bottom: 6px;
+    }
+    .state-table { width: 100%; border-collapse: collapse; }
+    .state-table th, .state-table td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.98rem;
+      vertical-align: top;
+    }
+    .state-table th {
+      color: var(--primary-dark);
+      font-weight: 600;
+      width: 28%;
+      background: var(--surface-soft);
+    }
+    .state-table td pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    /* "Paired LLM ↔ MCP exchanges" list inside the Audit panel: each
+       .exchange is one turn's request (left bubble) + result (right
+       bubble), from mcp_conversation (see _build_mcp_conversation()). */
+    .conversation { display: grid; gap: 12px; }
+    .exchange {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+    .exchange-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--primary-light);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--primary-dark);
+    }
+    .exchange-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .bubble { padding: 14px 16px; }
+    .bubble.llm { border-left: 3px solid var(--primary); }
+    .bubble.mcp { border-right: 3px solid var(--primary); background: var(--surface-inner); }
+    .bubble-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .bubble.mcp .bubble-label { color: var(--primary); }
+    pre.code {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-height: 200px;
+      overflow: auto;
+    }
+
+    .call-log { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .call-chip {
+      background: var(--primary-light);
+      border: 1px solid var(--border-strong);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 0.88rem;
+    }
+
+    .timeline-table { width: 100%; border-collapse: collapse; }
+    .timeline-table th, .timeline-table td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.95rem;
+      vertical-align: top;
+    }
+    .timeline-table th { color: var(--primary-dark); background: var(--surface-soft); font-weight: 600; }
+    .timeline-table td.details-cell {
+      max-width: 320px;
+      word-break: break-word;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      margin-left: 8px;
+    }
+    .status-dot.passed { background: var(--passed); }
+    .status-dot.failed { background: var(--failed); }
+    .status-dot.info { background: var(--primary); }
+
+    .workflow-list { display: grid; gap: 10px; }
+    .workflow-item {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.98rem;
+    }
+    .workflow-item .node { font-weight: 700; color: var(--primary-dark); }
+    .empty { color: var(--muted); font-style: italic; font-size: 1rem; }
+
+    /* ── Workflow (inside accordion) ── */
+    .panel-hint {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .workflow-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .wf-stat {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.9rem;
+    }
+    .wf-stat strong { color: var(--primary-dark); }
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    .context-item {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .context-item .ctx-key {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .context-item .ctx-val {
+      font-size: 0.92rem;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .workflow-timeline { display: grid; gap: 8px; }
+    .wf-node {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+    .wf-node > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+    }
+    .wf-node > summary::-webkit-details-marker { display: none; }
+    .wf-node > summary .arrow {
+      flex: 0 0 20px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      transition: transform 0.15s ease;
+      text-align: center;
+    }
+    .wf-node[open] > summary .arrow { transform: rotate(90deg); }
+    .wf-node-body {
+      border-top: 1px solid var(--border);
+      background: var(--surface-inner);
+    }
+    .wf-node-header {
+      display: contents;
+    }
+    .wf-step {
+      flex: 0 0 36px;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+    .wf-node.not_run .wf-step { background: var(--not-run-bg); color: var(--muted); }
+    .wf-node.passed .wf-step { background: var(--passed-bg); color: var(--passed); }
+    .wf-node.failed .wf-step { background: var(--failed-bg); color: var(--failed); }
+    .wf-node.warning .wf-step { background: var(--unknown-bg); color: var(--unknown); }
+    .wf-node-label {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .wf-node-name {
+      font-weight: 700;
+      color: var(--primary-dark);
+      font-size: 0.98rem;
+      text-align: left;
+    }
+    .wf-node-id { font-size: 0.82rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .wf-node-summary {
+      font-size: 0.92rem;
+      color: var(--muted);
+      margin: 0;
+      padding: 10px 16px 0;
+    }
+    .wf-state-fields {
+      border-top: 1px solid var(--border);
+      background: var(--surface-soft);
+      padding: 10px 14px 12px;
+    }
+    .wf-state-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .wf-state-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    .wf-state-table th {
+      text-align: left;
+      width: 28%;
+      padding: 6px 8px;
+      vertical-align: top;
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
+    .wf-state-table td {
+      padding: 6px 8px;
+      vertical-align: top;
+      color: var(--muted);
+    }
+    .wf-state-table tr + tr th,
+    .wf-state-table tr + tr td { border-top: 1px solid var(--border); }
+    .status-pill {
+      flex: 0 0 96px;
+      display: block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .status-pill.passed { background: var(--passed-bg); color: var(--passed); }
+    .status-pill.failed { background: var(--failed-bg); color: var(--failed); }
+    .status-pill.warning { background: var(--unknown-bg); color: var(--unknown); }
+    .status-pill.info { background: var(--primary-light); color: var(--primary-dark); }
+    .status-pill.not_run { background: var(--not-run-bg); color: var(--muted); }
+    .wf-node-runs { border-top: 1px solid var(--border); }
+    .wf-node-runs-title {
+      padding: 10px 16px 0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary-dark);
+    }
+    .wf-run {
+      padding: 12px 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .wf-run-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .wf-fields { width: 100%; border-collapse: collapse; }
+    .wf-fields th, .wf-fields td {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      vertical-align: top;
+    }
+    .wf-fields th { width: 30%; color: var(--muted); font-weight: 600; }
+
+    @media (max-width: 640px) {
+      .exchange-body { grid-template-columns: 1fr; }
+      .workflow-item { grid-template-columns: 1fr; }
+      .page-header h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Only "index_url" and the theme-toggle button live outside the
+         accordion — everything else on the page is one of the 4 collapsible
+         panels below (Workflow / State / Audit communication / Timeline). -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <a class="back-link" data-theme-link href="../index.html">← All use cases</a>
+      </div>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
+        <span id="theme-toggle-icon">🌙</span>
+        <span id="theme-toggle-label">Dark mode</span>
+      </button>
+    </div>
+
+    <header class="page-header">
+      <h1>Pipeline Run Report</h1>
+      <p class="subtitle">Report generated on July 16, 2026 at 03:38 PM</p>
+    </header>
+
+    <!-- Top verdict banner. `validation` comes from
+         RunReportBuilder._build_validation() — .css_class is "passed" or
+         "failed" (drives the color via the CSS above), .label is the
+         "Passed"/"Failed" heading text, and .message_lines is the list of
+         explanatory sentences (tool order + workflow completion) rendered
+         one per <p> below. -->
+    <section class="verdict failed">
+      <div class="verdict-icon">
+✗      </div>
+      <h2 class="verdict-title">Failed</h2>
+      <!-- Terminal-style box, shown first thing on a failed run — right
+           under the "Failed" heading, before the explanatory lines below
+           — with whatever real error text was captured (fail_reason/
+           error_reason, compilation stderr, or the failing node's own
+           detail; see RunReportBuilder._build_error_output() for the
+           exact priority order). -->
+      <div class="error-terminal">
+        <div class="error-terminal-bar">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="error-terminal-title">error output</span>
+        </div>
+        <pre class="error-terminal-body">Environment setup failed: Unsupported platform: common. Must be 'android' or 'ios'.</pre>
+      </div>
+      <div class="verdict-message">
+        <p class="verdict-line">MCP tool order could not be verified for this run.</p>
+        <p class="verdict-line">Workflow incomplete — Failed at Environment Setup (Info): Environment setup failed: Unsupported platform: common. Must be 'android' or 'ios'.; Not executed: JSON Use Case Input, Artifact Generator, Prompt Agent, SDK Agent, Compilation Check, User Actions, Emulator, Deep Link, Test Runner, Visual Report.</p>
+      </div>
+    </section>
+
+    <!-- summary.meta_chips is a fixed 3-item list (Platform / Use Case /
+         Duration) built in RunReportBuilder._build_summary(). -->
+    <div class="meta-row">
+      <span class="chip">
+        <span class="chip-label">Platform</span>
+        <span class="chip-value">common</span>
+      </span>
+      <span class="chip">
+        <span class="chip-label">Use Case</span>
+        <span class="chip-value">/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d67c427e4f14d9fad2589b1a0f34be7/use_cases/common-deeplink-smoke.json</span>
+      </span>
+      <span class="chip">
+        <span class="chip-label">Duration</span>
+        <span class="chip-value">—</span>
+      </span>
+    </div>
+
+    <div class="accordion">
+
+      <!-- Panel 1: one row per LangGraph node, in pipeline order, from
+           workflow_detail.nodes (built by _build_workflow_detail()).
+           Clicking a node's own <details> below (not this outer panel)
+           expands that node's individual checks. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            Workflow Overview
+          </span>
+          <span class="badge-count">0/11 passed</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Expand a node to see what was checked and the outcome.</p>
+
+          <div class="workflow-stats">
+            <span class="wf-stat"><strong>Nodes:</strong> 11</span>
+            <span class="wf-stat"><strong>Passed:</strong> 0</span>
+            <span class="wf-stat"><strong>Failed:</strong> 0</span>
+            <span class="wf-stat"><strong>Skipped:</strong> 10</span>
+          </div>
+
+          <div class="workflow-timeline">
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">1</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">JSON Use Case Input</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">2</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Artifact Generator</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node info">
+              <summary>
+                <div class="wf-step">3</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Environment Setup</div>
+                </div>
+                <span class="status-pill info">Info</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Failure</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Environment setup failed: Unsupported platform: common. Must be 'android' or 'ios'.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "environment_setup",
+    "status": "Failure",
+    "message": "Environment setup failed: Unsupported platform: common. Must be 'android' or 'ios'."
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">4</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Prompt Agent</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">5</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">SDK Agent</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">6</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Compilation Check</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">7</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">User Actions</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">8</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Emulator</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">9</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Deep Link</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">10</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Test Runner</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">11</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Visual Report</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 2: the raw `state` dict, grouped into named sections by
+           RunReportBuilder._build_state_sections() (STATE_SECTIONS above),
+           plus an auto-generated "Other State" catch-all so nothing in
+           state is ever left unshown. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            State Variables
+          </span>
+          <span class="badge-count">6 groups</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Pipeline state grouped by spec. Only keys present in the run state are shown.</p>
+          <div class="state-section">
+            <h3 class="state-section-title">Use Cases</h3>
+<p class="state-section-desc">General use-case selection and paths for the current run.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>selected_use_cases</td>
+                  <td><pre>[
+  {
+    "app_path": "data/application/banana.app",
+    "platform": "common",
+    "prompt_goal": "Launch app and validate basic navigation stability.",
+    "rules_policy": {
+      "default_profiles": [
+        "common"
+      ],
+      "allow_user_override": true,
+      "allowed_profiles": [
+        "common",
+        "strict"
+      ]
+    },
+    "answer_policy": {
+      "ios_minimal": {
+        "use_att": true,
+        "use_cuid": false,
+        "use_scene_delegate": true,
+        "use_response_listener": true
+      },
+      "deeplink": {
+        "use_deep_linking": false,
+        "use_custom_uri_scheme": false
+      },
+      "in_app_event": {
+        "inapp_event_method": "none",
+        "event_params": {}
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      }
+    },
+    "installation_answers": [],
+    "agent_messages": [
+      "Smoke flow started",
+      "Navigation checks done"
+    ],
+    "installation_agent_summary": "Basic launch and navigation passed.",
+    "app_id": "123456",
+    "dev_key": "wefghj",
+    "llm_model": "gpt-4o-mini",
+    "id": "common-basic-launch-navigation"
+  },
+  {
+    "app_path": "data/application/banana.app",
+    "platform": "common",
+    "prompt_goal": "Trigger generic deep link and validate destination handling.",
+    "rules_policy": {
+      "default_profiles": [
+        "common"
+      ],
+      "allow_user_override": true,
+      "allowed_profiles": [
+        "common",
+        "strict",
+        "ios",
+        "android"
+      ]
+    },
+    "answer_policy": {
+      "ios_minimal": {
+        "use_att": true,
+        "use_cuid": false,
+        "use_scene_delegate": true,
+        "use_response_listener": true
+      },
+      "deeplink": {
+        "use_deep_linking": true,
+        "onelink_url": "https://example.onelink.me/abc1",
+        "url_identifier": "offers",
+        "uri_scheme": "myapp",
+        "use_custom_uri_scheme": true
+      },
+      "in_app_event": {
+        "inapp_event_method": "none",
+        "event_params": {}
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      }
+    },
+    "installation_answers": [],
+    "agent_messages": [
+      "Deep link dispatched",
+      "Destination screen validated"
+    ],
+    "installation_agent_summary": "Deep link smoke flow passed.",
+    "app_id": "123456",
+    "dev_key": "wefghj",
+    "llm_model": "gpt-4o-mini",
+    "id": "common-deeplink-smoke"
+  },
+  {
+    "app_path": "data/application/banana.app",
+    "platform": "common",
+    "prompt_goal": "Validate first-open behavior and baseline SDK presence.",
+    "rules_policy": {
+      "default_profiles": [
+        "common"
+      ],
+      "allow_user_override": true,
+      "allowed_profiles": [
+        "common",
+        "strict"
+      ]
+    },
+    "answer_policy": {
+      "ios_minimal": {
+        "use_att": true,
+        "use_cuid": false,
+        "use_scene_delegate": true,
+        "use_response_listener": true
+      },
+      "deeplink": {
+        "use_deep_linking": false,
+        "use_custom_uri_scheme": false
+      },
+      "in_app_event": {
+        "inapp_event_method": "validate_payload",
+        "event_name": "af_app_opened",
+        "event_params": {
+          "source": "organic"
+        }
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      }
+    },
+    "installation_answers": [],
+    "agent_messages": [
+      "First open flow started",
+      "SDK baseline signal found"
+    ],
+    "installation_agent_summary": "First-open baseline validation passed.",
+    "app_id": "123456",
+    "dev_key": "wefghj",
+    "llm_model": "gpt-4o-mini",
+    "id": "common-first-open-sdk-presence"
+  }
+]</pre></td>
+                </tr>
+                <tr>
+                  <td>selected_use_cases_path</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d67c427e4f14d9fad2589b1a0f34be7/use_cases/common-deeplink-smoke.json</pre></td>
+                </tr>
+                <tr>
+                  <td>use_cases_dir</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d67c427e4f14d9fad2589b1a0f34be7/use_cases</pre></td>
+                </tr>
+                <tr>
+                  <td>current_use_case_path</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d67c427e4f14d9fad2589b1a0f34be7/use_cases/common-deeplink-smoke.json</pre></td>
+                </tr>
+                <tr>
+                  <td>current_use_case</td>
+                  <td><pre>{
+  "app_path": "data/application/banana.app",
+  "platform": "common",
+  "prompt_goal": "Trigger generic deep link and validate destination handling.",
+  "rules_policy": {
+    "default_profiles": [
+      "common"
+    ],
+    "allow_user_override": true,
+    "allowed_profiles": [
+      "common",
+      "strict",
+      "ios",
+      "android"
+    ]
+  },
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "deeplink": {
+      "use_deep_linking": true,
+      "onelink_url": "https://example.onelink.me/abc1",
+      "url_identifier": "offers",
+      "uri_scheme": "myapp",
+      "use_custom_uri_scheme": true
+    },
+    "in_app_event": {
+      "inapp_event_method": "none",
+      "event_params": {}
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    }
+  },
+  "installation_answers": [],
+  "agent_messages": [
+    "Deep link dispatched",
+    "Destination screen validated"
+  ],
+  "installation_agent_summary": "Deep link smoke flow passed.",
+  "app_id": "123456",
+  "dev_key": "wefghj",
+  "llm_model": "gpt-4o-mini",
+  "id": "common-deeplink-smoke"
+}</pre></td>
+                </tr>
+                <tr>
+                  <td>answer_policy</td>
+                  <td><pre>{
+  "ios_minimal": {
+    "use_att": true,
+    "use_cuid": false,
+    "use_scene_delegate": true,
+    "use_response_listener": true
+  },
+  "deeplink": {
+    "use_deep_linking": true,
+    "onelink_url": "https://example.onelink.me/abc1",
+    "url_identifier": "offers",
+    "uri_scheme": "myapp",
+    "use_custom_uri_scheme": true
+  },
+  "in_app_event": {
+    "inapp_event_method": "none",
+    "event_params": {}
+  },
+  "verify_sdk": {
+    "verify_logs_ready": true,
+    "app_launched": true
+  }
+}</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Run & Application</h3>
+<p class="state-section-desc">Run identity, platform, and application credentials.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>run_id</td>
+                  <td><pre>9d67c427e4f14d9fad2589b1a0f34be7</pre></td>
+                </tr>
+                <tr>
+                  <td>platform</td>
+                  <td><pre>common</pre></td>
+                </tr>
+                <tr>
+                  <td>app_id</td>
+                  <td><pre>123456</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Sandbox & Infrastructure</h3>
+<p class="state-section-desc">Cloned app, Appium server, devices, and automation driver.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>app_path</td>
+                  <td><pre>data/application/banana.app</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Agent Orchestration</h3>
+<p class="state-section-desc">Prompt types, rounds, installation answers, and agent status.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>test_status</td>
+                  <td><pre>FAIL</pre></td>
+                </tr>
+                <tr>
+                  <td>agent_id</td>
+                  <td><pre>null</pre></td>
+                </tr>
+                <tr>
+                  <td>fail_reason</td>
+                  <td><pre>Environment setup failed: Unsupported platform: common. Must be 'android' or 'ios'.</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">SDK Agent ↔ MCP Conversation</h3>
+<p class="state-section-desc">Installer prompt, answer-agent prompt, and audit path.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>audit_recorder</td>
+                  <td><pre>[object — not serialized]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Other State</h3>
+<p class="state-section-desc">Additional keys present in state but not in the spec groups above.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>dev_key</td>
+                  <td><pre>wefghj</pre></td>
+                </tr>
+                <tr>
+                  <td>use_case_reports</td>
+                  <td><pre>[]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 3: everything the AuditRecorder captured about agent
+           decisions and MCP tool calls, split three ways:
+           1. mcp_validation.call_log -> the small chip row of tool names
+              in call order (see _build_mcp_validation()).
+           2. audit_detail.* -> raw events bucketed by event_type
+              (_build_audit_detail()), one titled group per bucket.
+           3. mcp_conversation -> AGENT_DECISION paired with its matching
+              MCP_TOOL_RESULT (_build_mcp_conversation()), shown as
+              request/result bubble pairs. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            AuditRecorder — LLM ↔ MCP Communication
+          </span>
+          <span class="badge-count">0 events</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Structured per AuditRecorder: each event is <code>{timestamp, event_type, payload}</code> written to <code>audit.jsonl</code>.</p>
+
+
+
+
+
+          <p class="empty">No communication events found.</p>
+        </div>
+      </details>
+
+      <!-- Panel 4: every audit event as one flat, chronological table row
+           each — `events` is the `normalized` list built by
+           RunReportBuilder._normalize_events(), i.e. the least-processed,
+           most complete view of the raw audit trail. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            Full Timeline — Audit Recorder
+          </span>
+          <span class="badge-count">0 events</span>
+        </summary>
+        <div class="panel-body">
+          <p class="empty">No events recorded.</p>
+        </div>
+      </details>
+
+    </div>
+  </div>
+  <script>
+    /*
+     * Theme handling for this page. Intentionally does NOT use
+     * localStorage — that would make every report a user has ever opened
+     * remember dark mode forever, so a report opened fresh (e.g. double-
+     * clicked from Finder) always starts in light mode (see themeFromQuery()
+     * default below). Instead, the *current* light/dark choice is only
+     * carried forward through explicit navigation: this page's own links
+     * (marked with the data-theme-link attribute, e.g. the "← All use
+     * cases" back-link) get a "?theme=dark"/"?theme=light" query parameter
+     * appended live, right before the user clicks, matching whatever this
+     * page is showing at that moment. Same mechanism lives in
+     * index_report.html.j2 so the two pages stay in sync while navigating
+     * between them, without ever affecting some other report opened later.
+     */
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      var label = document.getElementById("theme-toggle-label");
+      var icon = document.getElementById("theme-toggle-icon");
+      // Any link on the page tagged data-theme-link (currently only the
+      // "← All use cases" back-link) gets its href rewritten below.
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto any link to another report page
+        // (card / back-to-overview) so navigating between them keeps the
+        // same light/dark choice, without affecting any other report.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
+
+      // Sets/removes the data-theme="dark" attribute on <html> (which is
+      // what the CSS variable overrides at the top of this file key off
+      // of), flips the toggle button's own icon/label to describe the
+      // *next* click's action, and re-propagates the new theme onto links.
+      function applyTheme(theme) {
+        if (theme === "dark") {
+          root.setAttribute("data-theme", "dark");
+          label.textContent = "Light mode";
+          icon.textContent = "☀️";
+        } else {
+          root.removeAttribute("data-theme");
+          label.textContent = "Dark mode";
+          icon.textContent = "🌙";
+        }
+        propagateTheme(theme);
+      }
+
+      // Reads ?theme=dark|light from this page's own URL. Anything other
+      // than exactly "dark" (including no query param at all) resolves to
+      // "light" — this is what makes light the default for a freshly
+      // opened report.
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via a card or the "All use
+      // cases" link carries whichever theme was active on the linking page.
+      applyTheme(themeFromQuery());
+
+      // Manual toggle click: just flip whatever the current state is.
+      btn.addEventListener("click", function () {
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+      });
+    })();
+  </script>
+</body>
+</html>

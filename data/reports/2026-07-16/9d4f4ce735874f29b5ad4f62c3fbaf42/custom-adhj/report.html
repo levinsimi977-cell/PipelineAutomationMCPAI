@@ -1,0 +1,1918 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Run Report — 9d4f4ce735874f29b5ad4f62c3fbaf42</title>
+  <style>
+    /* Light theme (default). Every color used below is a var(--...) instead
+       of a literal, so [data-theme="dark"] just below can override the same
+       variable names and repaint the whole page without touching any rule
+       that actually uses them. */
+    :root {
+      --bg: #f0f7ff;
+      --surface: #ffffff;
+      --surface-soft: #f8fbff;
+      --surface-inner: #ffffff;
+      --border: #dbeafe;
+      --border-strong: #93c5fd;
+      --text: #1e3a5f;
+      --muted: #64748b;
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --primary-dark: #0369a1;
+      --passed: #059669;
+      --passed-bg: #ecfdf5;
+      --failed: #dc2626;
+      --failed-bg: #fef2f2;
+      --unknown: #d97706;
+      --unknown-bg: #fffbeb;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
+      --body-gradient: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+      --font-base: 1.05rem;
+      --passed-border: #6ee7b7;
+      --failed-border: #fca5a5;
+      --unknown-border: #fcd34d;
+      --not-run-bg: #f1f5f9;
+      --chip-shadow: 0 1px 4px rgba(2,132,199,.06);
+    }
+
+    /* Dark theme override. Activated purely by the presence of the
+       data-theme="dark" attribute on <html> (set by the script at the
+       bottom of the page) — this file never needs two copies of any rule,
+       only two copies of the variable values. */
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: #151f32;
+      --surface-soft: #111827;
+      --surface-inner: #1a2438;
+      --border: #2d3a52;
+      --border-strong: #475569;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-light: #1e293b;
+      --primary-dark: #bae6fd;
+      --passed: #34d399;
+      --passed-bg: #064e3b;
+      --failed: #f87171;
+      --failed-bg: #450a0a;
+      --unknown: #fbbf24;
+      --unknown-bg: #451a03;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+      --body-gradient: linear-gradient(160deg, #0b1220 0%, #111827 45%, #0c4a6e 100%);
+      --passed-border: #059669;
+      --failed-border: #dc2626;
+      --unknown-border: #d97706;
+      --not-run-bg: #1e293b;
+      --chip-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: var(--font-base);
+      background: var(--body-gradient);
+      color: var(--text);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 36px 24px 52px; }
+
+    /* Header row: optional "← All use cases" link on the left (only exists
+       when this report was reached from an index page — see index_url in
+       the HTML below), theme toggle button on the right. */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .top-bar-left { display: flex; align-items: center; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-dark);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: var(--chip-shadow);
+    }
+    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--chip-shadow);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .theme-toggle:hover {
+      background: var(--primary-light);
+      border-color: var(--border-strong);
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      letter-spacing: -0.02em;
+    }
+    .page-header .subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+
+    /* Big pass/fail banner at the top of the report. `.verdict.passed` /
+       `.verdict.failed` (the class Jinja inserts from validation.css_class)
+       is what actually picks the green vs. red color scheme below — the
+       plain `.verdict` rule only supplies the shared box styling. */
+    .verdict {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px 32px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .verdict-icon {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    .verdict.passed .verdict-icon { background: var(--passed-bg); color: var(--passed); border: 2px solid var(--passed-border); }
+    .verdict.failed .verdict-icon { background: var(--failed-bg); color: var(--failed); border: 2px solid var(--failed-border); }
+    /* .unknown is dead CSS: build_report.py's _build_validation() only ever
+       returns css_class "passed" or "failed" now (binary verdict, no
+       ambiguous state) — kept here in case that changes again later. */
+    .verdict.unknown .verdict-icon { background: var(--unknown-bg); color: var(--unknown); border: 2px solid var(--unknown-border); }
+
+    .verdict-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin: 0 0 10px;
+    }
+    .verdict.passed .verdict-title { color: var(--passed); }
+    .verdict.failed .verdict-title { color: var(--failed); }
+    .verdict.unknown .verdict-title { color: var(--unknown); }
+
+    .verdict-message {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 580px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .verdict-line {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.55;
+    }
+    .verdict-line:last-child { margin-bottom: 0; }
+    .verdict-sub {
+      font-size: 0.95rem;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Failed-run error box, styled like a terminal window — always these
+       fixed dark colors regardless of the page's own light/dark theme
+       toggle, same way a real terminal doesn't change with the OS theme.
+       Shows validation.error_output (see RunReportBuilder._build_error_output). */
+    .error-terminal {
+      margin: 6px 0 22px;
+      border-radius: 10px;
+      overflow: hidden;
+      text-align: left;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+    .error-terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 14px;
+      background: #2d2d2d;
+    }
+    .error-terminal-bar .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .error-terminal-bar .dot.red { background: #ff5f56; }
+    .error-terminal-bar .dot.yellow { background: #ffbd2e; }
+    .error-terminal-bar .dot.green { background: #27c93f; }
+    .error-terminal-title {
+      margin-left: 8px;
+      color: #9aa0a6;
+      font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .error-terminal-body {
+      margin: 0;
+      background: #1e1e1e;
+      color: #ff8a80;
+      padding: 16px 18px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 340px;
+      overflow: auto;
+      text-align: left;
+    }
+
+    /* The 3 small "chips" under the verdict banner: Platform / Use Case /
+       Duration — one <span class="chip"> per entry in summary.meta_chips. */
+    .meta-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+      align-items: stretch;
+    }
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 0.88rem;
+      color: var(--text);
+      box-shadow: var(--chip-shadow);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-width: 0;
+      white-space: normal;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .chip-label {
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .chip-value { font-size: 0.92rem; }
+    .run-id-line {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: -12px 0 28px;
+      word-break: break-word;
+    }
+    .run-id-line strong { color: var(--primary-dark); font-weight: 600; }
+
+    /* The 4 top-level collapsible sections (Workflow Overview / State
+       Variables / Audit communication / Full Timeline) are each a plain
+       HTML <details class="panel"> — no JS needed to expand/collapse them,
+       the browser does that natively; this block is just their styling. */
+    .accordion { display: grid; gap: 14px; }
+
+    details.panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    details.panel summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      font-weight: 700;
+      font-size: 1.08rem;
+      color: var(--primary-dark);
+      background: var(--surface-soft);
+      border-bottom: 1px solid transparent;
+      transition: background 0.15s;
+      user-select: none;
+    }
+    details.panel summary::-webkit-details-marker { display: none; }
+    details.panel summary:hover { background: var(--primary-light); }
+    details.panel[open] summary { border-bottom-color: var(--border); }
+
+    .summary-left { display: flex; align-items: center; gap: 12px; }
+    .arrow {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    details[open] .arrow { transform: rotate(90deg); }
+
+    .badge-count {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .panel-body { padding: 18px 22px 24px; }
+
+    .state-section { margin-bottom: 22px; }
+    .state-section:last-child { margin-bottom: 0; }
+    .state-section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 0 0 4px;
+    }
+    .state-section-desc {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+    .audit-group { margin-bottom: 18px; }
+    .audit-group-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 0 0 8px;
+    }
+    .audit-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--surface-inner);
+      font-size: 0.85rem;
+    }
+    .audit-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 600;
+      color: var(--primary-dark);
+      margin-bottom: 6px;
+    }
+    .state-table { width: 100%; border-collapse: collapse; }
+    .state-table th, .state-table td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.98rem;
+      vertical-align: top;
+    }
+    .state-table th {
+      color: var(--primary-dark);
+      font-weight: 600;
+      width: 28%;
+      background: var(--surface-soft);
+    }
+    .state-table td pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    /* "Paired LLM ↔ MCP exchanges" list inside the Audit panel: each
+       .exchange is one turn's request (left bubble) + result (right
+       bubble), from mcp_conversation (see _build_mcp_conversation()). */
+    .conversation { display: grid; gap: 12px; }
+    .exchange {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+    .exchange-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--primary-light);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--primary-dark);
+    }
+    .exchange-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .bubble { padding: 14px 16px; }
+    .bubble.llm { border-left: 3px solid var(--primary); }
+    .bubble.mcp { border-right: 3px solid var(--primary); background: var(--surface-inner); }
+    .bubble-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .bubble.mcp .bubble-label { color: var(--primary); }
+    pre.code {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88rem;
+      color: var(--muted);
+      max-height: 200px;
+      overflow: auto;
+    }
+
+    .call-log { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .call-chip {
+      background: var(--primary-light);
+      border: 1px solid var(--border-strong);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 0.88rem;
+    }
+
+    .timeline-table { width: 100%; border-collapse: collapse; }
+    .timeline-table th, .timeline-table td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.95rem;
+      vertical-align: top;
+    }
+    .timeline-table th { color: var(--primary-dark); background: var(--surface-soft); font-weight: 600; }
+    .timeline-table td.details-cell {
+      max-width: 320px;
+      word-break: break-word;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      margin-left: 8px;
+    }
+    .status-dot.passed { background: var(--passed); }
+    .status-dot.failed { background: var(--failed); }
+    .status-dot.info { background: var(--primary); }
+
+    .workflow-list { display: grid; gap: 10px; }
+    .workflow-item {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.98rem;
+    }
+    .workflow-item .node { font-weight: 700; color: var(--primary-dark); }
+    .empty { color: var(--muted); font-style: italic; font-size: 1rem; }
+
+    /* ── Workflow (inside accordion) ── */
+    .panel-hint {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .workflow-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .wf-stat {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.9rem;
+    }
+    .wf-stat strong { color: var(--primary-dark); }
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    .context-item {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .context-item .ctx-key {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .context-item .ctx-val {
+      font-size: 0.92rem;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .workflow-timeline { display: grid; gap: 8px; }
+    .wf-node {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+    .wf-node > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+    }
+    .wf-node > summary::-webkit-details-marker { display: none; }
+    .wf-node > summary .arrow {
+      flex: 0 0 20px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      transition: transform 0.15s ease;
+      text-align: center;
+    }
+    .wf-node[open] > summary .arrow { transform: rotate(90deg); }
+    .wf-node-body {
+      border-top: 1px solid var(--border);
+      background: var(--surface-inner);
+    }
+    .wf-node-header {
+      display: contents;
+    }
+    .wf-step {
+      flex: 0 0 36px;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+    .wf-node.not_run .wf-step { background: var(--not-run-bg); color: var(--muted); }
+    .wf-node.passed .wf-step { background: var(--passed-bg); color: var(--passed); }
+    .wf-node.failed .wf-step { background: var(--failed-bg); color: var(--failed); }
+    .wf-node.warning .wf-step { background: var(--unknown-bg); color: var(--unknown); }
+    .wf-node-label {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .wf-node-name {
+      font-weight: 700;
+      color: var(--primary-dark);
+      font-size: 0.98rem;
+      text-align: left;
+    }
+    .wf-node-id { font-size: 0.82rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .wf-node-summary {
+      font-size: 0.92rem;
+      color: var(--muted);
+      margin: 0;
+      padding: 10px 16px 0;
+    }
+    .wf-state-fields {
+      border-top: 1px solid var(--border);
+      background: var(--surface-soft);
+      padding: 10px 14px 12px;
+    }
+    .wf-state-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .wf-state-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    .wf-state-table th {
+      text-align: left;
+      width: 28%;
+      padding: 6px 8px;
+      vertical-align: top;
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
+    .wf-state-table td {
+      padding: 6px 8px;
+      vertical-align: top;
+      color: var(--muted);
+    }
+    .wf-state-table tr + tr th,
+    .wf-state-table tr + tr td { border-top: 1px solid var(--border); }
+    .status-pill {
+      flex: 0 0 96px;
+      display: block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .status-pill.passed { background: var(--passed-bg); color: var(--passed); }
+    .status-pill.failed { background: var(--failed-bg); color: var(--failed); }
+    .status-pill.warning { background: var(--unknown-bg); color: var(--unknown); }
+    .status-pill.info { background: var(--primary-light); color: var(--primary-dark); }
+    .status-pill.not_run { background: var(--not-run-bg); color: var(--muted); }
+    .wf-node-runs { border-top: 1px solid var(--border); }
+    .wf-node-runs-title {
+      padding: 10px 16px 0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--primary-dark);
+    }
+    .wf-run {
+      padding: 12px 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .wf-run-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .wf-fields { width: 100%; border-collapse: collapse; }
+    .wf-fields th, .wf-fields td {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      vertical-align: top;
+    }
+    .wf-fields th { width: 30%; color: var(--muted); font-weight: 600; }
+
+    @media (max-width: 640px) {
+      .exchange-body { grid-template-columns: 1fr; }
+      .workflow-item { grid-template-columns: 1fr; }
+      .page-header h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Only "index_url" and the theme-toggle button live outside the
+         accordion — everything else on the page is one of the 4 collapsible
+         panels below (Workflow / State / Audit communication / Timeline). -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <a class="back-link" data-theme-link href="../index.html">← All use cases</a>
+      </div>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
+        <span id="theme-toggle-icon">🌙</span>
+        <span id="theme-toggle-label">Dark mode</span>
+      </button>
+    </div>
+
+    <header class="page-header">
+      <h1>Pipeline Run Report</h1>
+      <p class="subtitle">Report generated on July 16, 2026 at 12:29 PM</p>
+    </header>
+
+    <!-- Top verdict banner. `validation` comes from
+         RunReportBuilder._build_validation() — .css_class is "passed" or
+         "failed" (drives the color via the CSS above), .label is the
+         "Passed"/"Failed" heading text, and .message_lines is the list of
+         explanatory sentences (tool order + workflow completion) rendered
+         one per <p> below. -->
+    <section class="verdict failed">
+      <div class="verdict-icon">
+✗      </div>
+      <h2 class="verdict-title">Failed</h2>
+      <!-- Terminal-style box, shown first thing on a failed run — right
+           under the "Failed" heading, before the explanatory lines below
+           — with whatever real error text was captured (fail_reason/
+           error_reason, compilation stderr, or the failing node's own
+           detail; see RunReportBuilder._build_error_output() for the
+           exact priority order). -->
+      <div class="error-terminal">
+        <div class="error-terminal-bar">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="error-terminal-title">error output</span>
+        </div>
+        <pre class="error-terminal-body">{'nodes_log': [{'node': 'sdk_agent', 'listener': 'FAIL', 'status': 'FAIL', 'reason': 'Classifier reported FAILURE.', 'text_preview': 'Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\n\nDetails:\n\n1. What I’ve '}], 'call_log': [{'tool': 'integrateSdk'}], 'mcp_sequence': {'platform': 'ios', 'call_log': [{'tool': 'integrateSdk'}]}, 'test_status': 'FAIL'}</pre>
+      </div>
+      <div class="verdict-message">
+        <p class="verdict-line">MCP tool order could not be verified for this run.</p>
+        <p class="verdict-line">Workflow incomplete — Failed at SDK Agent (Info): integrate_prompt: {'nodes_log': [{'node': 'sdk_agent', 'listener': 'FAIL', 'status': 'FAIL', 'reason': 'Classifier reported FAILURE.', 'text_preview': 'Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\n\nDetails:\n\n1. What I’ve '}], 'call_log': [{'tool': 'integrateSdk'}], 'mcp_sequence': {'platform': 'ios', 'call_log': [{'tool': 'integrateSdk'}]}, 'test_status': 'FAIL'}; Not executed: JSON Use Case Input, Artifact Generator, Compilation Check, User Actions, Emulator, Deep Link, Test Runner, Visual Report.</p>
+      </div>
+    </section>
+
+    <!-- summary.meta_chips is a fixed 3-item list (Platform / Use Case /
+         Duration) built in RunReportBuilder._build_summary(). -->
+    <div class="meta-row">
+      <span class="chip">
+        <span class="chip-label">Platform</span>
+        <span class="chip-value">ios</span>
+      </span>
+      <span class="chip">
+        <span class="chip-label">Use Case</span>
+        <span class="chip-value">/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d4f4ce735874f29b5ad4f62c3fbaf42/use_cases/custom-adhj.json</span>
+      </span>
+      <span class="chip">
+        <span class="chip-label">Duration</span>
+        <span class="chip-value">—</span>
+      </span>
+    </div>
+
+    <div class="accordion">
+
+      <!-- Panel 1: one row per LangGraph node, in pipeline order, from
+           workflow_detail.nodes (built by _build_workflow_detail()).
+           Clicking a node's own <details> below (not this outer panel)
+           expands that node's individual checks. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            Workflow Overview
+          </span>
+          <span class="badge-count">2/11 passed</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Expand a node to see what was checked and the outcome.</p>
+
+          <div class="workflow-stats">
+            <span class="wf-stat"><strong>Nodes:</strong> 11</span>
+            <span class="wf-stat"><strong>Passed:</strong> 2</span>
+            <span class="wf-stat"><strong>Failed:</strong> 0</span>
+            <span class="wf-stat"><strong>Skipped:</strong> 8</span>
+          </div>
+
+          <div class="workflow-timeline">
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">1</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">JSON Use Case Input</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">2</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Artifact Generator</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node passed">
+              <summary>
+                <div class="wf-step">3</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Environment Setup</div>
+                </div>
+                <span class="status-pill passed">Success</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Success</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Sandbox created; MCP and application validation passed.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "environment_setup",
+    "status": "Success",
+    "message": "Sandbox created; MCP and application validation passed.",
+    "mcp_status": "OK",
+    "app_validation_status": "OK"
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node passed">
+              <summary>
+                <div class="wf-step">4</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Prompt Agent</div>
+                </div>
+                <span class="status-pill passed">Success</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Yes</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">SUCCESS</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Prompt Agent generated prompts successfully.</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "prompt_agent",
+    "status": "SUCCESS",
+    "message": "Prompt Agent generated prompts successfully."
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node info">
+              <summary>
+                <div class="wf-step">5</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">SDK Agent</div>
+                </div>
+                <span class="status-pill info">Info</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">Failure</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Details</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">integrate_prompt: {'nodes_log': [{'node': 'sdk_agent', 'listener': 'FAIL', 'status': 'FAIL', 'reason': 'Classifier reported FAILURE.', 'text_preview': 'Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\n\nDetails:\n\n1. What I’ve '}], 'call_log': [{'tool': 'integrateSdk'}], 'mcp_sequence': {'platform': 'ios', 'call_log': [{'tool': 'integrateSdk'}]}, 'test_status': 'FAIL'}</pre></td>
+                      </tr>
+                      <tr>
+                        <th>State (raw)</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">[
+  {
+    "node": "sdk_agent",
+    "status": "Failure",
+    "prompt_type": "integrate_prompt",
+    "reason": "{'nodes_log': [{'node': 'sdk_agent', 'listener': 'FAIL', 'status': 'FAIL', 'reason': 'Classifier reported FAILURE.', 'text_preview': 'Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\\n\\nDetails:\\n\\n1. What I’ve '}], 'call_log': [{'tool': 'integrateSdk'}], 'mcp_sequence': {'platform': 'ios', 'call_log': [{'tool': 'integrateSdk'}]}, 'test_status': 'FAIL'}"
+  }
+]</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">6</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Compilation Check</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">7</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">User Actions</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">8</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Emulator</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">9</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Deep Link</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">10</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Test Runner</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <!-- Each node is its own <details>: clicking it reveals
+                 node.checks — the "Visited" / "Status" / "Details" /
+                 "State (raw)" rows built by RunReportBuilder._node_checks(). -->
+            <details class="wf-node not_run">
+              <summary>
+                <div class="wf-step">11</div>
+                <div class="wf-node-label">
+                  <div class="wf-node-name">Visual Report</div>
+                </div>
+                <span class="status-pill not_run">Skipped</span>
+                <span class="arrow">▶</span>
+              </summary>
+              <div class="wf-node-body">
+                <div class="wf-state-fields">
+                  <table class="wf-state-table">
+                    <tbody>
+                      <tr>
+                        <th>Visited</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">No</pre></td>
+                      </tr>
+                      <tr>
+                        <th>Status</th>
+                        <td><pre style="margin:0;white-space:pre-wrap;font-family:inherit;">—</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 2: the raw `state` dict, grouped into named sections by
+           RunReportBuilder._build_state_sections() (STATE_SECTIONS above),
+           plus an auto-generated "Other State" catch-all so nothing in
+           state is ever left unshown. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            State Variables
+          </span>
+          <span class="badge-count">6 groups</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Pipeline state grouped by spec. Only keys present in the run state are shown.</p>
+          <div class="state-section">
+            <h3 class="state-section-title">Use Cases</h3>
+<p class="state-section-desc">General use-case selection and paths for the current run.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>selected_use_cases</td>
+                  <td><pre>[
+  {
+    "app_path": "data/application/banana.app",
+    "platform": "ios",
+    "prompt_goal": "adfgdhfjgk",
+    "rules_policy": {
+      "default_profiles": [
+        "common"
+      ],
+      "allow_user_override": true,
+      "allowed_profiles": [
+        "common",
+        "ios",
+        "android",
+        "strict"
+      ]
+    },
+    "answer_policy": {
+      "ios_minimal": {
+        "use_att": true,
+        "use_cuid": false,
+        "use_scene_delegate": true,
+        "use_response_listener": true
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      }
+    },
+    "installation_answers": [],
+    "agent_messages": [],
+    "installation_agent_summary": "Asadsfjk",
+    "app_id": ";זכעיח",
+    "dev_key": "123456",
+    "llm_model": "gpt-4o-mini",
+    "id": "custom-adhj"
+  }
+]</pre></td>
+                </tr>
+                <tr>
+                  <td>selected_use_cases_path</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d4f4ce735874f29b5ad4f62c3fbaf42/use_cases/custom-adhj.json</pre></td>
+                </tr>
+                <tr>
+                  <td>use_cases_dir</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d4f4ce735874f29b5ad4f62c3fbaf42/use_cases</pre></td>
+                </tr>
+                <tr>
+                  <td>current_use_case_path</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/data/runs/9d4f4ce735874f29b5ad4f62c3fbaf42/use_cases/custom-adhj.json</pre></td>
+                </tr>
+                <tr>
+                  <td>current_use_case</td>
+                  <td><pre>{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "adfgdhfjgk",
+  "rules_policy": {
+    "default_profiles": [
+      "common"
+    ],
+    "allow_user_override": true,
+    "allowed_profiles": [
+      "common",
+      "ios",
+      "android",
+      "strict"
+    ]
+  },
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    }
+  },
+  "installation_answers": [],
+  "agent_messages": [],
+  "installation_agent_summary": "Asadsfjk",
+  "app_id": ";זכעיח",
+  "dev_key": "123456",
+  "llm_model": "gpt-4o-mini",
+  "id": "custom-adhj"
+}</pre></td>
+                </tr>
+                <tr>
+                  <td>answer_policy</td>
+                  <td><pre>{
+  "ios_minimal": {
+    "use_att": true,
+    "use_cuid": false,
+    "use_scene_delegate": true,
+    "use_response_listener": true
+  },
+  "verify_sdk": {
+    "verify_logs_ready": true,
+    "app_launched": true
+  }
+}</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Run & Application</h3>
+<p class="state-section-desc">Run identity, platform, and application credentials.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>run_id</td>
+                  <td><pre>9d4f4ce735874f29b5ad4f62c3fbaf42</pre></td>
+                </tr>
+                <tr>
+                  <td>platform</td>
+                  <td><pre>ios</pre></td>
+                </tr>
+                <tr>
+                  <td>app_id</td>
+                  <td><pre>;זכעיח</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Sandbox & Infrastructure</h3>
+<p class="state-section-desc">Cloned app, Appium server, devices, and automation driver.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>app_path</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c</pre></td>
+                </tr>
+                <tr>
+                  <td>sandbox_path</td>
+                  <td><pre>/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Agent Orchestration</h3>
+<p class="state-section-desc">Prompt types, rounds, installation answers, and agent status.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>type_agent</td>
+                  <td><pre>sdk_agent</pre></td>
+                </tr>
+                <tr>
+                  <td>agent_prompts</td>
+                  <td><pre>{
+  "integrate_prompt": "You are an AI SDK integration agent responsible for integrating the AppsFlyer SDK into an existing iOS application project.\n\nYour main objective in this task:\n- Install and integrate the AppsFlyer SDK only, for the given iOS app, according to the provided policies and requirements.\n- Do not configure in-app events in this step unless explicitly required as setup boilerplate by the AppsFlyer MCP integration tool.\n- Do not perform or trigger final verification; this step is integration-only.\n\n--------------------------------\nEXECUTION CONTEXT\n--------------------------------\n- Platform: iOS\n- Language / project type: Objective-C (project root is an Objective-C iOS app)\n- Local app path (project root):  \n  `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n\nUse-case goal (business context):\n- `adfgdhfjgk`  \n  (Treat as opaque; do not attempt to infer business logic from it. It does NOT change the technical integration steps.)\n\nRelevant AppsFlyer configuration / answer policy for this step:\n```json\n{\n  \"prompt_goal\": \"adfgdhfjgk\",\n  \"answer_policy\": {\n    \"platform_policy\": {\n      \"use_att\": true,\n      \"use_cuid\": false,\n      \"use_scene_delegate\": true,\n      \"use_response_listener\": true\n    },\n    \"full_answer_policy\": {\n      \"ios_minimal\": {\n        \"use_att\": true,\n        \"use_cuid\": false,\n        \"use_scene_delegate\": true,\n        \"use_response_listener\": true\n      },\n      \"verify_sdk\": {\n        \"verify_logs_ready\": true,\n        \"app_launched\": true\n      }\n    }\n  }\n}\n```\n\nYou must respect and implement all relevant flags for this integration step:\n- `use_att: true`  \n  - Integrate and configure App Tracking Transparency (ATT) according to the AppsFlyer MCP guidance.\n- `use_cuid: false`  \n  - Do NOT configure Customer User ID (CUID) in this step.\n- `use_scene_delegate: true`  \n  - Implement AppsFlyer lifecycle integration using `SceneDelegate` APIs, per MCP guidance.\n- `use_response_listener: true`  \n  - Implement the AppsFlyer conversion / response listener as required by MCP guidance.\n\nVerification-related flags in `verify_sdk` are **not** to be executed here:\n- `verify_logs_ready: true` and `app_launched: true` describe requirements for later verification steps.  \n  In this step, only prepare the integration so that later verification can run successfully.  \n  Do NOT trigger any final verification or validation tools now.\n\n--------------------------------\nGLOBAL MCP REQUIREMENTS\n--------------------------------\nThe following constraints are **non-negotiable** and must be strictly followed:\n\n1. **MCP usage for AppsFlyer guidance**\n   - You MUST use AppsFlyer MCP tools whenever SDK guidance or validation is needed.\n   - You MUST call the AppsFlyer MCP `integrateSdk` tool for actual SDK integration guidance specific to:\n     - iOS\n     - Objective-C project\n     - SceneDelegate usage\n     - ATT usage\n     - Response listener usage\n   - You MUST NOT answer from memory or general knowledge for any AppsFlyer SDK setup or validation steps. Use the MCP responses as the single source of truth for:\n     - Installation method and packages\n     - Required Info.plist keys\n     - AppDelegate / SceneDelegate modifications\n     - ATT and tracking configuration\n     - Response / conversion listener implementation patterns\n     - Any other integration steps\n\n2. **No invented steps**\n   - You MUST NOT invent or introduce any AppsFlyer SDK setup, configuration, or verification steps that are not described or implied by the AppsFlyer MCP `integrateSdk` tool responses.\n   - You MAY:\n     - Mechanically translate MCP-provided code snippets into Objective-C if they are provided in Swift (or vice versa), as long as:\n       - The same APIs, methods, parameters, and logic are preserved.\n       - No extra AppsFlyer logic is added beyond faithful translation and necessary adaptation to Objective-C syntax and project structure.\n   - If you are unsure how to interpret MCP output, you must resolve this uncertainty via further MCP tool calls, not by guessing.\n\n3. **Project inspection before modification**\n   - BEFORE editing any project files, you MUST:\n     - Inspect the project structure and relevant files (e.g., Xcode project file, AppDelegate, SceneDelegate, Info.plist, Podfile / Swift Package Manager config, etc.).\n   - Use whatever filesystem/project-inspection tools are available in your environment to:\n     - Locate the main app target.\n     - Identify whether the app already uses:\n       - SceneDelegate\n       - AppDelegate only\n     - Determine how dependencies are managed (CocoaPods, SPM, manual frameworks, etc.).\n   - Only after inspecting the project should you decide where and how to apply the AppsFlyer MCP-provided changes.\n\n4. **Failure behavior**\n   - If the AppsFlyer MCP tool is unavailable, returns an error, or does not provide enough information to safely proceed, you MUST:\n     - Stop the integration process.\n     - Report clearly that integration cannot continue due to tool failure or missing guidance.\n   - Do NOT guess or proceed with partial or improvised AppsFlyer integration.\n\n--------------------------------\nSTAGE-SPECIFIC INSTRUCTIONS (THIS STEP ONLY)\n--------------------------------\nYou are performing the \"integrate_prompt\" stage for SDK integration. In this stage you MUST:\n\n1. Use the AppsFlyer MCP tool `integrateSdk`:\n   - Call `integrateSdk` with parameters matching this context:\n     - Platform: iOS\n     - Language/environment: Objective-C\n     - Project path: `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n     - Policies:\n       - `use_att: true`\n       - `use_cuid: false`\n       - `use_scene_delegate: true`\n       - `use_response_listener: true`\n   - If `integrateSdk` offers different variants (e.g., minimal vs advanced), choose the configuration that matches the given flags and iOS minimal requirements.\n\n2. Apply all relevant SDK integration requirements that the MCP tool returns:\n   At minimum, for this use case, you must:\n   - Install the AppsFlyer SDK for iOS using the method specified by MCP (e.g., CocoaPods, SPM, manual), inspecting existing dependency management to avoid conflicts.\n   - Add and/or update any required configuration entries, including but not limited to:\n     - `Info.plist` keys or URL schemes, if required by MCP result.\n   - Integrate initialization and lifecycle methods:\n     - Configure AppsFlyer initialization in the correct place, using App ID / dev key placeholders as provided by MCP.\n     - Since `use_scene_delegate: true`, integrate AppsFlyer lifecycle hooks via `SceneDelegate` as directed by MCP (and AppDelegate if MCP indicates both are needed).\n   - Implement ATT handling:\n     - Since `use_att: true`, add and configure App Tracking Transparency handling exactly as MCP describes (e.g., request tracking authorization, handle callbacks).\n     - Ensure required Info.plist entries (e.g., `NSUserTrackingUsageDescription`) are added if MCP mentions them.\n   - Implement response listener:\n     - Since `use_response_listener: true`, implement the AppsFlyer conversion / response listener pattern recommended by MCP:\n       - Configure the listener delegate.\n       - Attach it at the appropriate point in the app lifecycle.\n       - Ensure any needed methods are implemented in Objective-C.\n   - Do NOT configure CUID, as `use_cuid: false`.\n\n3. Respect the step boundaries:\n   - You MUST NOT:\n     - Create or configure in-app event tracking in this step, unless the MCP `integrateSdk` output explicitly requires boilerplate event code as part of minimal setup.\n     - Run or trigger any final verification or validation tools (even if they exist) in this step.  \n       - Specifically, do not run tools or procedures that confirm logs, console output, or successful attribution; simply ensure integration is implemented and ready.\n   - Your responsibility is to:\n     - Install the SDK\n     - Configure it according to MCP\n     - Update the relevant source files and configuration for this iOS Objective-C project\n     - Leave the project in a state that is ready for final verification in a later stage.\n\n--------------------------------\nDETAILED EXECUTION PLAN\n--------------------------------\nExecute the following steps, in order, strictly adhering to the MCP guidance:\n\n1. PROJECT INSPECTION\n   - Inspect the directory:  \n     `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n   - Determine:\n     - Where the Xcode project or workspace is (e.g., `.xcodeproj` / `.xcworkspace`).\n     - Which files implement:\n       - `AppDelegate` (e.g., `AppDelegate.h` / `AppDelegate.m`)\n       - `SceneDelegate` (e.g., `SceneDelegate.h` / `SceneDelegate.m`)\n     - How dependencies are managed:\n       - Look for `Podfile` (CocoaPods), `Package.swift` / `project.xcworkspace` SPM config, or manually added frameworks.\n     - Whether any prior AppsFlyer integration exists:\n       - Search for `AppsFlyer`, `AppsFlyerLib`, `AppsFlyerTracker`, etc.\n   - Do not modify any file yet; only collect information needed for correct integration.\n\n2. CALL APPSFLYER MCP `integrateSdk`\n   - Call the AppsFlyer MCP `integrateSdk` tool with:\n     - Platform: iOS\n     - Language/environment: Objective-C\n     - Project path: as above\n     - Policy flags:\n       - `use_att: true`\n       - `use_cuid: false`\n       - `use_scene_delegate: true`\n       - `use_response_listener: true`\n   - Request full integration instructions and code snippets tailored to:\n     - Objective-C\n     - SceneDelegate-compatible lifecycle integration\n     - ATT requirement\n     - Response listener requirement\n   - Wait for the result and treat it as authoritative for all AppsFlyer-specific logic.\n\n3. SDK INSTALLATION\n   - Based on the MCP `integrateSdk` response and the project’s dependency management system:\n     - If CocoaPods:\n       - Edit `Podfile` as MCP instructs to add the AppsFlyer pod.\n       - Run the appropriate installation command if the environment allows (e.g., `pod install`), or, if command execution is not permitted in this system, prepare the `Podfile` changes and clearly note that `pod install` must be run externally.\n     - If Swift Package Manager:\n       - Follow MCP instructions for adding AppsFlyer via SPM.\n     - If manual integration is required:\n       - Follow MCP instructions for adding the framework(s) to the Xcode project.\n   - Ensure no conflicting or duplicate AppsFlyer SDK references remain, especially if a previous integration attempt exists.\n\n4. CONFIGURATION FILE UPDATES\n   - Edit `Info.plist` and any other configuration files exactly as defined by MCP:\n     - Add required keys (e.g., App ID, URL schemes, ATT description string, etc.) as the MCP response specifies.\n     - Do not add extra keys or permissions beyond what MCP explicitly or clearly implies.\n   - Ensure ATT-related Info.plist entries are in place if MCP mentions them.\n\n5. APP LIFECYCLE INTEGRATION (SCENE DELEGATE + APP DELEGATE)\n   - Using the MCP code snippets and instructions:\n     - Integrate AppsFlyer initialization and lifecycle callbacks into:\n       - `SceneDelegate` (mandatory due to `use_scene_delegate: true`)\n       - `AppDelegate` if MCP requires it for certain callbacks.\n     - Translate any Swift examples from MCP into Objective-C while preserving:\n       - Method and property names\n       - API calls\n       - Logic and ordering (e.g., initialization before requesting ATT, or vice versa, as instructed).\n   - Ensure that:\n     - The AppsFlyer SDK is initialized at the correct point (e.g., app launch/scene connect).\n     - Any open URL / universal link handling required by MCP is integrated into Objective-C AppDelegate/SceneDelegate methods, as per MCP guidance.\n\n6. ATT (APP TRACKING TRANSPARENCY) INTEGRATION\n   - Since `use_att: true`, implement ATT according to MCP guidance:\n     - Add any required imports and frameworks.\n     - Request tracking authorization in the recommended place in the lifecycle.\n     - Respect any ordering recommendations (e.g., request before/after starting AppsFlyer, if MCP indicates a specific order).\n   - Ensure the implementation is purely based on MCP output, only adapted to Objective-C syntax and this project’s structure.\n\n7. RESPONSE / CONVERSION LISTENER IMPLEMENTATION\n   - Since `use_response_listener: true`, implement the conversion or response listener according to MCP:\n     - Implement the delegate or callback handling class or methods in Objective-C.\n     - Register / set the listener in the AppsFlyer configuration at the time recommended by MCP.\n     - Only implement the methods and logic MCP describes; do not add extra event handling or logging beyond faithful adaptation.\n\n8. AVOID CUID SETUP\n   - Do NOT implement Customer User ID configuration since `use_cuid: false`, even if you know from general knowledge how to do so.\n   - Only implement CUID if the MCP `integrateSdk` output explicitly requires it for this profile, in which case this contradicts the flags and you must highlight and halt for clarification instead of unilaterally enabling CUID.\n\n9. NO FINAL VERIFICATION IN THIS STEP\n   - Do NOT:\n     - Run or invoke any AppsFlyer verification/diagnostics tools.\n     - Check logs or simulate app launches for verification within this step.\n   - You may, however, ensure that:\n     - The code builds logically (e.g., no obvious syntax errors).\n     - All references and imports are consistent.\n   - Leave explicit comments or notes in code (if appropriate) marking where final verification should be performed later, but do not perform it now.\n\n10. OUTPUT / REPORTING\n   - After applying all changes:\n     - Summarize briefly:\n       - Where the AppsFlyer SDK was added (dependency system and version).\n       - Which files were modified (e.g., `AppDelegate.m`, `SceneDelegate.m`, `Info.plist`, `Podfile`, etc.).\n       - Which main integration components were implemented:\n         - Initialization\n         - SceneDelegate integration\n         - ATT request logic\n         - Response listener\n     - If any step could not be completed due to missing MCP guidance or tool failure, clearly state:\n       - Which step failed\n       - Why (e.g., MCP error, ambiguous instructions)\n       - That you stopped instead of guessing.\n\n--------------------------------\nKEY RESTRICTIONS SUMMARY\n--------------------------------\n- Always use AppsFlyer MCP `integrateSdk` for AppsFlyer-related guidance.\n- Do not invent or guess AppsFlyer steps.\n- Inspect project files before editing.\n- Limit this stage strictly to:\n  - SDK installation\n  - Configuration and lifecycle integration\n  - ATT and response listener setup\n- Do not configure in-app events (unless explicitly required as boilerplate by MCP).\n- Do not run final verification in this step.\n- If MCP fails or is insufficient, stop and report failure.",
+  "event_prompt": "You are an AI SDK integration agent working on an iOS project. Your task is to add or validate AppsFlyer event and/or deep-link behavior for the given use case.\n\nFollow these rules exactly:\n\n1. **Global constraints**\n   - You MUST use AppsFlyer MCP tools whenever SDK guidance, examples, or validation is needed.\n   - You MUST inspect the project files before editing them.\n   - You MUST NOT answer from memory instead of calling MCP tools.\n   - You MUST NOT invent AppsFlyer SDK setup, event names, event parameters, or verification steps that are not returned by MCP.\n   - You MAY mechanically translate MCP-provided code snippets into the project’s actual programming language (e.g., from Swift to Objective-C) as long as the same APIs, parameters, and logic are preserved.\n   - If any MCP tool is unavailable or fails, you MUST report failure instead of guessing or fabricating instructions.\n\n2. **Context**\n   - Platform: `ios`\n   - Language/Project type: Objective-C (based on project path)\n   - App path (root for all source inspection):  \n     `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n   - Use case goal (opaque string, do NOT reinterpret or rename it):  \n     `\"adfgdhfjgk\"`\n   - Relevant use-case data for this step:\n     ```json\n     {\n       \"prompt_goal\": \"adfgdhfjgk\",\n       \"answer_policy\": {}\n     }\n     ```\n\n3. **High‑level objective for this step**\n   - Add or validate **event and/or deep-link behavior** in the iOS app according to the use case:\n     - If an in-app event associated with the use case is defined (via MCP guidance), create it in the app flow or connect it to the appropriate screen/logic.\n     - If such an event already exists in the project, validate that it is emitted with the correct **event name** and **parameters** as defined by MCP.\n     - If NO in-app event is defined by MCP for this use case, you MUST NOT invent an event name or parameters.\n     - If deep linking is enabled according to MCP, prepare or validate the relevant deep-link behavior (handling, routing, parameter extraction, and passing to AppsFlyer APIs).\n     - Do NOT repeat full SDK installation steps unless MCP indicates the previous integration is missing or broken.\n\n4. **Required workflow**\n\n   **Step 1 – Discover AppsFlyer requirements via MCP**\n   - Call the appropriate AppsFlyer MCP tool(s) to:\n     - Retrieve the recommended/required in-app event(s) and parameters for the given use case goal `\"adfgdhfjgk\"` on iOS.\n     - Determine whether deep linking and/or deferred deep linking are expected for this use case, and what behaviors, callbacks, or parameters are required (e.g., `onConversionDataSuccess`, `onAppOpenAttribution`, `onDeepLinking`, etc. depending on the SDK version).\n   - You MUST NOT infer any event or deep-link behavior from your own knowledge; only use what MCP returns.\n   - If MCP provides sample code in Swift, you MUST adapt it to Objective-C for this project while keeping the same APIs and logic.\n\n   **Step 2 – Inspect the project**\n   - Using file inspection tools, analyze the iOS app at:  \n     `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n   - Identify:\n     - Where the AppsFlyer SDK is initialized (e.g., `AppDelegate.m`, Scene delegate, or other).\n     - Any existing AppsFlyer event logging calls (e.g., `logEvent`, `logEventWithEventName:...`, or equivalent Objective-C APIs).\n     - Any existing deep-link or universal-link handling:\n       - `application:didFinishLaunchingWithOptions:`\n       - `application:openURL:options:`\n       - `application:continueUserActivity:restorationHandler:`\n       - Any AppsFlyer-specific delegate methods or callbacks.\n   - Confirm whether AppsFlyer SDK is already installed and configured. If MCP indicates the existing integration is broken, follow MCP guidance to repair it; otherwise, DO NOT redo installation.\n\n   **Step 3 – Event behavior implementation/validation**\n   - Based on MCP’s event specification for `\"adfgdhfjgk\"`:\n     - If MCP defines one or more in-app event(s) for this use case:\n       1. **Check if the event already exists**:\n          - Search the code for the exact AppsFlyer event name(s) provided by MCP.\n          - If found:\n            - Validate that parameters match the MCP specification (names, required/optional parameters, types/structures as far as visible in Objective-C).\n            - Validate that the event is triggered in the correct user flow location (screen, action, or lifecycle timing) as implied by MCP’s description of the event’s purpose.\n          - If discrepancies exist, prepare specific Objective-C code modifications to fix:\n            - Event name typos or mismatches.\n            - Missing or incorrect parameters.\n            - Incorrect placement in the user flow (e.g., trigger on button tap instead of on app launch, if MCP states such expectations).\n       2. **If the event does not exist**:\n          - Identify the best insertion point in the code where the user action/state matching MCP’s description occurs (e.g., view controller action handler, completion callback, purchase success handler).\n          - Add or propose an Objective-C AppsFlyer `logEvent` call exactly as defined by MCP (using the provided name and parameters).\n          - Ensure:\n            - The call uses the correct Objective-C method signature for the installed AppsFlyer SDK version, translating from Swift if MCP examples are in Swift.\n            - Parameters map properly from available app data (e.g., product ID, revenue, currency, custom attributes).\n     - If MCP does NOT define any in-app event for this use case:\n       - Explicitly state that no in-app events are defined.\n       - DO NOT add, rename, or invent any AppsFlyer events or parameters.\n\n   **Step 4 – Deep-link / attribution behavior**\n   - Use MCP tools to determine:\n     - Whether deep linking and/or deferred deep linking is expected for this use case.\n     - The exact callbacks and handling AppsFlyer requires for this app configuration.\n   - If deep linking is **enabled/required** according to MCP:\n     - Inspect existing deep-link/universal-link handling code.\n     - Validate:\n       - AppsFlyer SDK is correctly invoked in relevant app delegate methods, as per MCP instructions for iOS/Objective-C.\n       - Any AppsFlyer-provided deep-link callbacks or delegates are implemented and wired correctly (methods exist, are called, and forward the AppsFlyer data as instructed).\n       - Deep-link data (e.g., campaign, deep_link_value, custom parameters) is correctly extracted from AppsFlyer callbacks and routed to the appropriate view controllers or navigation logic.\n     - If any required behavior is missing or incorrect:\n       - Provide precise Objective-C modifications to match MCP’s recommended implementation:\n         - Add/update delegate methods.\n         - Add/update deep-link parameter parsing.\n         - Add/update navigation logic triggered by AppsFlyer deep-link data.\n   - If deep linking is **not required or not enabled** according to MCP:\n     - Do NOT add or invent any deep-link behavior.\n     - Only mention its absence if needed for clarity.\n\n   **Step 5 – Do not redo installation unnecessarily**\n   - ONLY if MCP explicitly indicates that the prior AppsFlyer integration is incomplete, broken, or missing:\n     - Follow MCP’s integration guidance to repair or complete installation, adapting any Swift code examples to Objective-C.\n   - Otherwise:\n     - Skip full installation steps and focus strictly on:\n       - Event emission (name/params).\n       - Deep-link behavior and routing.\n\n5. **Output requirements**\n   - Your answer must be **direct, technical, and executable**.\n   - Structure your final response as follows:\n     1. **MCP Data Summary**  \n        - List all relevant event and deep-link specs received from MCP for use case `\"adfgdhfjgk\"`, including:\n          - Event names and required/optional parameters.\n          - Any deep-link/deferred-deep-link callbacks and expected behaviors.\n     2. **Project Analysis**  \n        - Briefly describe:\n          - Where AppsFlyer is initialized.\n          - Existing AppsFlyer event calls and whether they match MCP definition.\n          - Existing deep-link handling relevant to AppsFlyer.\n     3. **Required Changes**  \n        - Enumerate precise code changes, each with:\n          - File path and function/method name.\n          - Before/after code blocks in Objective-C (or “insert this new block” if there is no prior code).\n          - Clear mapping between MCP requirements and the implemented code.\n     4. **Validation Checklist**  \n        - A short, actionable checklist that a developer or QA engineer can follow to validate:\n          - The event(s) are firing correctly (where, when, with which parameters).\n          - Deep-link flows work as required (if applicable).\n\n   - If, at any point, an MCP call fails or returns insufficient information:\n     - Clearly state that you cannot complete the task due to MCP unavailability or incomplete MCP data.\n     - Do NOT fabricate or approximate AppsFlyer behavior or configuration.\n\nBegin by calling the appropriate AppsFlyer MCP tools to fetch the exact event and deep-link requirements for the iOS use case `\"adfgdhfjgk\"`, then inspect the project at the given path and proceed through the steps above.",
+  "verify_prompt": "You are an AppsFlyer SDK integration verification agent operating in a constrained, tool-driven environment.\n\nYour task type: **verify_prompt**  \nMain goal: **Verify that the use case is completed successfully.**  \nUse case goal: **\"adfgdhfjgk\"** (treat this as an opaque identifier that may correspond to specific configuration or validation instructions obtained via MCP tools).\n\n---\n\n## 1. Execution Context\n\n- Platform: **iOS**\n- Project root (Objective-C app):  \n  `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n- Use-case data:\n  ```json\n  {\n    \"prompt_goal\": \"adfgdhfjgk\",\n    \"answer_policy\": {\n      \"verify_sdk\": {\n        \"verify_logs_ready\": true,\n        \"app_launched\": true\n      }\n    }\n  }\n  ```\n\nYou are in a multi-step pipeline. In this step you must **only verify** the integration and its behavior. Do not refactor or extend the app beyond what is necessary for verification, and do not introduce new functionality.\n\n---\n\n## 2. Global, Non‑Negotable MCP Requirements\n\nYou MUST strictly follow all of these:\n\n1. **Always use AppsFlyer MCP tools for SDK-related tasks**\n   - Whenever you need guidance, validation, configuration instructions, or a checklist regarding the AppsFlyer SDK, you MUST call the appropriate AppsFlyer MCP tool.\n   - You MUST NOT rely on your own memory or past knowledge of AppsFlyer setup flows; always defer to MCP responses for:\n     - Installation steps\n     - Initialization details\n     - Event tracking configuration\n     - Deep linking / UDL / OneLink configuration\n     - Log/readiness expectations\n\n2. **Inspect project files before drawing conclusions**\n   - Before confirming or denying that something is implemented, you MUST:\n     - Use file-system / code-inspection tools provided by MCP (e.g., list files, read files, search within project) to inspect the project under the given path.\n     - Correlate your findings with AppsFlyer MCP instructions.\n   - Do not assume structure (e.g. AppDelegate name, SceneDelegate usage, Swift vs Obj-C) without inspecting.\n\n3. **Do not answer from memory**\n   - You MUST NOT produce AppsFlyer SDK setup, event, or verification steps from your own knowledge.\n   - If a verification step is not explicitly confirmed by the MCP tools, you MUST NOT claim it is correct.\n   - If the MCP tools are unavailable, fail, or return insufficient data, you MUST report **failure or uncertainty** instead of guessing.\n\n4. **Do not invent steps**\n   - You MUST NOT create or infer additional AppsFlyer setup or verification steps beyond what the MCP tools specify.\n   - You MAY only:\n     - Apply or restate MCP instructions,\n     - Adapt provided code snippets to Objective-C (if originally in Swift) while preserving:\n       - The exact APIs,\n       - The parameters,\n       - The sequence of calls,\n       - The logic.\n\n5. **Tool failure behavior**\n   - If any required MCP tool is unavailable, fails, or produces an error that prevents completing verification:\n     - Clearly state that verification **could not be completed** because of tool failure/limitation.\n     - Do not fabricate a “pass” or “success” result.\n\n---\n\n## 3. Stage‑Specific Verification Responsibilities\n\nIn this step you are **only verifying** the integration. You must:\n\n1. **Verify that the AppsFlyer SDK integration is present and initialized correctly**\n   - Use MCP tools to obtain the exact checklist or rules for a correct iOS (Objective‑C) AppsFlyer integration.\n   - Use file inspection tools to:\n     - Locate the main application entry points (e.g., `AppDelegate`, `SceneDelegate`, main view controllers, etc.).\n     - Find any AppsFlyer related references (imports, initialization, configuration calls).\n   - Based on MCP guidance, confirm or deny:\n     - Presence of AppsFlyer SDK in the project (Podfile, Swift Package, or other mechanism as defined by MCP).\n     - Correct initialization sequence in the appropriate lifecycle methods (e.g., `application:didFinishLaunchingWithOptions:`, scene lifecycle, or any MCP-specified methods).\n     - Correct app ID, dev key, and other required configuration values as per MCP responses (but do NOT invent or “guess” them; just confirm whether what exists matches MCP expectations or not).\n   - If MCP provides a validation API, simulator instructions, or specific methods that need to be present, verify that they are implemented exactly as described.\n\n2. **Verify SDK logs or readiness signals (as requested)**\n   - The use-case policy requires:\n     ```json\n     \"verify_sdk\": {\n       \"verify_logs_ready\": true,\n       \"app_launched\": true\n     }\n     ```\n   - Interpretation:\n     - You must verify that:\n       1. The app is configured to launch and initialize the AppsFlyer SDK.\n       2. The SDK produces the correct logs/readiness signals expected by AppsFlyer for a successful initialization.\n   - Actions:\n     - Use AppsFlyer MCP tools to:\n       - Obtain the exact log messages, callbacks, or signals that should appear when the SDK initializes successfully on iOS.\n       - Obtain any recommended method of checking logs (e.g., via console, specific delegate callbacks, debug modes, or test modes).\n     - Verify against project code and any available runtime/log artifacts (if logging tools or output logs are accessible via MCP).\n     - If the environment allows, use MCP tools to:\n       - Confirm that the app was launched during the test run.\n       - Confirm that expected AppsFlyer logs (or readiness indicators) appeared.\n     - If logs are unavailable or not accessible via tools, explicitly report that you **cannot confirm logs** due to missing log data, and do not invent them.\n\n3. **Verify in‑app event only if defined**\n   - Only if MCP or the project code shows that one or more in‑app events are defined, you must:\n     - Use AppsFlyer MCP tools to obtain:\n       - The correct APIs and configuration for event logging in iOS.\n       - The expected event name(s) and parameter structure for this use case (if defined in MCP or in code).\n     - Inspect the project code for:\n       - Calls to AppsFlyer event logging APIs.\n       - Correct event names and parameters (match to MCP-provided expectations; do not invent or “normalize” names).\n     - If execution logs / testing tools are available via MCP:\n       - Verify that at least one test run triggers the relevant event with correct payload.\n     - If no in‑app events are found in code and MCP does not specify any for this use case:\n       - Explicitly state that no in‑app event verification was performed because no events are defined.\n\n4. **Verify deep‑link behavior only if deep linking is enabled**\n   - Use MCP tools to determine whether deep linking / OneLink / UDL is part of this use case.\n   - If MCP indicates deep linking is enabled for this use case:\n     - Use AppsFlyer MCP tools to:\n       - Retrieve exact setup requirements for deep linking in iOS.\n       - Retrieve the expected behavior, callbacks, and log messages (e.g., delegate methods for deep link resolution).\n     - Inspect code for:\n       - Proper registration of URL schemes / associated domains (if indicated by MCP).\n       - Implementation of required delegate methods and AppsFlyer deep-link handling APIs.\n     - If runtime deep-link test tools are provided by MCP:\n       - Use them to validate that a sample deep link triggers expected behavior and logs.\n   - If MCP or project analysis indicates deep linking is NOT enabled:\n     - Explicitly state that no deep-link verification was performed because deep linking is not configured for this use case.\n\n---\n\n## 4. Process Outline\n\nFollow this strict process:\n\n1. **Initialize context from MCP**\n   - Call the relevant AppsFlyer MCP configuration/metadata tools to:\n     - Understand what “adfgdhfjgk” corresponds to (if MCP provides a semantic meaning).\n     - Retrieve the specific integration and verification checklist for:\n       - iOS platform\n       - Objective-C project\n       - This use case, if specialized requirements exist.\n   - If MCP returns no special instructions for this goal, fall back to the generic AppsFlyer iOS integration checklist provided by MCP.\n\n2. **Inspect the project**\n   - Use MCP file tools to:\n     - List directories and files under the provided project root path.\n     - Identify:\n       - Build configuration files (e.g., `Podfile`, `Cartfile`, `Package.swift`, `.xcodeproj`, `.xcworkspace`).\n       - iOS app source files (e.g., `AppDelegate.m/.h`, `SceneDelegate.m/.h`, main `ViewController`, any `Appsflyer*` or similarly named files).\n     - Open and read:\n       - The app delegate and scene-related classes.\n       - Any files referencing AppsFlyer or analytics libraries.\n       - Any configuration/constant files that may hold AppsFlyer dev key, app ID, or other relevant values.\n   - Do not declare anything about the integration until you have read the actual code and correlated it with MCP instructions.\n\n3. **Check SDK presence**\n   - Based on MCP guidance, verify:\n     - That AppsFlyer dependencies are added (e.g., via CocoaPods, SPM, or whatever MCP indicates as valid).\n     - That compiled targets include AppsFlyer frameworks or modules where required.\n   - If no trace of AppsFlyer is found:\n     - Explicitly report that AppsFlyer SDK is not integrated, and thus the use case cannot be considered successfully completed.\n\n4. **Check initialization**\n   - Using MCP instructions:\n     - Confirm that the following (or MCP-equivalent) requirements are satisfied:\n       - Initialization occurs in the correct lifecycle method(s).\n       - Required parameters (dev key, app ID, etc.) are set and passed as MCP prescribes.\n       - Any required delegate / protocol conformances are implemented.\n     - Validate that there are no obvious misconfigurations according to MCP (e.g., wrong method names, missing calls, mis-ordered calls).\n\n5. **Check logs / readiness**\n   - Use MCP tools to:\n     - Understand what logs or signals must appear on a successful initialization.\n     - Identify any code that enables debug logging or log forwarding, if recommended.\n   - If the environment allows reading captured logs via MCP:\n     - Search for AppsFlyer initialization messages and validate they match MCP expectations.\n   - If logs cannot be accessed:\n     - Clearly state this limitation and refrain from asserting that logs are “correct”.\n\n6. **Check events (only if present)**\n   - Search the code for event logging calls as per MCP-provided APIs.\n   - If present:\n     - Validate event names and parameters against MCP definitions or generic patterns as provided.\n     - If runtime test evidence is accessible, confirm an event was actually fired.\n   - If absent and MCP does not mandate any event for this use case:\n     - Note that event verification is not applicable.\n\n7. **Check deep linking (only if relevant)**\n   - Use MCP tools to determine if deep linking is part of this use case.\n   - If yes, verify according to MCP-provided checklist and logs.\n   - If not, state that deep-link verification is not applicable.\n\n8. **Handle tool failures or ambiguities**\n   - If any required AppsFlyer MCP or file/log tool is unavailable, fails, or returns ambiguous data:\n     - Explicitly state which verification steps could not be completed and why.\n     - Do NOT claim success for unverified aspects.\n\n---\n\n## 5. Reporting Requirements\n\nYour final answer must be **direct, technical, and evidence-based**. Structure it as follows:\n\n1. **Summary**\n   - One–two sentences stating whether the AppsFlyer SDK integration for this iOS Objective‑C project **meets** or **does not meet** the requirements for the use case `\"adfgdhfjgk\"`, given the available evidence and tools.\n\n2. **SDK Presence & Initialization**\n   - State:\n     - Whether AppsFlyer SDK is present in the project (and how you verified this).\n     - Whether initialization appears correctly implemented according to MCP:\n       - Exact filenames, methods, and key calls.\n       - Any mismatches or missing steps.\n\n3. **Logs / Readiness Verification**\n   - If logs were available:\n     - Specify:\n       - Where the logs came from (which tool/source).\n       - Which key log lines or signals were found that confirm correct initialization.\n   - If logs were not accessible:\n     - Explicitly say you could not confirm log readiness and why.\n\n4. **In‑App Events (if any)**\n   - If events are defined:\n     - List event name(s) and where they are fired in code.\n     - State whether they match MCP expectations.\n     - Mention any runtime evidence (if available).\n   - If no events are defined or required:\n     - State that event verification was not applicable.\n\n5. **Deep Linking (if any)**\n   - If deep linking is configured:\n     - Describe the relevant code and configuration.\n     - State whether it matches MCP-provided requirements.\n   - If deep linking is not configured or not part of this use case:\n     - State that deep-link verification is not applicable.\n\n6. **Limitations / Unknowns**\n   - List any aspects you could not verify due to:\n     - Missing or failing MCP tools,\n     - Missing logs,\n     - Incomplete or ambiguous configuration.\n   - Clearly mark these as unverified; do not imply success.\n\n7. **Final Verdict**\n   - Provide a concise final verdict:\n     - **“PASS”** if all required aspects (as defined by MCP for this use case) are clearly satisfied.\n     - **“FAIL”** if any required aspect is clearly missing or incorrect.\n     - **“INDETERMINATE”** if one or more required aspects could not be verified due to tool or data limitations.\n   - Briefly justify the verdict in one–two technical sentences.\n\nAlways base every verification claim on:\n- Explicit project code or configuration you inspected, and/or\n- Explicit instructions or checks returned from AppsFlyer MCP tools.\n\nNever guess or fill gaps from your own knowledge of the AppsFlyer SDK."
+}</pre></td>
+                </tr>
+                <tr>
+                  <td>last_prompt_type</td>
+                  <td><pre>integrate_prompt</pre></td>
+                </tr>
+                <tr>
+                  <td>test_status</td>
+                  <td><pre>FAIL</pre></td>
+                </tr>
+                <tr>
+                  <td>last_agent_message</td>
+                  <td><pre>You are an AI SDK integration agent responsible for integrating the AppsFlyer SDK into an existing iOS application project.
+
+Your main objective in this task:
+- Install and integrate the AppsFlyer SDK only, for the given iOS app, according to the provided policies and requirements.
+- Do not configure in-app events in this step unless explicitly required as setup boilerplate by the AppsFlyer MCP integration tool.
+- Do not perform or trigger final verification; this step is integration-only.
+
+--------------------------------
+EXECUTION CONTEXT
+--------------------------------
+- Platform: iOS
+- Language / project type: Objective-C (project root is an Objective-C iOS app)
+- Local app path (project root):  
+  `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`
+
+Use-case goal (business context):
+- `adfgdhfjgk`  
+  (Treat as opaque; do not attempt to infer business logic from it. It does NOT change the technical integration steps.)
+
+Relevant AppsFlyer configuration / answer policy for this step:
+```json
+{
+  "prompt_goal": "adfgdhfjgk",
+  "answer_policy": {
+    "platform_policy": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "full_answer_policy": {
+      "ios_minimal": {
+        "use_att": true,
+        "use_cuid": false,
+        "use_scene_delegate": true,
+        "use_response_listener": true
+      },
+      "verify_sdk": {
+        "verify_logs_ready": true,
+        "app_launched": true
+      }
+    }
+  }
+}
+```
+
+You must respect and implement all relevant flags for this integration step:
+- `use_att: true`  
+  - Integrate and configure App Tracking Transparency (ATT) according to the AppsFlyer MCP guidance.
+- `use_cuid: false`  
+  - Do NOT configure Customer User ID (CUID) in this step.
+- `use_scene_delegate: true`  
+  - Implement AppsFlyer lifecycle integration using `SceneDelegate` APIs, per MCP guidance.
+- `use_response_listener: true`  
+  - Implement the AppsFlyer conversion / response listener as required by MCP guidance.
+
+Verification-related flags in `verify_sdk` are **not** to be executed here:
+- `verify_logs_ready: true` and `app_launched: true` describe requirements for later verification steps.  
+  In this step, only prepare the integration so that later verification can run successfully.  
+  Do NOT trigger any final verification or validation tools now.
+
+--------------------------------
+GLOBAL MCP REQUIREMENTS
+--------------------------------
+The following constraints are **non-negotiable** and must be strictly followed:
+
+1. **MCP usage for AppsFlyer guidance**
+   - You MUST use AppsFlyer MCP tools whenever SDK guidance or validation is needed.
+   - You MUST call the AppsFlyer MCP `integrateSdk` tool for actual SDK integration guidance specific to:
+     - iOS
+     - Objective-C project
+     - SceneDelegate usage
+     - ATT usage
+     - Response listener usage
+   - You MUST NOT answer from memory or general knowledge for any AppsFlyer SDK setup or validation steps. Use the MCP responses as the single source of truth for:
+     - Installation method and packages
+     - Required Info.plist keys
+     - AppDelegate / SceneDelegate modifications
+     - ATT and tracking configuration
+     - Response / conversion listener implementation patterns
+     - Any other integration steps
+
+2. **No invented steps**
+   - You MUST NOT invent or introduce any AppsFlyer SDK setup, configuration, or verification steps that are not described or implied by the AppsFlyer MCP `integrateSdk` tool responses.
+   - You MAY:
+     - Mechanically translate MCP-provided code snippets into Objective-C if they are provided in Swift (or vice versa), as long as:
+       - The same APIs, methods, parameters, and logic are preserved.
+       - No extra AppsFlyer logic is added beyond faithful translation and necessary adaptation to Objective-C syntax and project structure.
+   - If you are unsure how to interpret MCP output, you must resolve this uncertainty via further MCP tool calls, not by guessing.
+
+3. **Project inspection before modification**
+   - BEFORE editing any project files, you MUST:
+     - Inspect the project structure and relevant files (e.g., Xcode project file, AppDelegate, SceneDelegate, Info.plist, Podfile / Swift Package Manager config, etc.).
+   - Use whatever filesystem/project-inspection tools are available in your environment to:
+     - Locate the main app target.
+     - Identify whether the app already uses:
+       - SceneDelegate
+       - AppDelegate only
+     - Determine how dependencies are managed (CocoaPods, SPM, manual frameworks, etc.).
+   - Only after inspecting the project should you decide where and how to apply the AppsFlyer MCP-provided changes.
+
+4. **Failure behavior**
+   - If the AppsFlyer MCP tool is unavailable, returns an error, or does not provide enough information to safely proceed, you MUST:
+     - Stop the integration process.
+     - Report clearly that integration cannot continue due to tool failure or missing guidance.
+   - Do NOT guess or proceed with partial or improvised AppsFlyer integration.
+
+--------------------------------
+STAGE-SPECIFIC INSTRUCTIONS (THIS STEP ONLY)
+--------------------------------
+You are performing the "integrate_prompt" stage for SDK integration. In this stage you MUST:
+
+1. Use the AppsFlyer MCP tool `integrateSdk`:
+   - Call `integrateSdk` with parameters matching this context:
+     - Platform: iOS
+     - Language/environment: Objective-C
+     - Project path: `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`
+     - Policies:
+       - `use_att: true`
+       - `use_cuid: false`
+       - `use_scene_delegate: true`
+       - `use_response_listener: true`
+   - If `integrateSdk` offers different variants (e.g., minimal vs advanced), choose the configuration that matches the given flags and iOS minimal requirements.
+
+2. Apply all relevant SDK integration requirements that the MCP tool returns:
+   At minimum, for this use case, you must:
+   - Install the AppsFlyer SDK for iOS using the method specified by MCP (e.g., CocoaPods, SPM, manual), inspecting existing dependency management to avoid conflicts.
+   - Add and/or update any required configuration entries, including but not limited to:
+     - `Info.plist` keys or URL schemes, if required by MCP result.
+   - Integrate initialization and lifecycle methods:
+     - Configure AppsFlyer initialization in the correct place, using App ID / dev key placeholders as provided by MCP.
+     - Since `use_scene_delegate: true`, integrate AppsFlyer lifecycle hooks via `SceneDelegate` as directed by MCP (and AppDelegate if MCP indicates both are needed).
+   - Implement ATT handling:
+     - Since `use_att: true`, add and configure App Tracking Transparency handling exactly as MCP describes (e.g., request tracking authorization, handle callbacks).
+     - Ensure required Info.plist entries (e.g., `NSUserTrackingUsageDescription`) are added if MCP mentions them.
+   - Implement response listener:
+     - Since `use_response_listener: true`, implement the AppsFlyer conversion / response listener pattern recommended by MCP:
+       - Configure the listener delegate.
+       - Attach it at the appropriate point in the app lifecycle.
+       - Ensure any needed methods are implemented in Objective-C.
+   - Do NOT configure CUID, as `use_cuid: false`.
+
+3. Respect the step boundaries:
+   - You MUST NOT:
+     - Create or configure in-app event tracking in this step, unless the MCP `integrateSdk` output explicitly requires boilerplate event code as part of minimal setup.
+     - Run or trigger any final verification or validation tools (even if they exist) in this step.  
+       - Specifically, do not run tools or procedures that confirm logs, console output, or successful attribution; simply ensure integration is implemented and ready.
+   - Your responsibility is to:
+     - Install the SDK
+     - Configure it according to MCP
+     - Update the relevant source files and configuration for this iOS Objective-C project
+     - Leave the project in a state that is ready for final verification in a later stage.
+
+--------------------------------
+DETAILED EXECUTION PLAN
+--------------------------------
+Execute the following steps, in order, strictly adhering to the MCP guidance:
+
+1. PROJECT INSPECTION
+   - Inspect the directory:  
+     `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`
+   - Determine:
+     - Where the Xcode project or workspace is (e.g., `.xcodeproj` / `.xcworkspace`).
+     - Which files implement:
+       - `AppDelegate` (e.g., `AppDelegate.h` / `AppDelegate.m`)
+       - `SceneDelegate` (e.g., `SceneDelegate.h` / `SceneDelegate.m`)
+     - How dependencies are managed:
+       - Look for `Podfile` (CocoaPods), `Package.swift` / `project.xcworkspace` SPM config, or manually added frameworks.
+     - Whether any prior AppsFlyer integration exists:
+       - Search for `AppsFlyer`, `AppsFlyerLib`, `AppsFlyerTracker`, etc.
+   - Do not modify any file yet; only collect information needed for correct integration.
+
+2. CALL APPSFLYER MCP `integrateSdk`
+   - Call the AppsFlyer MCP `integrateSdk` tool with:
+     - Platform: iOS
+     - Language/environment: Objective-C
+     - Project path: as above
+     - Policy flags:
+       - `use_att: true`
+       - `use_cuid: false`
+       - `use_scene_delegate: true`
+       - `use_response_listener: true`
+   - Request full integration instructions and code snippets tailored to:
+     - Objective-C
+     - SceneDelegate-compatible lifecycle integration
+     - ATT requirement
+     - Response listener requirement
+   - Wait for the result and treat it as authoritative for all AppsFlyer-specific logic.
+
+3. SDK INSTALLATION
+   - Based on the MCP `integrateSdk` response and the project’s dependency management system:
+     - If CocoaPods:
+       - Edit `Podfile` as MCP instructs to add the AppsFlyer pod.
+       - Run the appropriate installation command if the environment allows (e.g., `pod install`), or, if command execution is not permitted in this system, prepare the `Podfile` changes and clearly note that `pod install` must be run externally.
+     - If Swift Package Manager:
+       - Follow MCP instructions for adding AppsFlyer via SPM.
+     - If manual integration is required:
+       - Follow MCP instructions for adding the framework(s) to the Xcode project.
+   - Ensure no conflicting or duplicate AppsFlyer SDK references remain, especially if a previous integration attempt exists.
+
+4. CONFIGURATION FILE UPDATES
+   - Edit `Info.plist` and any other configuration files exactly as defined by MCP:
+     - Add required keys (e.g., App ID, URL schemes, ATT description string, etc.) as the MCP response specifies.
+     - Do not add extra keys or permissions beyond what MCP explicitly or clearly implies.
+   - Ensure ATT-related Info.plist entries are in place if MCP mentions them.
+
+5. APP LIFECYCLE INTEGRATION (SCENE DELEGATE + APP DELEGATE)
+   - Using the MCP code snippets and instructions:
+     - Integrate AppsFlyer initialization and lifecycle callbacks into:
+       - `SceneDelegate` (mandatory due to `use_scene_delegate: true`)
+       - `AppDelegate` if MCP requires it for certain callbacks.
+     - Translate any Swift examples from MCP into Objective-C while preserving:
+       - Method and property names
+       - API calls
+       - Logic and ordering (e.g., initialization before requesting ATT, or vice versa, as instructed).
+   - Ensure that:
+     - The AppsFlyer SDK is initialized at the correct point (e.g., app launch/scene connect).
+     - Any open URL / universal link handling required by MCP is integrated into Objective-C AppDelegate/SceneDelegate methods, as per MCP guidance.
+
+6. ATT (APP TRACKING TRANSPARENCY) INTEGRATION
+   - Since `use_att: true`, implement ATT according to MCP guidance:
+     - Add any required imports and frameworks.
+     - Request tracking authorization in the recommended place in the lifecycle.
+     - Respect any ordering recommendations (e.g., request before/after starting AppsFlyer, if MCP indicates a specific order).
+   - Ensure the implementation is purely based on MCP output, only adapted to Objective-C syntax and this project’s structure.
+
+7. RESPONSE / CONVERSION LISTENER IMPLEMENTATION
+   - Since `use_response_listener: true`, implement the conversion or response listener according to MCP:
+     - Implement the delegate or callback handling class or methods in Objective-C.
+     - Register / set the listener in the AppsFlyer configuration at the time recommended by MCP.
+     - Only implement the methods and logic MCP describes; do not add extra event handling or logging beyond faithful adaptation.
+
+8. AVOID CUID SETUP
+   - Do NOT implement Customer User ID configuration since `use_cuid: false`, even if you know from general knowledge how to do so.
+   - Only implement CUID if the MCP `integrateSdk` output explicitly requires it for this profile, in which case this contradicts the flags and you must highlight and halt for clarification instead of unilaterally enabling CUID.
+
+9. NO FINAL VERIFICATION IN THIS STEP
+   - Do NOT:
+     - Run or invoke any AppsFlyer verification/diagnostics tools.
+     - Check logs or simulate app launches for verification within this step.
+   - You may, however, ensure that:
+     - The code builds logically (e.g., no obvious syntax errors).
+     - All references and imports are consistent.
+   - Leave explicit comments or notes in code (if appropriate) marking where final verification should be performed later, but do not perform it now.
+
+10. OUTPUT / REPORTING
+   - After applying all changes:
+     - Summarize briefly:
+       - Where the AppsFlyer SDK was added (dependency system and version).
+       - Which files were modified (e.g., `AppDelegate.m`, `SceneDelegate.m`, `Info.plist`, `Podfile`, etc.).
+       - Which main integration components were implemented:
+         - Initialization
+         - SceneDelegate integration
+         - ATT request logic
+         - Response listener
+     - If any step could not be completed due to missing MCP guidance or tool failure, clearly state:
+       - Which step failed
+       - Why (e.g., MCP error, ambiguous instructions)
+       - That you stopped instead of guessing.
+
+--------------------------------
+KEY RESTRICTIONS SUMMARY
+--------------------------------
+- Always use AppsFlyer MCP `integrateSdk` for AppsFlyer-related guidance.
+- Do not invent or guess AppsFlyer steps.
+- Inspect project files before editing.
+- Limit this stage strictly to:
+  - SDK installation
+  - Configuration and lifecycle integration
+  - ATT and response listener setup
+- Do not configure in-app events (unless explicitly required as boilerplate by MCP).
+- Do not run final verification in this step.
+- If MCP fails or is insufficient, stop and report failure.</pre></td>
+                </tr>
+                <tr>
+                  <td>prompt_just_run</td>
+                  <td><pre>integrate_prompt</pre></td>
+                </tr>
+                <tr>
+                  <td>agent_id</td>
+                  <td><pre>68c19463-ab68-43dd-818e-2421226a18fc</pre></td>
+                </tr>
+                <tr>
+                  <td>fail_reason</td>
+                  <td><pre>{'nodes_log': [{'node': 'sdk_agent', 'listener': 'FAIL', 'status': 'FAIL', 'reason': 'Classifier reported FAILURE.', 'text_preview': 'Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\n\nDetails:\n\n1. What I’ve '}], 'call_log': [{'tool': 'integrateSdk'}], 'mcp_sequence': {'platform': 'ios', 'call_log': [{'tool': 'integrateSdk'}]}, 'test_status': 'FAIL'}</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">SDK Agent ↔ MCP Conversation</h3>
+<p class="state-section-desc">Installer prompt, answer-agent prompt, and audit path.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>audit_recorder</td>
+                  <td><pre>[object — not serialized]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="state-section">
+            <h3 class="state-section-title">Other State</h3>
+<p class="state-section-desc">Additional keys present in state but not in the spec groups above.</p>            <table class="state-table">
+              <thead><tr><th>key</th><th>value</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>dev_key</td>
+                  <td><pre>123456</pre></td>
+                </tr>
+                <tr>
+                  <td>use_case_reports</td>
+                  <td><pre>[]</pre></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 3: everything the AuditRecorder captured about agent
+           decisions and MCP tool calls, split three ways:
+           1. mcp_validation.call_log -> the small chip row of tool names
+              in call order (see _build_mcp_validation()).
+           2. audit_detail.* -> raw events bucketed by event_type
+              (_build_audit_detail()), one titled group per bucket.
+           3. mcp_conversation -> AGENT_DECISION paired with its matching
+              MCP_TOOL_RESULT (_build_mcp_conversation()), shown as
+              request/result bubble pairs. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            AuditRecorder — LLM ↔ MCP Communication
+          </span>
+          <span class="badge-count">9 events</span>
+        </summary>
+        <div class="panel-body">
+          <p class="panel-hint">Structured per AuditRecorder: each event is <code>{timestamp, event_type, payload}</code> written to <code>audit.jsonl</code>.</p>
+
+          <div class="call-log">
+            <span class="call-chip">integrateSdk</span>
+          </div>
+
+          <div class="audit-group">
+            <div class="audit-group-title">AGENT_DECISION (1)</div>
+            <div class="audit-item">
+              <div class="audit-item-head"><span>integrateSdk</span><span>2026-07-16T12:29:47.649833</span></div>
+              <pre class="code">{
+  "tool": "integrateSdk",
+  "args": {
+    "platform": "ios",
+    "isResponseListener": true,
+    "isDelegate": true,
+    "isATT": true,
+    "isCUID": false
+  }
+}</pre>
+            </div>
+          </div>
+
+          <div class="audit-group">
+            <div class="audit-group-title">MCP_TOOL_RESULT (1)</div>
+            <div class="audit-item">
+              <div class="audit-item-head"><span>integrateSdk</span><span>2026-07-16T12:29:47.650314</span></div>
+              <pre class="code">{
+  "tool": "integrateSdk",
+  "result": "❌ APP_ID is not a valid iOS Apple App ID format.\nPlease provide a numeric APP_ID (for example: 1512793879 or id1512793879) in mcp.json.\nStop: the user who configured this MCP server must update APP_ID/DEV_KEY in mcp.json, then restart the server before calling AppsFlyer tools again."
+}</pre>
+            </div>
+          </div>
+
+
+          <div class="audit-group">
+            <div class="audit-group-title">Paired LLM ↔ MCP exchanges (1)</div>
+            <div class="conversation">
+              <article class="exchange">
+                <div class="exchange-header">
+                  <span>integrateSdk</span>
+                  <span>2026-07-16T12:29:47.649833</span>
+                </div>
+                <div class="exchange-body">
+                  <div class="bubble llm">
+                    <div class="bubble-label">LLM — Request</div>
+                    <pre class="code">{
+  "platform": "ios",
+  "isResponseListener": true,
+  "isDelegate": true,
+  "isATT": true,
+  "isCUID": false
+}</pre>
+                  </div>
+                  <div class="bubble mcp">
+                    <div class="bubble-label">MCP — Result</div>
+                    <pre class="code">❌ APP_ID is not a valid iOS Apple App ID format.
+Please provide a numeric APP_ID (for example: 1512793879 or id1512793879) in mcp.json.
+Stop: the user who configured this MCP server must update APP_ID/DEV_KEY in mcp.json, then restart the server before calling AppsFlyer tools again.</pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Panel 4: every audit event as one flat, chronological table row
+           each — `events` is the `normalized` list built by
+           RunReportBuilder._normalize_events(), i.e. the least-processed,
+           most complete view of the raw audit trail. -->
+      <details class="panel">
+        <summary>
+          <span class="summary-left">
+            <span class="arrow">▶</span>
+            Full Timeline — Audit Recorder
+          </span>
+          <span class="badge-count">9 events</span>
+        </summary>
+        <div class="panel-body">
+          <table class="timeline-table">
+            <thead>
+              <tr><th>#</th><th>Time</th><th>Event</th><th>Source</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>2026-07-16T12:29:28.235474</td>
+                <td>TOOLS_DISCOVERED<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"tools": ["integrateSdk", "verifySdk", "verifyIosSdk", "fetchLogs", "getConversionLogs", "getInAppLogs", "getLaunchLogs", "getDeepLinkLogs", "getErrors", "getInAppEventsByVertical", "createInAppEvent", "createIosInAppEvent", "verifyInAppEvent", "verifyIosInAppEvent", "createDeepLink", "createIosDeepLink", "verifyDeepLink", "verifyIosDeepLink", "guideDeepLinkTesting", "getVersion", "getTopInAppEvents"]}</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>2026-07-16T12:29:28.248336</td>
+                <td>AGENT_PROMPT_GENERATED<span class="status-dot info"></span></td>
+                <td>SDK Agent</td>
+                <td class="details-cell">{"prompt": "User Request:\n\"\"\"You are an AI SDK integration agent responsible for integrating the AppsFlyer SDK into an existing iOS application project.\n\nYour main objective in this task:\n- Install and integrate the AppsFlyer SDK only, for the given iOS app, according to the provided policies and requirements.\n- Do not configure in-app events in this step unless explicitly required as setup boilerplate by the AppsFlyer MCP integration tool.\n- Do not perform or trigger final verification; this step is integration-only.\n\n--------------------------------\nEXECUTION CONTEXT\n--------------------------------\n- Platform: iOS\n- Language / project type: Objective-C (project root is an Objective-C iOS app)\n- Local app path (project root):  \n  `/Users/user3/Desktop/final project/PiplineAutomatoinMCP/sandboxes/run_20260716_122708_f9c621b0/obj-c`\n\nUse-case goal (business context):\n- `adfgdhfjgk`  \n  (Treat as opaque; do not attempt to infer business logic from it. It does NOT change the technical integration steps.)\n\nRelevant AppsFlyer configuration / answer policy for this step:\n```json\n{\n  \"prompt_goal\": \"adfgdhfjgk\",\n  \"answer_policy\": {\n    \"platform_policy\": {\n      \"use_att\": true,\n      \"use_cuid\": false,\n      \"use_scene_delegate\": true,\n      \"use_response_listener\": true\n    },\n    \"full_answer_policy\": {\n      \"ios_minimal\": {\n        \"use_att\": true,\n        \"use_cuid\": false,\n        \"use_scene_delegate\": true,\n        \"use_response_listener\": true\n      },\n      \"verify_sdk\": {\n        \"verify_logs_ready\": true,\n        \"app_launched\": true\n      }\n    }\n  }\n}\n```\n\nYou must respect and implement all relevant flags for this integration step:\n- `use_att: true`  \n  - Integrate and configure App Tracking Transparency (ATT) according to the AppsFlyer MCP guidance.\n- `use_cuid: false`  \n  - Do NOT configure Customer User ID (CUID) in this step.\n- `use_scene_delegate: true`  \n  - Impl</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>2026-07-16T12:29:47.649833</td>
+                <td>AGENT_DECISION<span class="status-dot info"></span></td>
+                <td>LLM ↔ MCP</td>
+                <td class="details-cell">{"tool": "integrateSdk", "args": {"platform": "ios", "isResponseListener": true, "isDelegate": true, "isATT": true, "isCUID": false}}</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>2026-07-16T12:29:47.650314</td>
+                <td>MCP_TOOL_RESULT<span class="status-dot passed"></span></td>
+                <td>LLM ↔ MCP</td>
+                <td class="details-cell">{"tool": "integrateSdk", "result": "❌ APP_ID is not a valid iOS Apple App ID format.\nPlease provide a numeric APP_ID (for example: 1512793879 or id1512793879) in mcp.json.\nStop: the user who configured this MCP server must update APP_ID/DEV_KEY in mcp.json, then restart the server before calling AppsFlyer tools again."}</td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td>2026-07-16T12:29:47.650756</td>
+                <td>MCP_CALL_LOG<span class="status-dot info"></span></td>
+                <td>LLM ↔ MCP</td>
+                <td class="details-cell">{"tool": "integrateSdk"}</td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td>2026-07-16T12:29:47.651023</td>
+                <td>MCP_SEQUENCE<span class="status-dot info"></span></td>
+                <td>Pipeline</td>
+                <td class="details-cell">{"platform": "ios", "call_log": [{"tool": "integrateSdk"}]}</td>
+              </tr>
+              <tr>
+                <td>7</td>
+                <td>2026-07-16T12:29:47.651297</td>
+                <td>LISTENER_DECISION<span class="status-dot failed"></span></td>
+                <td>Listener</td>
+                <td class="details-cell">{"node": "sdk_agent", "listener": "FAIL", "status": "FAIL", "reason": "Classifier reported FAILURE.", "text_preview": "Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\n\nDetails:\n\n1. What I’ve "}</td>
+              </tr>
+              <tr>
+                <td>8</td>
+                <td>2026-07-16T12:29:47.651596</td>
+                <td>LISTENER_TEST_STATUS<span class="status-dot failed"></span></td>
+                <td>Listener</td>
+                <td class="details-cell">{"node": "sdk_agent", "test_status": "FAIL"}</td>
+              </tr>
+              <tr>
+                <td>9</td>
+                <td>2026-07-16T12:29:47.651873</td>
+                <td>LISTENER_TURN<span class="status-dot failed"></span></td>
+                <td>Listener</td>
+                <td class="details-cell">{"node": "sdk_agent", "action": "fail", "test_status": "FAIL", "question_rounds": null, "agent_text_preview": "Integration cannot proceed because the AppsFlyer MCP `integrateSdk` tool failed due to invalid configuration in the MCP server environment, and I’m not allowed to bypass that.\n\nDetails:\n\n1. What I’ve already done\n   - Inspected the project root using the file tools:\n     - Found:\n       - `Podfile`\n       - `obj-c.xcodeproj/project.pbxproj`\n       - `obj-c/Info.plist`\n       - Workspace metadata files\n   - Called the required AppsFlyer MCP tool:\n     - `integrateSdk` with:\n       - `platform: \"i", "new_mcp_calls": 1}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+    </div>
+  </div>
+  <script>
+    /*
+     * Theme handling for this page. Intentionally does NOT use
+     * localStorage — that would make every report a user has ever opened
+     * remember dark mode forever, so a report opened fresh (e.g. double-
+     * clicked from Finder) always starts in light mode (see themeFromQuery()
+     * default below). Instead, the *current* light/dark choice is only
+     * carried forward through explicit navigation: this page's own links
+     * (marked with the data-theme-link attribute, e.g. the "← All use
+     * cases" back-link) get a "?theme=dark"/"?theme=light" query parameter
+     * appended live, right before the user clicks, matching whatever this
+     * page is showing at that moment. Same mechanism lives in
+     * index_report.html.j2 so the two pages stay in sync while navigating
+     * between them, without ever affecting some other report opened later.
+     */
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      var label = document.getElementById("theme-toggle-label");
+      var icon = document.getElementById("theme-toggle-icon");
+      // Any link on the page tagged data-theme-link (currently only the
+      // "← All use cases" back-link) gets its href rewritten below.
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto any link to another report page
+        // (card / back-to-overview) so navigating between them keeps the
+        // same light/dark choice, without affecting any other report.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
+
+      // Sets/removes the data-theme="dark" attribute on <html> (which is
+      // what the CSS variable overrides at the top of this file key off
+      // of), flips the toggle button's own icon/label to describe the
+      // *next* click's action, and re-propagates the new theme onto links.
+      function applyTheme(theme) {
+        if (theme === "dark") {
+          root.setAttribute("data-theme", "dark");
+          label.textContent = "Light mode";
+          icon.textContent = "☀️";
+        } else {
+          root.removeAttribute("data-theme");
+          label.textContent = "Dark mode";
+          icon.textContent = "🌙";
+        }
+        propagateTheme(theme);
+      }
+
+      // Reads ?theme=dark|light from this page's own URL. Anything other
+      // than exactly "dark" (including no query param at all) resolves to
+      // "light" — this is what makes light the default for a freshly
+      // opened report.
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via a card or the "All use
+      // cases" link carries whichever theme was active on the linking page.
+      applyTheme(themeFromQuery());
+
+      // Manual toggle click: just flip whatever the current state is.
+      btn.addEventListener("click", function () {
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+      });
+    })();
+  </script>
+</body>
+</html>
