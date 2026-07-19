@@ -218,12 +218,25 @@ def _stage_use_case_data(
 
 
 def prompt_agent_node(state: dict) -> dict:
-    # 1) state של הריצה הנוכחית  2) גיבוי: data/runs/<run_id>/ בלבד
-    # answer_policy ברמת state (אם קיים) גובר על זה שבתוך ה-use case.
-    use_case = _resolve_current_use_case(state)
+    # Prefer current_use_case already set by artifact_generator; otherwise resolve
+    # from selected_use_cases / data/runs/<run_id>/. Prefer sandbox app_path so
+    # generated prompts match the SDK Agent workdir.
+    use_case = state.get("current_use_case")
+    if not isinstance(use_case, dict):
+        use_case = _resolve_current_use_case(state)
 
-    platform = use_case.get("platform") or "android"
-    app_path = use_case.get("app_path")
+    platform = (
+        state.get("platform")
+        or use_case.get("platform")
+        or "android"
+    )
+    # After environment_setup, state["app_path"] / sandbox_path point at the
+    # live sandbox copy. Prefer those over the catalog path in the use case.
+    app_path = (
+        state.get("sandbox_path")
+        or state.get("app_path")
+        or use_case.get("app_path")
+    )
     raw_goal = use_case.get("prompt_goal") or use_case.get("prompt") or ""
     answer_policy = state.get("answer_policy") or use_case.get("answer_policy") or {}
 

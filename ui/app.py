@@ -49,7 +49,14 @@ _PLATFORM_APP_EXTENSIONS = {
 
 _CUSTOM_CSS = """
 <style>
-    /* ---- Global spacing & typography ------------------------------------ */
+    /* ---- Global look & feel — mirrors data/reports/templates/run_report.html.j2:
+       same body gradient, font stack, card radius/shadow and heading color as
+       the generated reports, so the builder and the reports it produces read
+       as one consistent product instead of two different tools. ------------ */
+    .stApp {
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+    }
     .block-container {
         padding-top: 2.25rem;
         padding-bottom: 3rem;
@@ -59,29 +66,32 @@ _CUSTOM_CSS = """
         font-weight: 700;
         letter-spacing: -0.02em;
         margin-bottom: 0.15rem !important;
+        color: #0369A1;
     }
     h2, h3 {
         font-weight: 600;
         letter-spacing: -0.01em;
+        color: #0369A1;
     }
     p, .stCaption, [data-testid="stCaptionContainer"] {
-        color: #475569;
+        color: #64748B;
+        line-height: 1.6;
     }
 
     /* ---- Segmented top-level navigation ---------------------------------- */
     div[role="radiogroup"][aria-label="__nav__"] {
         display: flex;
         gap: 0.35rem;
-        background: #F1F5F9;
+        background: #F0F7FF;
         padding: 0.3rem;
-        border-radius: 12px;
+        border-radius: 14px;
         margin-bottom: 1.5rem;
-        border: 1px solid #E2E8F0;
+        border: 1px solid #DBEAFE;
     }
     div[role="radiogroup"][aria-label="__nav__"] label {
         flex: 1;
         justify-content: center;
-        border-radius: 9px;
+        border-radius: 10px;
         padding: 0.45rem 0.75rem !important;
         margin: 0 !important;
         transition: background 0.15s ease, color 0.15s ease;
@@ -89,7 +99,7 @@ _CUSTOM_CSS = """
     }
     div[role="radiogroup"][aria-label="__nav__"] label:has(input:checked) {
         background: #FFFFFF;
-        box-shadow: 0 1px 3px rgba(13, 148, 136, 0.18);
+        box-shadow: 0 1px 3px rgba(2, 132, 199, 0.18);
     }
     div[role="radiogroup"][aria-label="__nav__"] label div[data-testid="stMarkdownContainer"] p {
         font-size: 0.95rem;
@@ -102,7 +112,7 @@ _CUSTOM_CSS = """
     div[role="radiogroup"][aria-label="__platform_tabs__"] {
         display: flex;
         gap: 1.25rem;
-        border-bottom: 1px solid #E2E8F0;
+        border-bottom: 1px solid #DBEAFE;
         margin-bottom: 0.75rem;
     }
     div[role="radiogroup"][aria-label="__platform_tabs__"] label {
@@ -114,27 +124,30 @@ _CUSTOM_CSS = """
         transition: color 0.15s ease, border-color 0.15s ease;
     }
     div[role="radiogroup"][aria-label="__platform_tabs__"] label:has(input:checked) {
-        color: #0F172A;
-        border-bottom-color: #0D9488;
+        color: #1E3A5F;
+        border-bottom-color: #0284C7;
     }
     div[role="radiogroup"][aria-label="__platform_tabs__"] input {
         display: none;
     }
 
     /* ---- Cards / containers ------------------------------------------------ */
+    /* radius/shadow match the report's --radius (14px) and --shadow
+       (0 4px 24px rgba(2,132,199,.08)) — same "card" language as .verdict
+       and details.panel there. */
     div[data-testid="stExpander"] {
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 12px !important;
+        border: 1px solid #DBEAFE !important;
+        border-radius: 14px !important;
         background: #FFFFFF;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        box-shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
         margin-bottom: 0.6rem;
     }
     div[data-testid="stExpander"] summary {
-        font-weight: 500;
+        font-weight: 600;
         padding: 0.65rem 0.9rem !important;
     }
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 12px !important;
+        border-radius: 14px !important;
     }
 
     /* ---- Badges (Custom / Seed) ------------------------------------------- */
@@ -149,12 +162,12 @@ _CUSTOM_CSS = """
         vertical-align: middle;
     }
     .badge-custom {
-        background: #CCFBF1;
-        color: #0F766E;
+        background: #E0F2FE;
+        color: #0369A1;
     }
     .badge-seed {
         background: #F1F5F9;
-        color: #475569;
+        color: #64748B;
     }
 
     /* ---- Section headers --------------------------------------------------- */
@@ -163,14 +176,15 @@ _CUSTOM_CSS = """
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #0D9488;
+        color: #0369A1;
         margin-bottom: 0.15rem;
     }
 
-    /* ---- Buttons ------------------------------------------------------------ */
+    /* ---- Buttons -------------------------------------------------------------- */
+    /* Pill-shaped, like the report's .back-link/.theme-toggle chips. */
     .stButton button {
-        border-radius: 8px;
-        font-weight: 500;
+        border-radius: 999px;
+        font-weight: 600;
     }
 
     /* ---- Previous-report links (green monospace, like a clickable file) ----- */
@@ -180,7 +194,7 @@ _CUSTOM_CSS = """
        button markup. */
     .stButton button[kind="tertiary"],
     .stButton button[data-testid="stBaseButton-tertiary"] {
-        color: #0F766E !important;
+        color: #0369A1 !important;
         font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace !important;
         font-weight: 600;
         display: flex !important;
@@ -205,7 +219,7 @@ _CUSTOM_CSS = """
     }
     .stButton button[kind="tertiary"]:hover,
     .stButton button[data-testid="stBaseButton-tertiary"]:hover {
-        color: #0D9488 !important;
+        color: #0284C7 !important;
         text-decoration: underline;
     }
 
@@ -217,9 +231,9 @@ _CUSTOM_CSS = """
         gap: 12px;
     }
     .uc-chip {
-        background: #F1F5F9;
-        color: #0F766E;
-        border: 1px solid #E2E8F0;
+        background: #E0F2FE;
+        color: #0369A1;
+        border: 1px solid #93C5FD;
         border-radius: 999px;
         padding: 2px 11px;
         font-size: 0.78rem;
@@ -234,13 +248,14 @@ _CUSTOM_CSS = """
     }
     .history-sep {
         border: none;
-        border-top: 1px solid #EEF2F6;
+        border-top: 1px solid #DBEAFE;
         margin: 0.4rem 0 !important;
     }
 
     /* ---- Divider breathing room --------------------------------------------- */
     hr {
         margin: 1.75rem 0 !important;
+        border-color: #DBEAFE !important;
     }
 </style>
 """
@@ -312,16 +327,17 @@ def _selected_map() -> dict[str, dict]:
 
 def _session_id() -> str:
     """
-    A stable id for this browser session, created once and reused for every
-    rerun of it.
+    Stable browser-session key (UI only). Not used as the pipeline run_id.
 
-    This is what makes a saved run selection map onto "one session" instead
-    of "one click of the Save button": every save this session ever performs
-    is written to run_repository.py's storage keyed by this same id, so
-    saving again always overwrites the same file rather than creating a new
-    one alongside it.
+    Pipeline runs use `_new_run_id()` so each "Save and run tests" click gets
+    its own isolated data/runs/<run_id>/ and report folder.
     """
     return st.session_state.setdefault("session_id", uuid.uuid4().hex)
+
+
+def _new_run_id() -> str:
+    """Fresh id for one pipeline run (one click of Save and run tests)."""
+    return uuid.uuid4().hex
 
 
 def _selected_concrete_platforms(exclude_id: Optional[str] = None) -> set[str]:
@@ -351,6 +367,23 @@ def _platform_conflict(catalog_platform: str, entry_id: str) -> Optional[str]:
             f"remove it first to add a '{catalog_platform}' one."
         )
     return None
+
+
+def _stamp_run_platform(contract: UseCaseContract, run_platform: str) -> UseCaseContract:
+    """
+    Tag a resolved contract with the concrete platform ('ios'/'android') the
+    user had chosen in the platform selector when they picked it.
+
+    contract.platform stays whatever it already was ('common' included) —
+    it drives schema validation (e.g. which answer_policy sub-object is
+    required) and must not be overwritten. run_platform is a plain extra
+    field (UseCaseContract allows them) that survives model_dump()/JSON
+    round-trips, so it's still there once the workflow reads this use case
+    back from disk — even for a run made up of 'common' use cases only,
+    where contract.platform alone would just say "common" and never reveal
+    which concrete platform the run was actually for.
+    """
+    return contract.model_copy(update={"run_platform": run_platform})
 
 
 def credentials_section(context_key: str) -> tuple[str, str]:
@@ -481,7 +514,7 @@ def _inject_back_bar(html: str, report_path: Path, report_date: Optional[str] = 
         home_url = f"{home_url}&open={report_date}"
 
     back_bar = (
-        '<div style="position:sticky;top:0;z-index:99999;background:#0f766e;'
+        '<div style="position:sticky;top:0;z-index:99999;background:#0369a1;'
         'padding:11px 20px;box-shadow:0 1px 6px rgba(0,0,0,.18);'
         'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">'
         f'<a href="{home_url}" '
@@ -968,8 +1001,14 @@ def render_use_case_form(
     st.rerun()
 
 
-def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
-    """Render one catalog entry: its content, and the actions available for it."""
+def _render_use_case_entry(entry: repo.CatalogEntry, *, run_platform: str) -> None:
+    """
+    Render one catalog entry: its content, and the actions available for it.
+
+    run_platform is the concrete platform ('ios'/'android') currently chosen
+    in render_existing_tab's selector — every entry shown there, common ones
+    included, is stamped with it once selected (see _stamp_run_platform).
+    """
     with st.container(border=True):
         try:
             contract = repo.load_use_case(entry)
@@ -977,6 +1016,19 @@ def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
             st.markdown(f"**{entry.id}**", unsafe_allow_html=True)
             st.error("This use case file is invalid and cannot be loaded.")
             _display_validation_errors(exc)
+            return
+        except FileNotFoundError:
+            st.markdown(f"**{entry.id}**", unsafe_allow_html=True)
+            st.error(
+                f"This use case is listed in the catalog but its file ({entry.path}) "
+                "is missing on disk."
+            )
+            if entry.is_editable and st.button(
+                "🗑️ Remove broken entry", key=f"remove_missing_{entry.id}"
+            ):
+                repo.delete_custom_use_case(entry.id)
+                _flash("success", f"Removed broken catalog entry '{entry.id}'.")
+                st.rerun()
             return
 
         is_editing = st.session_state.get("editing_use_case_id") == entry.id
@@ -1118,6 +1170,7 @@ def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
                             # Overlays this run's credentials without ever writing
                             # them back into the shared seed/custom file on disk.
                             resolved = repo.resolve_for_run(contract, app_id=use_app_id, dev_key=use_dev_key)
+                            resolved = _stamp_run_platform(resolved, run_platform)
                             _selected_map()[entry.id] = {
                                 "contract": resolved,
                                 "catalog_platform": entry.platform,
@@ -1131,20 +1184,23 @@ def _render_use_case_entry(entry: repo.CatalogEntry) -> None:
 
 
 def render_existing_tab() -> None:
-    """Browse every catalog entry, grouped by platform."""
+    """
+    Browse catalog entries for one platform at a time.
+
+    A platform must be chosen first — there is no way to browse or pick a
+    use case before that. Once chosen, the list shown is that platform's own
+    use cases plus every 'common' one, combined — 'common' use cases never
+    have a tab of their own, precisely so one can't be selected in isolation
+    without a platform attached to it (see _stamp_run_platform).
+    """
     all_entries = repo.list_use_cases(enabled_only=False)
     if not all_entries:
         st.info("No use cases found yet.")
         return
 
-    platform_labels = {"ios": "iOS", "android": "Android", "common": "Common"}
-    groups = [
-        (platform_group, [e for e in all_entries if e.platform == platform_group])
-        for platform_group in ["ios", "android", "common"]
-    ]
-    groups = [(p, g) for p, g in groups if g]
-
-    if not groups:
+    platform_labels = {"ios": "iOS", "android": "Android"}
+    concrete_platforms = [p for p in PLATFORMS if any(e.platform == p for e in all_entries)]
+    if not concrete_platforms:
         st.info("No use cases found yet.")
         return
 
@@ -1154,26 +1210,36 @@ def render_existing_tab() -> None:
     # Preview/Edit/Delete/Choose button inside a use case card triggers
     # exactly that kind of rerun. With native tabs, choosing e.g. an Android
     # use case would immediately bounce the view back to iOS.
-    group_by_platform = dict(groups)
-    platform_codes = list(group_by_platform.keys())
-    group_labels = {p: f"{platform_labels[p]} ({len(g)})" for p, g in groups}
-
     state_key = "existing_tab_platform"
-    if st.session_state.get(state_key) not in platform_codes:
-        st.session_state[state_key] = platform_codes[0]
+    if st.session_state.get(state_key) not in concrete_platforms:
+        st.session_state[state_key] = concrete_platforms[0]
 
+    st.markdown("**1. Choose a platform**")
     selected_platform = st.radio(
         "__platform_tabs__",
-        platform_codes,
-        format_func=lambda p: group_labels[p],
+        concrete_platforms,
+        format_func=lambda p: platform_labels[p],
         key=state_key,
         horizontal=True,
         label_visibility="collapsed",
     )
 
+    entries = [e for e in all_entries if e.platform in (selected_platform, "common")]
+    st.caption(
+        f"**2. Pick a use case** — showing {platform_labels[selected_platform]} use cases "
+        "plus every common one, all tagged for this run as "
+        f"**{platform_labels[selected_platform]}**."
+    )
+
     st.write("")
-    for entry in group_by_platform[selected_platform]:
-        _render_use_case_entry(entry)
+    for entry in entries:
+        _render_use_case_entry(entry, run_platform=selected_platform)
+
+
+def _render_run_status_banner(running: bool) -> None:
+    """Status banner shown while the workflow is running — no controls, just a heads-up."""
+    if running:
+        st.warning("⏳ Workflow running — the rest of the page is locked until it finishes.")
 
 
 st.set_page_config(page_title="Use Case Builder", page_icon="🧪", layout="centered")
@@ -1202,6 +1268,12 @@ st.title("🧪 Use Case Builder")
 st.caption("Create a new test use case, or reuse an existing one, for the AppsFlyer SDK automation pipeline.")
 _show_flash()
 
+# Drives the whole page's lock state while a run is actually executing.
+# Read once here so both the status banner and every section below agree
+# on it for this rerun.
+locked = st.session_state.setdefault("workflow_running", False)
+_render_run_status_banner(locked)
+
 # A session-state-backed selector (rather than st.tabs) so the active
 # section survives reruns triggered by buttons deeper in the page — with
 # native st.tabs, every rerun snaps back to the first tab.
@@ -1212,9 +1284,12 @@ active_section = st.radio(
     key="active_nav_section",
     horizontal=True,
     label_visibility="collapsed",
+    disabled=locked,
 )
 
-if active_section == NAV_OPTIONS[0]:
+if locked:
+    st.info("🔒 The builder is locked while the workflow is running.")
+elif active_section == NAV_OPTIONS[0]:
     render_use_case_form()
 else:
     render_existing_tab()
@@ -1232,8 +1307,16 @@ if selected_map:
 
             # A short stamp instead of the full contract — platform + goal is
             # enough to confirm "yes, this is one I picked" without repeating
-            # everything already shown while browsing/creating it.
-            stamp = f"[{catalog_platform.upper()}] {use_case_id} — {contract.prompt_goal}"
+            # everything already shown while browsing/creating it. A 'common'
+            # use case also shows the concrete platform it was tagged with
+            # (run_platform), since 'common' alone doesn't say which one.
+            run_platform = getattr(contract, "run_platform", None)
+            platform_label = (
+                f"{catalog_platform.upper()}→{run_platform.upper()}"
+                if catalog_platform == "common" and run_platform
+                else catalog_platform.upper()
+            )
+            stamp = f"[{platform_label}] {use_case_id} — {contract.prompt_goal}"
             if len(stamp) > 90:
                 stamp = stamp[:87] + "..."
 
@@ -1242,10 +1325,20 @@ if selected_map:
                 st.caption(stamp)
             with col_preview:
                 preview_key = f"preview_selected_{use_case_id}"
-                if st.button("👁️ Preview", key=f"preview_selected_btn_{use_case_id}", use_container_width=True):
+                if st.button(
+                    "👁️ Preview",
+                    key=f"preview_selected_btn_{use_case_id}",
+                    use_container_width=True,
+                    disabled=locked,
+                ):
                     st.session_state[preview_key] = not st.session_state.get(preview_key, False)
             with col_remove:
-                if st.button("✖ Remove", key=f"remove_selected_{use_case_id}", use_container_width=True):
+                if st.button(
+                    "✖ Remove",
+                    key=f"remove_selected_{use_case_id}",
+                    use_container_width=True,
+                    disabled=locked,
+                ):
                     selected_map.pop(use_case_id, None)
                     st.rerun()
 
@@ -1253,75 +1346,118 @@ if selected_map:
                 st.json(json.loads(contract.to_pretty_json()))
 
         st.write("")
-        if st.button("🚀 Save and run tests", use_container_width=True, type="primary"):
-            session_id = _session_id()
-            try:
-                run_repo.save_selected_use_cases(session_id, selected_map)
-            except run_repo.RunRepositoryError as exc:
-                _flash("error", str(exc))
-            else:
-                from infra.workflow import run_launcher
 
-                with st.spinner("Running the workflow..."):
-                    try:
-                        final_state = run_launcher.start_workflow(session_id)
-                    except run_repo.RunRepositoryError as exc:
-                        _flash("error", str(exc))
-                    except Exception as exc:  # noqa: BLE001 - surface any node failure to the user
-                        _flash("error", f"Workflow failed: {exc}")
-                    else:
-                        st.session_state["_last_workflow_result"] = final_state
-                        # report_path is captured regardless of pass/fail —
-                        # visual_report_node always writes it — so the report
-                        # can still be opened even on a failed run.
-                        report_path = final_state.get("report_path") or ""
-                        st.session_state["_last_report_path"] = report_path
-                        # Open the finished report right away in its own full
-                        # browser tab (not embedded in this page) the moment
-                        # the run ends. The selection form on this page stays
-                        # put, so the user can go back and run other use cases.
-                        if report_path and Path(report_path).is_file():
-                            _open_report_in_browser(report_path)
-                        if final_state.get("test_status") == "FAIL":
-                            reason = (
-                                final_state.get("fail_reason")
-                                or final_state.get("error_reason")
-                                or "See nodes_log for details."
-                            )
-                            _flash(
-                                "error",
-                                f"Workflow finished with failures. {reason}",
-                            )
-                        elif report_path:
-                            _flash("success", f"Workflow finished. Report saved to {report_path}.")
+        if not locked:
+            if st.button("🚀 Save and run tests", use_container_width=True, type="primary"):
+                # New run_id every click so runs never share data/runs/ or reports.
+                run_id = _new_run_id()
+                try:
+                    run_repo.save_selected_use_cases(run_id, selected_map)
+                except run_repo.RunRepositoryError as exc:
+                    _flash("error", str(exc))
+                else:
+                    st.session_state["workflow_running"] = True
+                    st.session_state["_pending_run_id"] = run_id
+                st.rerun()
+        else:
+            from infra.workflow import run_launcher
+
+            run_id = st.session_state.get("_pending_run_id")
+            # try/finally (not just try/except) here on purpose: if run_id
+            # is somehow missing, or anything below the actual start_workflow()
+            # call raises (e.g. while reading the result), the page must still
+            # unlock and rerun — otherwise workflow_running stays True forever
+            # and the app looks permanently stuck with no report ever shown.
+            try:
+                if not run_id:
+                    _flash("error", "No pending run found to start — please save the selection again.")
+                else:
+                    with st.spinner("Running the workflow..."):
+                        try:
+                            final_state = run_launcher.start_workflow(run_id)
+                        except run_repo.RunRepositoryError as exc:
+                            _flash("error", str(exc))
+                        except Exception as exc:  # noqa: BLE001 - surface any node failure to the user
+                            st.session_state["_last_workflow_error"] = str(exc)
+                            _flash("error", f"Workflow failed: {exc}")
                         else:
-                            _flash("success", "Workflow finished running.")
+                            st.session_state["_last_workflow_result"] = final_state
+                            # report_path is captured regardless of pass/fail —
+                            # visual_report_node always writes it — so the report
+                            # can still be opened even on a failed run.
+                            report_path = final_state.get("report_path") or ""
+                            st.session_state["_last_report_path"] = report_path
+                            # Open the finished report right away in its own full
+                            # browser tab (not embedded in this page) the moment
+                            # the run ends. The selection form on this page stays
+                            # put, so the user can go back and run other use cases.
+                            if report_path and Path(report_path).is_file():
+                                _open_report_in_browser(report_path)
+                            if final_state.get("test_status") == "FAIL":
+                                reason = (
+                                    final_state.get("fail_reason")
+                                    or final_state.get("error_reason")
+                                    or "See nodes_log for details."
+                                )
+                                _flash(
+                                    "error",
+                                    f"Workflow finished with failures. {reason}",
+                                )
+                            elif report_path:
+                                _flash("success", f"Workflow finished. Report saved to {report_path}.")
+                            else:
+                                _flash("success", "Workflow finished running.")
+            finally:
+                # Back to unlocked regardless of outcome — a finished run
+                # (pass, fail, or exception) always unlocks the page again.
+                st.session_state["workflow_running"] = False
+                st.session_state.pop("_pending_run_id", None)
+                # Drop legacy key if an older UI session still has it.
+                st.session_state.pop("_pending_session_id", None)
             st.rerun()
 
-        last_report_path = st.session_state.get("_last_report_path")
-        last_result = st.session_state.get("_last_workflow_result") or {}
-        if last_report_path and Path(last_report_path).is_file():
-            last_run_id = last_result.get("run_id", "")
-            st.divider()
-            st.markdown('<div class="section-eyebrow">Run output</div>', unsafe_allow_html=True)
-            st.subheader("Pipeline Run Report")
-            st.caption(f"Run ID: `{last_run_id}`")
-            report_html = Path(last_report_path).read_text(encoding="utf-8")
+        # Hidden entirely (not just disabled) while locked: st.expander has
+        # no disabled= option, and the embedded report is a plain HTML
+        # iframe Streamlit can't gate at all — not rendering either one is
+        # the only way to guarantee nothing here can be pressed or opened
+        # while the workflow is running.
+        if not locked:
+            last_workflow_error = st.session_state.pop("_last_workflow_error", None)
+            if last_workflow_error:
+                st.divider()
+                st.error(
+                    "The last run crashed before it could produce a report. Raw error:\n\n"
+                    f"```\n{last_workflow_error}\n```"
+                )
 
-            # The report is opened automatically in its own full-page browser
-            # tab the moment the run finishes (see the run handler above) — it
-            # is never embedded in a small box here, and there is deliberately
-            # no "open report" button. The report tab itself carries a
-            # "🏠 Back to use cases" link back to this page. Only a download
-            # option is offered here for keeping a copy.
-            st.caption("The report opened in a new browser tab when the run finished.")
-            st.download_button(
-                "Download report.html",
-                data=report_html,
-                file_name=f"{last_run_id or 'report'}.html",
-                mime="text/html",
-                use_container_width=True,
-            )
+            last_report_path = st.session_state.get("_last_report_path")
+            last_result = st.session_state.get("_last_workflow_result") or {}
+            if last_report_path and Path(last_report_path).is_file():
+                last_run_id = last_result.get("run_id", "")
+                st.divider()
+                st.markdown('<div class="section-eyebrow">Run output</div>', unsafe_allow_html=True)
+                st.subheader("Pipeline Run Report")
+                st.caption(f"Run ID: `{last_run_id}`")
+                report_html = Path(last_report_path).read_text(encoding="utf-8")
+
+                # The report is opened automatically in its own full-page browser
+                # tab the moment the run finishes (see the run handler above) — it
+                # is never embedded in a small box here, and there is deliberately
+                # no "open report" button. The report tab itself carries a
+                # "🏠 Back to use cases" link back to this page. Only a download
+                # option is offered here for keeping a copy.
+                st.caption("The report opened in a new browser tab when the run finished.")
+                st.download_button(
+                    "Download report.html",
+                    data=report_html,
+                    file_name=f"{last_run_id or 'report'}.html",
+                    mime="text/html",
+                    use_container_width=True,
+                )
+
+            if last_result:
+                with st.expander("Last workflow run — nodes_log", expanded=False):
+                    st.json(last_result.get("nodes_log", []))
 
 # --- Previous reports --------------------------------------------------------
 # Always available, independent of the current selection: lets the user reopen
@@ -1401,38 +1537,3 @@ if previous_reports:
 # only fires this once, not on every following rerun.
 if st.session_state.pop("_scroll_to_history", False):
     _scroll_to_history()
-
-pending_runs = run_repo.list_pending_run_selections()
-
-# This section is only relevant once the user has actually chosen a use case
-# at some point — either it's currently selected, or a save from earlier is
-# still sitting on disk waiting to be cleaned up. On a fresh session with
-# neither, showing an empty "nothing pending" box is just clutter.
-if selected_map or pending_runs:
-    st.divider()
-    with st.container(border=True):
-        st.markdown('<div class="section-eyebrow">Housekeeping</div>', unsafe_allow_html=True)
-        st.subheader("Saved run selections pending cleanup")
-        st.caption(
-            "A saved selection is only supposed to exist for the lifetime of one run — "
-            "from being saved above until that run's result has been reported back, at "
-            "which point it should be deleted automatically. That automatic step doesn't "
-            "exist yet, so use this to clear things out manually in the meantime."
-        )
-        if not pending_runs:
-            st.caption("Nothing pending.")
-        else:
-            st.write("")
-            for pending_run in pending_runs:
-                col_info, col_delete = st.columns([4, 1])
-                with col_info:
-                    st.caption(f"`{pending_run.session_id}` — {pending_run.use_case_count} use case(s)")
-                with col_delete:
-                    if st.button(
-                        "🗑️ Delete",
-                        key=f"delete_pending_run_{pending_run.session_id}",
-                        use_container_width=True,
-                    ):
-                        run_repo.delete_run_selection(pending_run.session_id)
-                        _flash("success", f"Deleted saved selection for session '{pending_run.session_id}'.")
-                        st.rerun()

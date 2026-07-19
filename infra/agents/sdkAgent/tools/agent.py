@@ -1,15 +1,21 @@
-import os
+import asyncio
+import concurrent.futures
 import json
+import os
 import uuid
+from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import Any, Dict, Optional
-from langchain_openai import ChatOpenAI
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from typing import Any, Awaitable, Dict, Optional
+
 from langchain.agents import create_agent
 from langchain_core.tools import tool
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
-from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env
+
 from infra.agents.AuditRecorder import AuditRecorder
+from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env
 # Classifies each finished turn's Memory (SUCCESS/FAIL/QUESTION), answers
 # questions, and records everything to AuditRecorder. See llm_listener.py.
 from infra.listener.llm_listener import listener_on_agent_turn
@@ -59,6 +65,37 @@ def safe_project_path(project_root: Path, requested_path: str) -> Path:
 # checkpointer + registry if persistence across restarts is ever needed).
 # ============================================================================
 _AGENT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+
+def _run_coro_sync(coro: Awaitable[Any], *, timeout: float = 60.0) -> None:
+    """Run an async cleanup coroutine from sync or async callers.
+
+    If no event loop is running, uses asyncio.run. If one is already running
+    (e.g. close from sdk_agent_node), runs the coroutine on a worker thread
+    with its own loop so we never nest asyncio.run on the active loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+        return
+
+    def _runner() -> None:
+        asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(_runner).result(timeout=timeout)
+
+
+async def _aclose_mcp_stack(stack: Any) -> None:
+    if stack is None:
+        return
+    try:
+        await stack.aclose()
+    except Exception:
+        pass
+
+
 # ============================================================================
 # Step A - Build only (Setup)
 # ============================================================================
@@ -75,7 +112,8 @@ async def create_sdk_integration_agent(
     connects to the AppsFlyer MCP server, registers file tools, builds the
     execution prompt, and wires up a checkpointer for multi-turn memory.
     Returns:
-        dict with "agent", "tools", and "initial_prompt".
+        dict with "agent", "tools", "initial_prompt", and "mcp_stack"
+        (AsyncExitStack holding the MCP stdio session — closed on teardown).
     """
     project_root = Path(project_root_str)
     platform_lower = platform.lower()
@@ -89,8 +127,9 @@ async def create_sdk_integration_agent(
         api_key=openai_api_key,
         temperature=1.5,
     )
-    # Runs AppsFlyer's MCP server as a child process over stdio;
-    # get_tools() is async because it talks to that external process.
+    # One persistent stdio MCP session for this agent lifetime.
+    # Held open via AsyncExitStack so close_sdk_integration_agent can tear
+    # down the npx child cleanly (default get_tools() is per-call / hard to close).
     mcp_client = MultiServerMCPClient({
         "appsflyer-sdk-mcp": {
             "transport": "stdio",
@@ -166,61 +205,65 @@ async def create_sdk_integration_agent(
         except Exception as e:
             return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
 
-    @tool
-    def write_events_manifest(manifest_json: str) -> str:
-        """After wiring in-app event UI, write events.wired.json in the project for Appium."""
-        try:
-            data = json.loads(manifest_json)
-            events = data.get("events") or []
-            if data.get("platform") != platform_lower or not events:
-                raise ValueError("platform must match and events must not be empty")
-            for event in events:
-                name = event.get("eventName", "")
-                trigger_id = event.get("triggerId", "")
-                if not name.startswith("af_") or trigger_id != f"af_trigger_{name}":
-                    raise ValueError(f"invalid event wiring for {name}")
-            if platform_lower == "android" and not (data.get("appPackage") and data.get("mainActivity")):
-                raise ValueError("android requires appPackage and mainActivity")
-            if platform_lower == "ios" and not data.get("bundleId"):
-                raise ValueError("ios requires bundleId")
-            manifest_path = safe_project_path(project_root, "events.wired.json")
-            manifest_path.parent.mkdir(parents=True, exist_ok=True)
-            manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            return json.dumps({
-                "status": "OK",
-                "file_path": "events.wired.json",
-                "event_count": len(events),
-            }, indent=2)
-        except Exception as e:
-            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+        @tool
+        def write_events_manifest(manifest_json: str) -> str:
+            """After wiring in-app event UI, write events.wired.json in the project for Appium."""
+            try:
+                data = json.loads(manifest_json)
+                events = data.get("events") or []
+                if data.get("platform") != platform_lower or not events:
+                    raise ValueError("platform must match and events must not be empty")
+                for event in events:
+                    name = event.get("eventName", "")
+                    trigger_id = event.get("triggerId", "")
+                    if not name.startswith("af_") or trigger_id != f"af_trigger_{name}":
+                        raise ValueError(f"invalid event wiring for {name}")
+                if platform_lower == "android" and not (data.get("appPackage") and data.get("mainActivity")):
+                    raise ValueError("android requires appPackage and mainActivity")
+                if platform_lower == "ios" and not data.get("bundleId"):
+                    raise ValueError("ios requires bundleId")
+                manifest_path = safe_project_path(project_root, "events.wired.json")
+                manifest_path.parent.mkdir(parents=True, exist_ok=True)
+                manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                return json.dumps({
+                    "status": "OK",
+                    "file_path": "events.wired.json",
+                    "event_count": len(events),
+                }, indent=2)
+            except Exception as e:
+                return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
 
-    # All tools (MCP + files) together - these are the tools registered to the agent
-    agent_tools = [*mcp_tools, list_project_files, read_project_file, write_to_project_file, write_events_manifest]
-    # --------------------------------------------------------------------
-    # Ground rules for the agent. Rule 13 is critical: it lets the
-    # orchestrator below detect true turn completion via "STATUS: SUCCESS".
-    # --------------------------------------------------------------------
-    final_execution_prompt = (
-        f"User Request:\n"
-        f"\"\"\"{user_prompt}\"\"\"\n\n"
-        f"Project path: {project_root}\n"
-        f"Platform: {platform.upper()}\n"
-        f"Make sure to use the correct MCP tools and edit the correct files for {platform.upper()}.\n\n"
-        f"You are connected directly to the AppsFlyer MCP tools, and you have generic file tools.\n\n"
-        f"Important rules:\n"
-        f"{_load_agent_rules_text()}\n"
-    )
-    audit_recorder.write("AGENT_PROMPT_GENERATED", {"prompt": final_execution_prompt})
-    # The checkpointer is the agent's memory: it lets repeated .ainvoke()
-    # calls with the same thread_id continue one conversation instead of
-    # each call starting fresh. Kept alive across calls via _AGENT_SESSIONS.
-    checkpointer = MemorySaver()
-    sdk_agent = create_agent(model=model, tools=agent_tools, checkpointer=checkpointer)
-    return {
-        "agent": sdk_agent,
-        "tools": agent_tools,
-        "initial_prompt": final_execution_prompt,
-    }
+        # All tools (MCP + files) together - these are the tools registered to the agent
+        agent_tools = [*mcp_tools, list_project_files, read_project_file, write_to_project_file, write_events_manifest]
+        # --------------------------------------------------------------------
+        # Ground rules for the agent. Rule 13 is critical: it lets the
+        # orchestrator below detect true turn completion via "STATUS: SUCCESS".
+        # --------------------------------------------------------------------
+        final_execution_prompt = (
+            f"User Request:\n"
+            f"\"\"\"{user_prompt}\"\"\"\n\n"
+            f"Project path: {project_root}\n"
+            f"Platform: {platform.upper()}\n"
+            f"Make sure to use the correct MCP tools and edit the correct files for {platform.upper()}.\n\n"
+            f"You are connected directly to the AppsFlyer MCP tools, and you have generic file tools.\n\n"
+            f"Important rules:\n"
+            f"{_load_agent_rules_text()}\n"
+        )
+        audit_recorder.write("AGENT_PROMPT_GENERATED", {"prompt": final_execution_prompt})
+        # The checkpointer is the agent's memory: it lets repeated .ainvoke()
+        # calls with the same thread_id continue one conversation instead of
+        # each call starting fresh. Kept alive across calls via _AGENT_SESSIONS.
+        checkpointer = MemorySaver()
+        sdk_agent = create_agent(model=model, tools=agent_tools, checkpointer=checkpointer)
+        return {
+            "agent": sdk_agent,
+            "tools": agent_tools,
+            "initial_prompt": final_execution_prompt,
+            "mcp_stack": mcp_stack,
+        }
+    except Exception:
+        await _aclose_mcp_stack(mcp_stack)
+        raise
 # ============================================================================
 # Step B - The Orchestrator (this is the single entry point external code calls!)
 # ============================================================================
@@ -265,9 +308,20 @@ async def run_sdk_integration_agent(
             "agent": setup["agent"],
             "tools": setup["tools"],
             "turn_offset": 0,   # Keeps turn_index continuous across separate calls
+            "mcp_stack": setup.get("mcp_stack"),
         }
         _AGENT_SESSIONS[agent_id] = session
         state["agent_id"] = agent_id  # Write back so the workflow can resume this conversation later
+        # Register immediately so teardown can close even if this node
+        # crashes before LangGraph commits agent_id into the streamed state.
+        run_id = state.get("run_id")
+        if run_id:
+            try:
+                from infra.workflow.run_resource_registry import register_agent
+
+                register_agent(str(run_id), agent_id)
+            except Exception:
+                pass
         prompt = setup["initial_prompt"]
     else:
         # agent_id is expected to point at an existing conversation.
@@ -339,6 +393,30 @@ async def run_sdk_integration_agent(
 # Step C - Teardown (call once the conversation is truly finished, e.g.
 # after the verify_prompt pass, so the session doesn't stay alive forever)
 # ============================================================================
+def close_sdk_integration_agent_by_id(
+    agent_id: Optional[str],
+    audit_recorder: Optional[AuditRecorder] = None,
+) -> None:
+    """Frees the session held under `agent_id` in `_AGENT_SESSIONS`.
+
+    Also closes the persistent MCP stdio session (npx child) via mcp_stack.
+    Safe to call even if agent_id is None or already closed — then a no-op.
+    """
+    if not agent_id:
+        return
+    session = _AGENT_SESSIONS.pop(agent_id, None)
+    if session is None:
+        return
+    mcp_stack = session.get("mcp_stack")
+    if mcp_stack is not None:
+        try:
+            _run_coro_sync(_aclose_mcp_stack(mcp_stack))
+        except Exception:
+            pass
+    if audit_recorder is not None:
+        audit_recorder.write("AGENT_SESSION_CLOSED", {"agent_id": agent_id})
+
+
 def close_sdk_integration_agent(state: Dict[str, Any], audit_recorder: Optional[AuditRecorder] = None) -> None:
     """Frees the session (agent, tools, checkpointer memory) held for
     state["agent_id"] - same state-based lookup as run_sdk_integration_agent.
@@ -348,6 +426,12 @@ def close_sdk_integration_agent(state: Dict[str, Any], audit_recorder: Optional[
     clear state["agent_id"] (the caller may still want it around for logging).
     """
     agent_id = state.get("agent_id")
-    session = _AGENT_SESSIONS.pop(agent_id, None)
-    if session is not None and audit_recorder is not None:
-        audit_recorder.write("AGENT_SESSION_CLOSED", {"agent_id": agent_id})
+    close_sdk_integration_agent_by_id(agent_id, audit_recorder)
+    run_id = state.get("run_id")
+    if run_id and agent_id:
+        try:
+            from infra.workflow.run_resource_registry import unregister_agent
+
+            unregister_agent(str(run_id), str(agent_id))
+        except Exception:
+            pass

@@ -22,7 +22,11 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
-from infra.use_case_service.repositories.run_repository import RUNS_DIR
+from infra.load_env import get_app_id_for_platform, get_dev_key
+from infra.use_case_service.repositories.run_repository import (
+    RUNS_DIR,
+    delete_run_selection,
+)
 
 
 # Resolve emulator tools directory relative to this file
@@ -289,6 +293,28 @@ class PipelineState(TypedDict, total=False):
 
     sdk_verified: NotRequired[bool]
 
+
+def _quit_appium_driver(state: PipelineState) -> None:
+    """Best-effort Appium driver.quit() so sessions do not linger between UCs."""
+    driver = state.get("driver")
+    if driver is None:
+        return
+    try:
+        quit_fn = getattr(driver, "quit", None)
+        if callable(quit_fn):
+            quit_fn()
+    except Exception:
+        pass
+    run_id = state.get("run_id")
+    if run_id:
+        try:
+            from infra.workflow.run_resource_registry import unregister_driver
+
+            unregister_driver(str(run_id), driver)
+        except Exception:
+            pass
+
+
 def json_use_case_input_node(state: PipelineState) -> PipelineState:
     """
     Node 1: JSON Use Case Input
@@ -297,46 +323,233 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     points current_use_case_path to the first one.
     """
 
-    # New pipeline behavior: every run starts with a fresh sdk agent id
-    state.setdefault("agent_id", None)
+    try:
+        # New pipeline behavior: every run starts with a fresh sdk agent id
+        state.setdefault("agent_id", 0)
 
-    selected_cases = state.get("selected_use_cases") or []
-    run_id = state.get("run_id", "run")
+        selected_cases = state.get("selected_use_cases") or []
+        run_id = state.get("run_id", "run")
 
-    use_cases_dir = RUNS_DIR / run_id / "use_cases"
+        use_cases_dir = RUNS_DIR / run_id / "use_cases"
 
-    use_cases_dir.mkdir(parents=True, exist_ok=True)
+        use_cases_dir.mkdir(parents=True, exist_ok=True)
 
-    case_paths = []
+        case_paths = []
 
-    for index, case in enumerate(selected_cases):
-        case_id = case.get("id", str(index))
+        for index, case in enumerate(selected_cases):
+            case_id = case.get("id", str(index))
 
-        case_path = use_cases_dir / f"{case_id}.json"
+            case_path = use_cases_dir / f"{case_id}.json"
 
-        with case_path.open("w", encoding="utf-8") as f:
-            json.dump(
-                case,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+            with case_path.open("w", encoding="utf-8") as f:
+                json.dump(
+                    case,
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
-        case_paths.append(str(case_path))
+            case_paths.append(str(case_path))
 
-    state["use_cases_dir"] = str(use_cases_dir)
+        state["use_cases_dir"] = str(use_cases_dir)
 
-    state["current_use_case_path"] = (
-        case_paths[0]
-        if case_paths
-        else None
-    )
+        if not case_paths:
+            state["test_status"] = "FAIL"
+            state["fail_reason"] = "No use cases selected for this run."
+            state["current_use_case_path"] = None
 
-    if not case_paths:
+            return state
+
+        state["current_use_case_path"] = case_paths[0]
+
+        return state
+
+    except Exception as e:
         state["test_status"] = "FAIL"
-        state["fail_reason"] = "No use cases selected for this run."
+        state["error_detected"] = True
+        state["failed_node"] = "json_use_case_input_node"
+        state["error_message"] = str(e)
+        state["fail_reason"] = str(e)
+        state["current_use_case_path"] = None
 
-    return state
+        return state
+
+
+def _reset_runtime_fields_for_next_use_case(state: PipelineState) -> None:
+    """
+    Clear per-use-case runtime fields so UC-N cannot leak into UC-N+1.
+
+    Called at the start of artifact_generator — AFTER visual_report already
+    wrote the previous use case's HTML (so clearing nodes_log here is safe).
+
+    KEEP (run-level accumulators — do not touch):
+      run_id, selected_use_cases, use_cases_dir, current_use_case_path,
+      use_case_reports, audit_recorder (object; in-memory events cleared
+      on follow-on UC), report_path
+
+    Credentials / platform / device_id are popped here and re-resolved from
+    the next use case in artifact_generator_node.
+
+    Ownership: workflow state-isolation (not Prompt Agent / SDK Agent).
+    """
+    # Close any leftover SDK session BEFORE nulling agent_id, otherwise the
+    # entry stays orphaned in _AGENT_SESSIONS until process exit.
+    try:
+        close_sdk_integration_agent(state, state.get("audit_recorder"))
+    except Exception:
+        pass
+
+    # Release Appium session before dropping the driver handle from state.
+    _quit_appium_driver(state)
+
+    # Drop in-memory answer_policy for this run so UC-N's policy cannot
+    # answer questions belonging to UC-N+1 (repo is keyed by run_id only).
+    run_id = state.get("run_id")
+    if run_id:
+        try:
+            get_answer_policy_repository().clear(str(run_id))
+        except Exception:
+            pass
+
+    # Delete previous sandbox on disk (best-effort). Only sandbox_path —
+    # never catalog app_path (cleanup_environment can delete real sample apps).
+    old_sandbox = state.get("sandbox_path")
+    if old_sandbox:
+        try:
+            from infra.application.app import cleanup_environment
+
+            cleanup_environment(str(old_sandbox))
+        except Exception:
+            pass
+
+    state["test_status"] = "READY"
+    state["error_detected"] = False
+    state["last_prompt_type"] = None
+    state["visited_user_actions"] = False
+    # Force a new SDK conversation for this use case.
+    state["agent_id"] = None
+
+    # Follow-on UC only: wipe logs/visited from the previous UC.
+    # Prefer artifact_generator_is_visited — it is set after the first UC
+    # loads and does not depend on report success. "use_case_reports" in
+    # state covers the case where visual_report setdefault'd an empty list
+    # after a failed card append (bool([]) would wrongly look like UC-1).
+    # Do NOT wipe on the first UC — early log entries must stay for the report.
+    is_follow_on_use_case = bool(
+        state.get("artifact_generator_is_visited")
+        or ("use_case_reports" in state)
+    )
+    if is_follow_on_use_case:
+        state["nodes_log"] = []
+        state["nodes_logs"] = []
+        for visited_key in (
+            "json_use_case_input_is_visited",
+            "artifact_generator_is_visited",
+            "environment_setup_is_visited",
+            "sdk_agent_is_visited",
+            "compilation_check_is_visited",
+            "emulator_is_visited",
+            "user_actions_is_visited",
+            "deep_link_is_visited",
+            "test_runner_is_visited",
+            "visual_report_is_visited",
+        ):
+            state.pop(visited_key, None)
+        # Isolate per-UC Audit Trail in reports (disk audit.jsonl stays full-run).
+        recorder = state.get("audit_recorder")
+        if recorder is not None:
+            try:
+                clear_fn = getattr(recorder, "clear_memory", None)
+                if callable(clear_fn):
+                    clear_fn()
+            except Exception:
+                pass
+
+    # Drop fields that belong to the previous use case only.
+    for key in (
+        # Failure / routing
+        "fail_reason",
+        "error_reason",
+        "failed_node",
+        "error_message",
+        "prompt_just_run",
+        "current_node",
+        "next_node",
+        # Credentials / platform (reloaded from UC below — never keep leftovers)
+        "platform",
+        "dev_key",
+        "app_id",
+        "run_build_check",
+        # Sandbox / app paths (catalog app_path reloaded from UC below)
+        "sandbox_path",
+        "app_path",
+        "original_app_path",
+        "remote_url",
+        "app_status",
+        "execution_result",
+        # Answer policy (reloaded from UC / repo below)
+        "answer_policy",
+        "selected_use_cases_path",
+        "current_use_case",
+        # Prompt / SDK agent
+        "agent_prompts",
+        "agent_model",
+        "type_agent",
+        "type_aggent",
+        "last_agent_message",
+        "last_aggent_massage",
+        "agent_messages",
+        "prompt_agent_answer",
+        "prompt_agent_sdk",
+        "prompt_agent_node_status",
+        "prompt_agent_node_error",
+        "sdk_agent_status",
+        "installation_answers",
+        "question_rounds",
+        # MCP / listener (call_log MUST clear — listener appends to it)
+        "call_log",
+        "mcp_sequence",
+        "mcp_health_check",
+        "mcp_tools_available",
+        "mcp_tools_availble",
+        "mcp_tools_call",
+        "mcp_tools_used",
+        "mcp_tools_used_success",
+        "mcp_integration_text",
+        "task_3_mcp_alive",
+        "task_4_application_validation",
+        "environment_setup_status",
+        "environment_setup_result",
+        # Compilation / emulator
+        "compilation_passed",
+        "compilation_result",
+        "device_id",
+        "driver",
+        "available_devices",
+        "emulator_checking",
+        "sdk_verified",
+        # Deep link / verification outcomes
+        "deep_link_status",
+        "triggered_deep_link_url",
+        "is_verify_deep_link",
+        "is_verify_deep_link_message",
+        "is_verify_deep_link_massage",
+        "is_tool_order_valid",
+        "is_tool_order_valid_message",
+        "is_tool_order_valid_massage",
+        "files_modified",
+        "applied_files",
+        # Per-UC timing / misc report fields
+        "started_at",
+        "ended_at",
+        "start_time",
+        "end_time",
+        "audit_events",
+        "dev_key_configured",
+        "dev_key_source",
+        "prompt_platform",
+    ):
+        state.pop(key, None)
 
 
 def artifact_generator_node(state: PipelineState) -> PipelineState:
@@ -350,26 +563,61 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     from infra.use_case_service.repositories.run_repository import (
         load_selected_use_cases,
     )
+    # Isolate this use case from whatever the previous one left in state.
+    _reset_runtime_fields_for_next_use_case(state)
 
     selected = list(state.get("selected_use_cases") or [])
+    run_id = state.get("run_id", "run")
     current_path = state.get("current_use_case_path")
-    run_id = state.get("run_id")
-    source = "state"
+    if current_path and os.path.exists(current_path):
+        with open(current_path, "r", encoding="utf-8") as f:
+            current_use_case = json.load(f)
 
-    if not selected and run_id:
-        try:
-            selected = load_selected_use_cases(str(run_id))
-            state["selected_use_cases"] = selected
-            source = f"data/runs/{run_id}"
-        except Exception:
-            selected = []
+        state["current_use_case"] = current_use_case
+        state["selected_use_cases_path"] = current_path
+        # run_platform (stamped by the UI when the use case was selected —
+        # see ui/app.py's _stamp_run_platform) is the concrete platform to
+        # run against and takes priority. Falling back to "platform" alone
+        # would break for a "common" use case, whose own platform field is
+        # literally the string "common", not a real platform.
+        # Do not fall back to state["platform"] — reset already popped it so
+        # a missing run_platform cannot revive the previous use case's value.
+        platform = (
+            current_use_case.get("run_platform")
+            or current_use_case.get("platform")
+            or "android"
+        )
+        if isinstance(platform, str):
+            platform = platform.strip().lower()
+        state["platform"] = platform
+        # Catalog path only — environment_setup overwrites with sandbox_path.
+        # Do NOT reuse a previous use case's app_path/sandbox here.
+        state["app_path"] = current_use_case.get("app_path")
+        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        # Resolve credentials for THIS use case (not leftovers from UC-N-1).
+        state["dev_key"] = current_use_case.get("dev_key") or get_dev_key()
+        state["app_id"] = (
+            current_use_case.get("app_id") or get_app_id_for_platform(platform)
+        )
+        android_policy = (
+            (current_use_case.get("answer_policy") or {}).get("android") or {}
+        )
+        device_id = (
+            current_use_case.get("device_id") or android_policy.get("device_id")
+        )
+        if device_id:
+            state["device_id"] = device_id
+        if "run_build_check" in current_use_case:
+            state["run_build_check"] = bool(current_use_case.get("run_build_check"))
 
-    if not selected:
-        reason = (
-            "No use cases in state['selected_use_cases'] and none found under "
-            f"data/runs/{run_id}/."
-            if run_id
-            else "No use cases in state['selected_use_cases'] and run_id is missing."
+    current_use_case = state.get("current_use_case") or {}
+
+    # Repo was cleared in _reset_runtime_fields_for_next_use_case; reload
+    # only when this UC actually ships a policy (empty/missing → stay clear).
+    if current_use_case.get("answer_policy"):
+        get_answer_policy_repository().load_from_use_case(
+            run_id or "run",
+            current_use_case,
         )
         state["test_status"] = "FAIL"
         state["fail_reason"] = reason
@@ -436,13 +684,13 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
 
     state["artifact_generator_is_visited"] = True
-    case_id = use_case.get("id", "?")
+    case_id = current_use_case.get("id", "?")
     state["nodes_log"] = [
         *(state.get("nodes_log") or []),
         {
             "node": "artifact_generator",
             "status": "Success",
-            "message": f"Loaded use case '{case_id}' from {source}.",
+            "message": f"Loaded use case '{case_id}' from {current_path or 'state'}.",
         },
     ]
 
@@ -526,6 +774,7 @@ async def environment_setup_node(
         ),
         app_id=state.get("app_id"),
         dev_key=state.get("dev_key"),
+        mcp_startup_timeout_seconds=state.get("mcp_startup_timeout_seconds"),
     )
 
 
@@ -990,6 +1239,18 @@ def emulator_node(
             else:
 
                 driver_instance = driver_result
+                # Register before return so teardown can quit even if this
+                # node crashes after launch (or stream misses the update).
+                run_id = state.get("run_id")
+                if run_id:
+                    try:
+                        from infra.workflow.run_resource_registry import (
+                            register_driver,
+                        )
+
+                        register_driver(str(run_id), driver_instance)
+                    except Exception:
+                        pass
 
                 steps.append(
                     "[launch] App launched successfully."
@@ -1081,6 +1342,24 @@ def test_runner_node(
 
 
 
+def _clear_run_dir(state: PipelineState) -> None:
+    """Erase the entire data/runs/<run_id>/ directory for this run.
+
+    Called once the workflow has processed the last selected use case, since
+    everything under it (runtime-config.json, audit.jsonl, the top-level
+    saved-selection JSON files, and the use_cases/ working copies) is
+    regenerated automatically the next time a run is started. Reuses
+    run_repository.delete_run_selection() — the same delete used by the
+    UI's manual "Saved run selections pending cleanup" housekeeping button —
+    so there is only one place that knows how to tear down a run dir.
+    """
+    run_id = state.get("run_id")
+    if not run_id:
+        return
+
+    delete_run_selection(run_id)
+
+
 def visual_report_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1107,7 +1386,30 @@ def visual_report_node(
         "current_use_case_path"
     )
 
+    # Mark this node as visited and log its execution *before* building the
+    # report. record_use_case_report() below reads the live state, so setting
+    # these first is what makes node 11 show up as "Visited: Yes / Success"
+    # in the very report it generates (otherwise it always looked SKIPPED,
+    # even though its own output proves it ran).
+    state["visual_report_is_visited"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "visual_report",
+            "status": "Success",
+            "message": "Generated the run report.",
+        },
+    ]
+
     if current_path:
+        # Release SDK/Appium before the report so resources do not linger
+        # into the next use case (or after the run ends).
+        try:
+            close_sdk_integration_agent(state, state.get("audit_recorder"))
+        except Exception:
+            pass
+        _quit_appium_driver(state)
+
         from data.reports.build_report import record_use_case_report
 
         state = record_use_case_report(
@@ -1162,6 +1464,10 @@ def visual_report_node(
 
         state = attach_index_report(state)
 
+        # Last node of the run: no use cases remain, so wipe the entire
+        # data/runs/<run_id>/ directory now that the final report is built.
+        _clear_run_dir(state)
+
     return state
 
 
@@ -1205,8 +1511,13 @@ def route_from_emulator(
     if _is_pipeline_fail(state):
         return "test_runner"
 
+    prompt_just_run = (
+        state.get("prompt_just_run")
+        or state.get("last_prompt_type")
+    )
+
     if (
-        state.get("last_prompt_type")
+        prompt_just_run
         == "event_prompt"
         and not state.get(
             "visited_user_actions",
