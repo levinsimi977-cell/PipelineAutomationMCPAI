@@ -37,6 +37,8 @@ def _state_for_classifier(
         "last_agent_message": last_message,
         "agent_messages": agent_messages,
     }
+_IOS_TWO_STEP_TOOLS = frozenset({"verifyIosSdk", "verifyIosInAppEvent", "verifyIosDeepLink"})
+
 def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
     """Convert one agent tool_call to validator call_log entry."""
     if isinstance(tool_call, dict):
@@ -49,7 +51,7 @@ def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
     entry: Dict[str, Any] = {"tool": name}
 
     # iOS verify — action חובה לפי הפורמט של הקולגה
-    if platform == "ios" and name == "verifyIosSdk":
+    if platform == "ios" and name  in _IOS_TWO_STEP_TOOLS:
         action = args.get("action")
         if action:
             entry["action"] = action

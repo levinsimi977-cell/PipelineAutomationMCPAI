@@ -951,7 +951,7 @@ def prompt_agent_node(
 
     return state
 
-def sdk_agent_node(
+async  def sdk_agent_node(
     state: PipelineState,
 ) -> PipelineState:
     """
@@ -1000,14 +1000,12 @@ def sdk_agent_node(
     ]
 
 
-    result = asyncio.run(
-        run_sdk_integration_agent(
-            state=state,
-            project_root_str=sandbox_path,
-            platform=platform,
-            user_prompt=user_prompt,
-            audit_recorder=audit_recorder,
-        )
+    result = await run_sdk_integration_agent(
+        state=state,
+        project_root_str=sandbox_path,
+        platform=platform,
+        user_prompt=user_prompt,
+        audit_recorder=audit_recorder,
     )
 
 
