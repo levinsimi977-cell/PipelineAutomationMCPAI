@@ -176,7 +176,17 @@ def seed_use_cases_from_catalog(
 
         relative_path = entry["path"]
         json_path = (catalog_dir / relative_path).resolve()
-        json_file = json.loads(json_path.read_text(encoding="utf-8"))
+        # A catalog entry may reference a use-case file that is not present on
+        # this machine (e.g. gitignored `custom/` files that were never shared).
+        # Skip such entries instead of crashing the whole seeding process.
+        try:
+            json_file = json.loads(json_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError) as exc:
+            print(
+                f"[use_cases_table] Skipping catalog entry '{entry.get('id')}': "
+                f"could not load '{json_path}' ({exc})."
+            )
+            continue
 
         record = UseCaseRecord(
             use_case_id=stable_use_case_id(entry["id"]),
