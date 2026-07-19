@@ -99,7 +99,21 @@ async def create_sdk_integration_agent(
             "env": {"APP_ID": resolved_app_id, "DEV_KEY": resolved_dev_key},
         }
     })
-    mcp_tools = await mcp_client.get_tools()
+    # get_tools() spawns/handshakes with the MCP subprocess - a communication
+    # failure here (npx missing, server crash on startup, timeout, ...) is a
+    # transport error, not a tool-level failure, so it is recorded distinctly
+    # from MCP_TOOL_RESULT (see MCP_TRANSPORT_ERROR below for the in-turn case).
+    try:
+        mcp_tools = await mcp_client.get_tools()
+    except Exception as exc:
+        audit_recorder.write("MCP_CONNECTION_FAILED", {
+            "stage": "startup",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        })
+        raise RuntimeError(
+            f"Failed to connect to AppsFlyer MCP server: {exc}"
+        ) from exc
     audit_recorder.write("TOOLS_DISCOVERED", {
         "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
     })
@@ -277,9 +291,30 @@ async def run_sdk_integration_agent(
     for i in range(MAX_TURNS):
         turn_index = session["turn_offset"] + i
         # One turn: awaits until the LLM stops requesting tools.
-        result = await sdk_agent.ainvoke(
-            {"messages": [("user", prompt)]}, config=config
-        )
+        # A tool that responds with isError=True still returns normally here
+        # (langchain_mcp_adapters turns that into a ToolMessage(status="error")
+        # - see llm_listener.py). What we catch here is the other case: the MCP
+        # subprocess/connection itself dying mid-turn (crash, broken pipe,
+        # timeout, ...), which surfaces as a raw exception out of ainvoke()
+        # instead of a normal ToolMessage.
+        try:
+            result = await sdk_agent.ainvoke(
+                {"messages": [("user", prompt)]}, config=config
+            )
+        except Exception as exc:
+            audit_recorder.write("MCP_TRANSPORT_ERROR", {
+                "turn_index": turn_index,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            })
+            session["turn_offset"] = turn_index + 1
+            inner_state["sdk_agent_status"] = "FAIL"
+            return {
+                "status": "FAIL",
+                "agent_id": agent_id,
+                "turns": turn_index + 1,
+                "reason": f"MCP server transport error on turn {turn_index}: {exc}",
+            }
         all_messages = result["messages"]  # Full accumulated Memory, including prior turns
         # Listener classifies the turn, answers questions if needed, and audits it.
         action, next_prompt, updates = listener_on_agent_turn(
