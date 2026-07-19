@@ -2,6 +2,8 @@
 
 target 'obj-c' do
   # Comment the next line if you don't want to use dynamic frameworks
-   use_frameworks!
-   pod 'appsflyer-apple-sdk-qa', '7.0.0.35704255'
-end 
+  use_frameworks!
+
+  # Clean baseline — no SDKs. Automation will install AppsFlyer here.
+
+end

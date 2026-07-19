@@ -2,9 +2,18 @@ import os
 import json
 from pathlib import Path
 
+from infra.load_env import load_project_env
+
+load_project_env()
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
+
+from infra.use_case_service.repositories.run_repository import (
+    RUNS_DIR,
+    load_selected_use_cases,
+)
 
 # הגדרת המודל - שימוש במשתני סביבה לאבטחה
 llm = ChatOpenAI(
@@ -12,10 +21,6 @@ llm = ChatOpenAI(
     temperature=0.1,
     api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"),
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-RUNS_DIR = PROJECT_ROOT / "data" / "runs"
-SELECTED_USE_CASES_FILENAME = "selected_use_cases.json"
 
 BASE_PROMPT_TEMPLATE = PromptTemplate.from_template(
     "You are an expert technical prompt engineer.\n"
@@ -32,7 +37,9 @@ BASE_PROMPT_TEMPLATE = PromptTemplate.from_template(
     "- The agent MUST use AppsFlyer MCP tools whenever SDK guidance or validation is needed.\n"
     "- The agent MUST inspect the project files before editing them.\n"
     "- The agent MUST NOT answer from memory instead of calling MCP tools.\n"
-    "- The agent MUST NOT invent AppsFlyer SDK setup or verification steps that are not returned by MCP.\n"
+    "- The agent MUST NOT invent AppsFlyer SDK setup or verification steps that are not returned by MCP, "
+    "but MAY mechanically translate MCP-provided code snippets into the project's actual programming "
+    "language (e.g. Swift to Objective-C) as long as the same APIs, parameters, and logic are preserved.\n"
     "- If the MCP tool is unavailable or fails, the agent must report failure instead of guessing.\n\n"
     "Stage-specific instructions:\n{stage_instructions}\n\n"
     "Create one final prompt for the SDK agent now."
@@ -78,22 +85,118 @@ def _json_text(value) -> str:
     return json.dumps(value or {}, indent=2, ensure_ascii=False, default=str)
 
 
-def _resolve_selected_cases_path(state: dict) -> Path:
-    selected_cases_path = state.get("selected_use_cases_path")
-    if selected_cases_path:
-        return Path(selected_cases_path)
+def _pick_from_selected(selected: list, current_path) -> dict | None:
+    """Choose the active use case from a list using current_use_case_path stem."""
+    if not selected:
+        return None
 
+    if current_path:
+        stem = Path(str(current_path)).stem
+        for case in selected:
+            if not isinstance(case, dict):
+                continue
+            if str(case.get("id", "")) == stem:
+                return case
+        if stem.isdigit():
+            index = int(stem)
+            if 0 <= index < len(selected) and isinstance(selected[index], dict):
+                return selected[index]
+
+    first = selected[0]
+    return first if isinstance(first, dict) else None
+
+
+def _path_under_run_dir(path: Path, run_id: str) -> bool:
+    """True only if path resolves inside data/runs/<run_id>/ (this run only)."""
+    try:
+        path.resolve().relative_to((RUNS_DIR / str(run_id)).resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _load_use_case_from_path(file_path: Path) -> dict:
+    with file_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, dict) and not data.get("useCases"):
+        if "id" not in data:
+            data = {**data, "id": file_path.stem}
+        return data
+
+    use_cases = data.get("useCases") if isinstance(data, dict) else data
+    if not use_cases:
+        raise ValueError(f"No use cases found in: {file_path}")
+
+    first_case = use_cases[0]
+    if isinstance(first_case, dict) and first_case.get("path") and not first_case.get("prompt_goal"):
+        case_path = (file_path.parent / first_case["path"]).resolve()
+        with case_path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict) and "id" not in payload:
+            payload = {**payload, "id": case_path.stem}
+        return payload
+
+    if isinstance(first_case, dict) and "id" not in first_case:
+        first_case = {**first_case, "id": file_path.stem}
+    return first_case
+
+
+def _load_selected_from_disk(run_id: str) -> list[dict]:
+    """Load selected use cases only from data/runs/<run_id>/ (never other runs)."""
+    return load_selected_use_cases(str(run_id))
+
+
+def _resolve_current_use_case(state: dict) -> dict:
+    """Resolve active use case: state memory first, then data/runs/<run_id> only.
+
+    Order:
+    1. state['selected_use_cases'] (this run's in-memory list)
+    2. state['current_use_case_path'] if it points inside data/runs/<run_id>/
+    3. load_selected_use_cases(run_id) from data/runs/<run_id>/
+    """
+    current_path = state.get("current_use_case_path")
     run_id = state.get("run_id")
-    if run_id:
-        return RUNS_DIR / str(run_id) / SELECTED_USE_CASES_FILENAME
 
-    raise ValueError(
-        "Missing selected use case path. Expected state['selected_use_cases_path'] "
-        "or state['run_id'] to resolve data/runs/<run_id>/selected_use_cases.json."
-    )
+    selected = state.get("selected_use_cases") or []
+    picked = _pick_from_selected(selected, current_path)
+    if picked is not None:
+        return picked
+
+    if not run_id:
+        raise ValueError(
+            "Prompt Agent: state['selected_use_cases'] is empty and state['run_id'] "
+            "is missing — cannot fall back to data/runs/<run_id>/."
+        )
+
+    # Active file for this run only (written by json_use_case_input under use_cases/).
+    if current_path:
+        path = Path(str(current_path))
+        if path.is_file() and _path_under_run_dir(path, str(run_id)):
+            return _load_use_case_from_path(path)
+
+    try:
+        disk_selected = _load_selected_from_disk(str(run_id))
+    except Exception as exc:
+        raise ValueError(
+            "Prompt Agent: state['selected_use_cases'] is empty and failed to load "
+            f"from data/runs/{run_id}/: {exc}"
+        ) from exc
+
+    picked = _pick_from_selected(disk_selected, current_path)
+    if picked is None:
+        raise ValueError(
+            f"Prompt Agent: no use cases found in state or data/runs/{run_id}/."
+        )
+    return picked
 
 
-def _stage_use_case_data(prompt_type: str, first_case: dict, answer_policy: dict, platform: str) -> str:
+def _stage_use_case_data(
+    prompt_type: str,
+    answer_policy: dict,
+    platform: str,
+    prompt_goal: str = "",
+) -> str:
     config = STAGE_CONFIG[prompt_type]
     selected_policy = {
         key: answer_policy.get(key)
@@ -109,54 +212,40 @@ def _stage_use_case_data(prompt_type: str, first_case: dict, answer_policy: dict
         }
 
     return _json_text({
-        "prompt_goal": first_case.get("prompt") or first_case.get("prompt_goal"),
+        "prompt_goal": prompt_goal,
         "answer_policy": selected_policy,
     })
 
 
-def _load_first_use_case(selected_cases_path: str) -> dict:
-    selected_path = Path(selected_cases_path)
-    with selected_path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if isinstance(data, dict) and not data.get("useCases"):
-        return data
-
-    use_cases = data.get("useCases") if isinstance(data, dict) else data
-    if not use_cases:
-        raise ValueError(f"No use cases found in: {selected_cases_path}")
-
-    first_case = use_cases[0]
-
-    # Some selected files may contain catalog entries that point to the real use case.
-    if isinstance(first_case, dict) and first_case.get("path") and not first_case.get("prompt_goal"):
-        case_path = (selected_path.parent / first_case["path"]).resolve()
-        with case_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-
-    return first_case
-
-
 def prompt_agent_node(state: dict) -> dict:
-    # 1. ה-Artifact Generator טוען את ה-Use Case ל-state.
-    # אם מריצים את ה-Prompt Agent לבד, עדיין אפשר לטעון מהנתיב כ-fallback.
-    first_case = state.get("current_use_case")
-    if not first_case:
-        selected_cases_path = _resolve_selected_cases_path(state)
-        if not os.path.exists(selected_cases_path):
-            raise FileNotFoundError(f"Configuration file not found at: {selected_cases_path}")
-        first_case = _load_first_use_case(str(selected_cases_path))
+    # 1) state של הריצה הנוכחית  2) גיבוי: data/runs/<run_id>/ בלבד
+    # answer_policy ברמת state (אם קיים) גובר על זה שבתוך ה-use case.
+    use_case = _resolve_current_use_case(state)
 
-    # 2. חילוץ הנתונים הנצרכים מה-Use Case
-    raw_goal = first_case.get("prompt") or first_case.get("prompt_goal") or ""
-    platform = state.get("platform") or first_case.get("platform", "android")
-    app_path = state.get("app_path") or first_case.get("app_path")
-    answer_policy = state.get("answer_policy") or first_case.get("answer_policy") or {}
+    platform = use_case.get("platform") or "android"
+    app_path = use_case.get("app_path")
+    raw_goal = use_case.get("prompt_goal") or use_case.get("prompt") or ""
+    answer_policy = state.get("answer_policy") or use_case.get("answer_policy") or {}
+
+    missing = [
+        name
+        for name, value in (
+            ("platform", platform),
+            ("app_path", app_path),
+            ("prompt_goal", raw_goal),
+            ("answer_policy", answer_policy if answer_policy else None),
+        )
+        if value is None or value == ""
+    ]
+    if missing:
+        raise ValueError(
+            "Prompt Agent: active use case is missing required fields: "
+            f"{', '.join(missing)}"
+        )
 
     prompt_generator_chain = BASE_PROMPT_TEMPLATE | llm | StrOutputParser()
     generated_prompts = {}
 
-    # 3. יצירת כל שלושת הפרומפטים. ה-Workflow יחליט בהמשך איזה מהם לשלוח ומתי.
     for prompt_type, stage_config in STAGE_CONFIG.items():
         generated_prompts[prompt_type] = prompt_generator_chain.invoke({
             "prompt_type": prompt_type,
@@ -164,11 +253,15 @@ def prompt_agent_node(state: dict) -> dict:
             "goal": raw_goal,
             "platform": platform,
             "app_path": app_path,
-            "use_case_data": _stage_use_case_data(prompt_type, first_case, answer_policy, platform),
+            "use_case_data": _stage_use_case_data(
+                prompt_type,
+                answer_policy,
+                platform,
+                prompt_goal=raw_goal,
+            ),
             "stage_instructions": stage_config["instructions"],
         })
 
-    # החזרת הנתונים ל-Pipeline
     return {
         "agent_prompts": generated_prompts,
         "platform": platform,

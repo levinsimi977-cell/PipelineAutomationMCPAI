@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Run Report — 8a340ddd3e5c41d8a11478bcbfafa4fa</title>
+  <style>
+    /*
+     * This is the run-level "overview" page: data/reports/<date>/<run_id>/index.html.
+     * It lists one card per use case in the run (from generate_index_report()
+     * in build_report.py) and links each card to that use case's own
+     * detail report (run_report.html.j2, rendered separately per use case
+     * by record_use_case_report()).
+     *
+     * Same light/dark theme system as run_report.html.j2 — same variable
+     * names, same [data-theme="dark"] override mechanism, same "no
+     * localStorage, propagate via ?theme= query param" JS at the bottom —
+     * kept deliberately in sync so switching pages never causes a visual
+     * mismatch.
+     */
+    :root {
+      --bg: #f0f7ff;
+      --surface: #ffffff;
+      --surface-soft: #f8fbff;
+      --border: #dbeafe;
+      --border-strong: #93c5fd;
+      --text: #1e3a5f;
+      --muted: #64748b;
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --primary-dark: #0369a1;
+      --passed: #059669;
+      --passed-bg: #ecfdf5;
+      --failed: #dc2626;
+      --failed-bg: #fef2f2;
+      --unknown: #d97706;
+      --unknown-bg: #fffbeb;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(2, 132, 199, 0.08);
+      --body-gradient: linear-gradient(160deg, #f0f7ff 0%, #ffffff 45%, #e0f2fe 100%);
+      --passed-border: #6ee7b7;
+      --failed-border: #fca5a5;
+      --unknown-border: #fcd34d;
+      --chip-shadow: 0 1px 4px rgba(2,132,199,.06);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: #151f32;
+      --surface-soft: #111827;
+      --border: #2d3a52;
+      --border-strong: #475569;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-light: #1e293b;
+      --primary-dark: #bae6fd;
+      --passed: #34d399;
+      --passed-bg: #064e3b;
+      --failed: #f87171;
+      --failed-bg: #450a0a;
+      --unknown: #fbbf24;
+      --unknown-bg: #451a03;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+      --body-gradient: linear-gradient(160deg, #0b1220 0%, #111827 45%, #0c4a6e 100%);
+      --passed-border: #059669;
+      --failed-border: #dc2626;
+      --unknown-border: #d97706;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      /* Base text size bumped up (was the browser default ~16px) so every
+         rem-based size below (cards, chips, badges, ...) reads a bit
+         larger overall without having to touch each rule individually. */
+      font-size: 1.08rem;
+      background: var(--body-gradient);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 1160px; margin: 0 auto; padding: 36px 24px 52px; }
+
+    /* Left: "back to use cases" link to the Streamlit entry page (this index
+       opens in its own tab, so it needs a way back). Right: the theme toggle. */
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: var(--chip-shadow);
+    }
+    .back-link:hover { background: var(--primary-light); border-color: var(--border-strong); }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--chip-shadow);
+    }
+    .theme-toggle:hover { background: var(--primary-light); border-color: var(--border-strong); }
+
+    .page-header { text-align: center; margin-bottom: 28px; }
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--primary-dark);
+      letter-spacing: -0.02em;
+    }
+    .page-header .subtitle { color: var(--muted); font-size: 1.08rem; margin: 0 0 28px; }
+
+    /* The 4 summary chips at the top: Use cases / Passed / Failed / Total
+       duration — grid-template-columns is a literal 4 (not "repeat(N,...)"
+       driven by data) since this row's chip count never varies, unlike the
+       cards grid below. */
+    .totals-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+      /* All 4 chips stretch to the row's own height (the tallest chip's
+         content), but stretching the chip box alone isn't enough — its
+         *content* also needs to be centered inside that box (see
+         .total-chip below), otherwise a chip with shorter content just
+         sits at the top with empty space under it, which is what made the
+         row look uneven / "jumpy" whenever the duration text was long
+         enough to wrap or otherwise take more vertical space than the
+         plain number chips next to it. */
+      align-items: stretch;
+    }
+    .total-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 12px;
+      /* Fixed floor height so the row never visibly resizes/jumps between
+         a short value ("3") and a longer one ("1h 12m") — every chip is at
+         least this tall, and content is vertically centered within it. */
+      min-height: 78px;
+      text-align: center;
+      box-shadow: var(--chip-shadow);
+    }
+    .total-chip .num { font-size: 1.7rem; font-weight: 800; line-height: 1.15; }
+    /* The "Total duration" chip's value is text like "12m 4s" rather than
+       a short number — smaller font so it still reads as one line, and
+       nowrap so it can never wrap onto a second line and grow the chip
+       taller than its siblings (the original cause of the layout "jump"). */
+    .total-chip .num.text { font-size: 1.3rem; white-space: nowrap; }
+    .total-chip .lbl { font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .total-chip.passed .num { color: var(--passed); }
+    .total-chip.failed .num { color: var(--failed); }
+
+    /* Card grid: auto-fill + minmax means the number of columns adapts to
+       the browser width automatically — no need to know how many use
+       cases there are ahead of time. Min width bumped up from 260px so
+       cards read a bit bigger overall (fewer, larger columns per row). */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    /* Each card is a plain <a> tag (not a <div> + separate link) so the
+       whole card is clickable, opening that use case's own report.html in
+       a new tab (target="_blank") — see the HTML below. */
+    .card {
+      display: block;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      text-decoration: none;
+      color: var(--text);
+      transition: transform 0.12s, border-color 0.12s;
+    }
+    .card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+    .card-title { font-size: 1.2rem; font-weight: 700; color: var(--primary-dark); word-break: break-word; }
+    .status-badge {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+    .status-badge.passed { background: var(--passed-bg); color: var(--passed); border: 1px solid var(--passed-border); }
+    .status-badge.failed { background: var(--failed-bg); color: var(--failed); border: 1px solid var(--failed-border); }
+
+    .card-platform {
+      display: inline-block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-light);
+      border-radius: 6px;
+      padding: 3px 9px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .card-duration {
+      display: inline-block;
+      font-size: 0.86rem;
+      color: var(--muted);
+      margin: 0 0 10px 8px;
+    }
+    .card-desc {
+      font-size: 1rem;
+      color: var(--muted);
+      margin: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-footer {
+      margin-top: 16px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .empty {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="top-bar">
+      <a class="back-link" href="http://localhost:8501">🏠 Back to use cases</a>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">
+        <span id="theme-toggle-icon">🌙</span>
+        <span id="theme-toggle-label">Dark mode</span>
+      </button>
+    </div>
+
+    <header class="page-header">
+      <h1>Pipeline Run Report</h1>
+      <p class="subtitle">Report generated on July 16, 2026 at 01:30 PM</p>
+    </header>
+
+    <!-- totals is a plain dict built in generate_index_report():
+         {total, passed, failed} — a simple count over `cards`, computed
+         once in Python rather than doing arithmetic in the template. -->
+    <div class="totals-row">
+      <div class="total-chip"><div class="num">1</div><div class="lbl">Use cases</div></div>
+      <div class="total-chip passed"><div class="num">0</div><div class="lbl">Passed</div></div>
+      <div class="total-chip failed"><div class="num">1</div><div class="lbl">Failed</div></div>
+      <!-- total_duration is the whole run's wall-clock span (earliest
+           started_at to latest ended_at across every use case), computed
+           by _combined_duration() in build_report.py — NOT a sum of each
+           use case's individual duration. -->
+      <div class="total-chip"><div class="num text">—</div><div class="lbl">Total duration</div></div>
+    </div>
+
+    <div class="cards-grid">
+      <a class="card" data-theme-link href="android-app-link-validation/report.html" target="_blank" rel="noopener">
+        <div class="card-head">
+          <span class="card-title">android-app-link-validation</span>
+          <span class="status-badge failed">
+✗            Failed
+          </span>
+        </div>
+        <span class="card-platform">android</span>
+        <p class="card-desc">Validate Android app link intent resolution and destination routing.</p>
+        <div class="card-footer">Open detail report →</div>
+      </a>
+    </div>
+
+  </div>
+  <script>
+    /*
+     * Same theme mechanism as run_report.html.j2's script (see the comment
+     * there for the full rationale): no localStorage, defaults to light on
+     * a fresh open, and the current choice is pushed onto every card link's
+     * "?theme=" query parameter live so clicking into a use case's detail
+     * report carries the same light/dark mode forward.
+     */
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById("theme-toggle");
+      var label = document.getElementById("theme-toggle-label");
+      var icon = document.getElementById("theme-toggle-icon");
+      // Every use-case card is tagged data-theme-link, so this selects all
+      // of them at once — no need to loop `cards` again in JS.
+      var themeLinks = document.querySelectorAll("[data-theme-link]");
+
+      function propagateTheme(theme) {
+        // Carry the current theme onto every card link so opening a use
+        // case's detail report keeps the same light/dark choice made here.
+        themeLinks.forEach(function (a) {
+          try {
+            var url = new URL(a.getAttribute("href"), window.location.href);
+            url.searchParams.set("theme", theme);
+            a.href = url.href;
+          } catch (e) { /* unsupported URL parsing — link keeps its plain href */ }
+        });
+      }
+
+      function applyTheme(theme) {
+        if (theme === "dark") {
+          root.setAttribute("data-theme", "dark");
+          label.textContent = "Light mode";
+          icon.textContent = "☀️";
+        } else {
+          root.removeAttribute("data-theme");
+          label.textContent = "Dark mode";
+          icon.textContent = "🌙";
+        }
+        propagateTheme(theme);
+      }
+
+      function themeFromQuery() {
+        var theme = new URLSearchParams(window.location.search).get("theme");
+        return theme === "dark" ? "dark" : "light";
+      }
+
+      // Opens light by default. A page reached via the "back to overview"
+      // link carries whichever theme was active on the detail report.
+      applyTheme(themeFromQuery());
+
+      btn.addEventListener("click", function () {
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -11,11 +11,12 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    // Do any additional setup after loading the view.
 
     if (self.deepLinkData != nil) {
-        self.applesDlTextView.attributedText = [self attributionDataToStringWithData:self.deepLinkData];
+        self.applesDlTextView.attributedText = [self attributionDataToString:self.deepLinkData];
         self.applesDlTextView.textColor = UIColor.labelColor;
-        self.fruitAmount.text = [self getFruitAmountWithData:self.deepLinkData];
+        self.fruitAmount.text = [self getFruitAmount:self.deepLinkData];
     }
 }
 
