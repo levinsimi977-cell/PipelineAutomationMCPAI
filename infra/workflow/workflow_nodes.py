@@ -1285,6 +1285,21 @@ def visual_report_node(
         "current_use_case_path"
     )
 
+    # Mark this node as visited and log its execution *before* building the
+    # report. record_use_case_report() below reads the live state, so setting
+    # these first is what makes node 11 show up as "Visited: Yes / Success"
+    # in the very report it generates (otherwise it always looked SKIPPED,
+    # even though its own output proves it ran).
+    state["visual_report_is_visited"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "visual_report",
+            "status": "Success",
+            "message": "Generated the run report.",
+        },
+    ]
+
     if current_path:
         # Release SDK/Appium before the report so resources do not linger
         # into the next use case (or after the run ends).
