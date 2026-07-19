@@ -351,7 +351,6 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     Loads the active use case into state.
     """
-    
     current_path = state.get("current_use_case_path")
     if current_path and os.path.exists(current_path):
         with open(current_path, "r", encoding="utf-8") as f:
