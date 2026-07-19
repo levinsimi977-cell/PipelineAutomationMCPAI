@@ -22,7 +22,10 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
-from infra.use_case_service.repositories.run_repository import RUNS_DIR
+from infra.use_case_service.repositories.run_repository import (
+    RUNS_DIR,
+    delete_run_selection,
+)
 
 
 # Resolve emulator tools directory relative to this file
@@ -297,46 +300,56 @@ def json_use_case_input_node(state: PipelineState) -> PipelineState:
     points current_use_case_path to the first one.
     """
 
-    # New pipeline behavior: every run starts with a fresh sdk agent id
-    state.setdefault("agent_id", None)
+    try:
+        # New pipeline behavior: every run starts with a fresh sdk agent id
+        state.setdefault("agent_id", 0)
 
-    selected_cases = state.get("selected_use_cases") or []
-    run_id = state.get("run_id", "run")
+        selected_cases = state.get("selected_use_cases") or []
+        run_id = state.get("run_id", "run")
 
-    use_cases_dir = RUNS_DIR / run_id / "use_cases"
+        use_cases_dir = RUNS_DIR / run_id / "use_cases"
 
-    use_cases_dir.mkdir(parents=True, exist_ok=True)
+        use_cases_dir.mkdir(parents=True, exist_ok=True)
 
-    case_paths = []
+        case_paths = []
 
-    for index, case in enumerate(selected_cases):
-        case_id = case.get("id", str(index))
+        for index, case in enumerate(selected_cases):
+            case_id = case.get("id", str(index))
 
-        case_path = use_cases_dir / f"{case_id}.json"
+            case_path = use_cases_dir / f"{case_id}.json"
 
-        with case_path.open("w", encoding="utf-8") as f:
-            json.dump(
-                case,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+            with case_path.open("w", encoding="utf-8") as f:
+                json.dump(
+                    case,
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
-        case_paths.append(str(case_path))
+            case_paths.append(str(case_path))
 
-    state["use_cases_dir"] = str(use_cases_dir)
+        state["use_cases_dir"] = str(use_cases_dir)
 
-    state["current_use_case_path"] = (
-        case_paths[0]
-        if case_paths
-        else None
-    )
+        if not case_paths:
+            state["test_status"] = "FAIL"
+            state["fail_reason"] = "No use cases selected for this run."
+            state["current_use_case_path"] = None
 
-    if not case_paths:
+            return state
+
+        state["current_use_case_path"] = case_paths[0]
+
+        return state
+
+    except Exception as e:
         state["test_status"] = "FAIL"
-        state["fail_reason"] = "No use cases selected for this run."
+        state["error_detected"] = True
+        state["failed_node"] = "json_use_case_input_node"
+        state["error_message"] = str(e)
+        state["fail_reason"] = str(e)
+        state["current_use_case_path"] = None
 
-    return state
+        return state
 
 
 def artifact_generator_node(state: PipelineState) -> PipelineState:
@@ -350,91 +363,61 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
     from infra.use_case_service.repositories.run_repository import (
         load_selected_use_cases,
     )
+    # Reset per-use-case state so previous use case data
+    # does not leak into the next one.
+    state["test_status"] = "READY"
+    state["error_detected"] = False
+    state["last_prompt_type"] = None
+    state["visited_user_actions"] = False
+    state["user_actions_is_visited"] = False
+    state.pop("fail_reason", None)
+    state.pop("error_reason", None)
+    state.pop("failed_node", None)
+    state.pop("error_message", None)
 
     selected = list(state.get("selected_use_cases") or [])
+    run_id = state.get("run_id", "run")
     current_path = state.get("current_use_case_path")
-    run_id = state.get("run_id")
-    source = "state"
+    if current_path and os.path.exists(current_path):
+        with open(current_path, "r", encoding="utf-8") as f:
+            current_use_case = json.load(f)
 
-    if not selected and run_id:
-        try:
-            selected = load_selected_use_cases(str(run_id))
-            state["selected_use_cases"] = selected
-            source = f"data/runs/{run_id}"
-        except Exception:
-            selected = []
-
-    if not selected:
-        reason = (
-            "No use cases in state['selected_use_cases'] and none found under "
-            f"data/runs/{run_id}/."
-            if run_id
-            else "No use cases in state['selected_use_cases'] and run_id is missing."
+        state["current_use_case"] = current_use_case
+        state["selected_use_cases_path"] = current_path
+        # run_platform (stamped by the UI when the use case was selected —
+        # see ui/app.py's _stamp_run_platform) is the concrete platform to
+        # run against and takes priority. Falling back to "platform" alone
+        # would break for a "common" use case, whose own platform field is
+        # literally the string "common", not a real platform.
+        state["platform"] = (
+            current_use_case.get("run_platform")
+            or current_use_case.get("platform", state.get("platform", "android"))
         )
-        state["test_status"] = "FAIL"
-        state["fail_reason"] = reason
-        state["nodes_log"] = [
-            *(state.get("nodes_log") or []),
-            {
-                "node": "artifact_generator",
-                "status": "Failure",
-                "message": reason,
-            },
-        ]
-        return state
+        state["app_path"] = state.get("app_path") or current_use_case.get("app_path")
+        state["answer_policy"] = current_use_case.get("answer_policy") or {}
+        # Each use case gets its own sdk_agent conversation: reset agent_id so
+        # run_sdk_integration_agent builds a fresh agent instead of reusing a
+        # (by now closed) session id left over from the previous use case.
+        state["agent_id"] = None
 
-    use_case = selected[0] if isinstance(selected[0], dict) else None
-    if current_path:
-        stem = Path(str(current_path)).stem
-        for case in selected:
-            if isinstance(case, dict) and str(case.get("id", "")) == stem:
-                use_case = case
-                break
-        else:
-            if stem.isdigit():
-                index = int(stem)
-                if 0 <= index < len(selected) and isinstance(selected[index], dict):
-                    use_case = selected[index]
+    current_use_case = state.get("current_use_case") or {}
 
-    if not isinstance(use_case, dict):
-        reason = "Active use case could not be resolved for this run."
-        state["test_status"] = "FAIL"
-        state["fail_reason"] = reason
-        state["nodes_log"] = [
-            *(state.get("nodes_log") or []),
-            {
-                "node": "artifact_generator",
-                "status": "Failure",
-                "message": reason,
-            },
-        ]
-        return state
-
-    state["current_use_case"] = use_case
-    state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
-    state["platform"] = use_case.get("platform", state.get("platform", "android"))
-    state["app_path"] = state.get("app_path") or use_case.get("app_path")
-    # Each use case gets its own sdk_agent conversation: reset agent_id so
-    # run_sdk_integration_agent builds a fresh agent instead of reusing a
-    # (by now closed) session id left over from the previous use case.
-    state["agent_id"] = None
-
-    if use_case.get("answer_policy"):
+    if current_use_case.get("answer_policy"):
         policy_run_id = run_id or "run"
         repo = get_answer_policy_repository()
-        repo.load_from_use_case(policy_run_id, use_case)
+        repo.load_from_use_case(policy_run_id, current_use_case)
 
     if current_path:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
 
     state["artifact_generator_is_visited"] = True
-    case_id = use_case.get("id", "?")
+    case_id = current_use_case.get("id", "?")
     state["nodes_log"] = [
         *(state.get("nodes_log") or []),
         {
             "node": "artifact_generator",
             "status": "Success",
-            "message": f"Loaded use case '{case_id}' from {source}.",
+            "message": f"Loaded use case '{case_id}' from {current_path or 'state'}.",
         },
     ]
 
@@ -1033,6 +1016,24 @@ def test_runner_node(
 
 
 
+def _clear_run_dir(state: PipelineState) -> None:
+    """Erase the entire data/runs/<run_id>/ directory for this run.
+
+    Called once the workflow has processed the last selected use case, since
+    everything under it (runtime-config.json, audit.jsonl, the top-level
+    saved-selection JSON files, and the use_cases/ working copies) is
+    regenerated automatically the next time a run is started. Reuses
+    run_repository.delete_run_selection() — the same delete used by the
+    UI's manual "Saved run selections pending cleanup" housekeeping button —
+    so there is only one place that knows how to tear down a run dir.
+    """
+    run_id = state.get("run_id")
+    if not run_id:
+        return
+
+    delete_run_selection(run_id)
+
+
 def visual_report_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1058,6 +1059,21 @@ def visual_report_node(
     current_path = state.get(
         "current_use_case_path"
     )
+
+    # Mark this node as visited and log its execution *before* building the
+    # report. record_use_case_report() below reads the live state, so setting
+    # these first is what makes node 11 show up as "Visited: Yes / Success"
+    # in the very report it generates (otherwise it always looked SKIPPED,
+    # even though its own output proves it ran).
+    state["visual_report_is_visited"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "visual_report",
+            "status": "Success",
+            "message": "Generated the run report.",
+        },
+    ]
 
     if current_path:
         from data.reports.build_report import record_use_case_report
@@ -1113,6 +1129,10 @@ def visual_report_node(
         from data.reports.build_report import attach_index_report
 
         state = attach_index_report(state)
+
+        # Last node of the run: no use cases remain, so wipe the entire
+        # data/runs/<run_id>/ directory now that the final report is built.
+        _clear_run_dir(state)
 
     return state
 

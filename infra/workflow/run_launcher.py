@@ -10,9 +10,17 @@ from infra.workflow.workflow_nodes import PipelineState
 
 
 def _platform_from_use_cases(use_cases: list[dict]) -> str:
+    """
+    run_platform (stamped by the UI at selection time — see ui/app.py's
+    _stamp_run_platform) takes priority over the use case's own "platform"
+    field: a "common" use case's platform field is literally the string
+    "common", which isn't a real platform get_app_id_for_platform() could
+    resolve credentials for.
+    """
     if not use_cases:
         return "android"
-    platform = use_cases[0].get("platform")
+    first_case = use_cases[0]
+    platform = first_case.get("run_platform") or first_case.get("platform")
     if isinstance(platform, str) and platform.strip():
         return platform.strip().lower()
     return "android"
