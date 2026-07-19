@@ -27,7 +27,7 @@ from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
 from infra.use_case_service.repositories.run_repository import RUNS_DIR
-
+from infra.reports.report import McpToolOrderValidator
 
 # Resolve emulator tools directory relative to this file
 _TOOLS_DIR = os.path.normpath(
@@ -199,6 +199,15 @@ class PipelineState(TypedDict, total=False):
 
     mcp_integration_text: NotRequired[str]
 
+    # MCP validation results
+
+    is_tool_order_valid: NotRequired[bool]
+
+    is_tool_order_valid_message: NotRequired[str]
+
+    expected_tool_order: NotRequired[list[str]]
+
+    actual_tool_order: NotRequired[list[str]]
 
     # ==================================================
     # Agent management
@@ -228,7 +237,7 @@ class PipelineState(TypedDict, total=False):
 
 
     # ==================================================
-    # User actions
+    # User actions and deep link validation
     # ==================================================
 
     prompt_agent_answer: NotRequired[str]
@@ -267,6 +276,10 @@ class PipelineState(TypedDict, total=False):
     compilation_result: NotRequired[Any]
 
     audit_events: NotRequired[list]
+
+    files_modified: NotRequired[bool]
+
+    applied_files: NotRequired[list[str]]
 
 
     # ==================================================
@@ -784,6 +797,18 @@ def sdk_agent_node(
             audit_recorder=audit_recorder,
         )
     )
+
+    # Validate MCP tool execution order after SDK agent finishes
+    if audit_recorder:
+        validator = McpToolOrderValidator()
+
+        is_valid, message = validator.validate_sequence(
+            recorder=audit_recorder,
+            state=state,
+        )
+
+        state["is_tool_order_valid"] = is_valid
+        state["is_tool_order_valid_message"] = message
 
 
     state["type_agent"] = "sdk_agent"
