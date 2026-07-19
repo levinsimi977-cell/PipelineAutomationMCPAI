@@ -387,8 +387,14 @@ def _extract_message_audit_events(messages: Optional[List[Any]]) -> List[Tuple[s
             if not tool_name or tool_name in _SDK_FILE_TOOLS:
                 continue
             result_text = _agent_content_text(getattr(msg, "content", ""))
+            # ToolMessage.status is ground truth from the MCP protocol itself
+            # (langchain_mcp_adapters sets "error" from CallToolResult.isError,
+            # "success" otherwise) - not a guess from scanning result_text.
+            status = getattr(msg, "status", "success") or "success"
             events.append(("MCP_TOOL_RESULT", {
                 "tool": tool_name,
+                "status": status,
+                "is_error": status == "error",
                 "result": result_text[:2000],
             }))
 

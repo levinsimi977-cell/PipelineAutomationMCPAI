@@ -138,64 +138,72 @@ async def create_sdk_integration_agent(
             "env": {"APP_ID": resolved_app_id, "DEV_KEY": resolved_dev_key},
         }
     })
-    mcp_stack = AsyncExitStack()
-    await mcp_stack.__aenter__()
+    # get_tools() spawns/handshakes with the MCP subprocess - a communication
+    # failure here (npx missing, server crash on startup, timeout, ...) is a
+    # transport error, not a tool-level failure, so it is recorded distinctly
+    # from MCP_TOOL_RESULT (see MCP_TRANSPORT_ERROR below for the in-turn case).
     try:
-        mcp_session = await mcp_stack.enter_async_context(
-            mcp_client.session("appsflyer-sdk-mcp")
-        )
-        mcp_tools = await load_mcp_tools(mcp_session)
-        audit_recorder.write("TOOLS_DISCOVERED", {
-            "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
+        mcp_tools = await mcp_client.get_tools()
+    except Exception as exc:
+        audit_recorder.write("MCP_CONNECTION_FAILED", {
+            "stage": "startup",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
         })
-        # --------------------------------------------------------------------
-        # Custom (non-MCP) file tools, letting the agent read/write files
-        # itself inside the isolated Sandbox.
-        # --------------------------------------------------------------------
-        @tool
-        def list_project_files() -> str:
-            """List relevant editable files in the project. Use this before deciding which file to read or edit."""
-            if platform_lower == 'ios':
-                allowed_suffixes = {".swift", ".plist", ".podspec", ".pbxproj", ".xcodeproj", ".xcworkspace"}
-                allowed_names = {"Podfile", "Package.swift"}
-            elif platform_lower == 'android':
-                allowed_suffixes = {".java", ".kt", ".xml", ".gradle", ".kts", ".properties"}
-                allowed_names = {"AndroidManifest.xml"}
-            else:
-                return json.dumps({"error": f"Unsupported platform: {platform_lower}"})
-            files = [
-                str(p.relative_to(project_root)) for p in project_root.rglob("*")
-                if p.is_file() and (p.name in allowed_names or p.suffix in allowed_suffixes)
-            ]
-            return json.dumps({"project_root": str(project_root), "files": files}, ensure_ascii=False, indent=2)
-        @tool
-        def read_project_file(file_path: str) -> str:
-            """Read a project file (relative to project root)."""
-            try:
-                path = safe_project_path(project_root, file_path)  # Sandbox guard
-                if not path.is_file():
-                    return json.dumps({"status": "FAILED", "reason": "Not a file or does not exist"}, indent=2)
-                return json.dumps({"status": "OK", "content": path.read_text(encoding="utf-8")}, indent=2)
-            except Exception as e:
-                return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
-        @tool
-        def write_to_project_file(file_path: str, content: str) -> str:
-            """Write exact content to a project file. You must prepare the full updated file content yourself."""
-            try:
-                path = safe_project_path(project_root, file_path)  # Sandbox guard
-                path.parent.mkdir(parents=True, exist_ok=True)
-                old_content = path.read_text(encoding="utf-8") if path.is_file() else ""
-                path.write_text(content, encoding="utf-8")
-                changed = old_content != content
-                # Recorded immediately, not at end-of-turn, since a file write
-                # is a sensitive action worth auditing the moment it happens.
-                audit_recorder.write("PROJECT_FILE_WRITTEN", {
-                    "file_path": file_path,
-                    "changed": changed,
-                })
-                return json.dumps({"status": "WRITTEN" if changed else "NO_CHANGES", "file_path": file_path}, indent=2)
-            except Exception as e:
-                return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+        raise RuntimeError(
+            f"Failed to connect to AppsFlyer MCP server: {exc}"
+        ) from exc
+    audit_recorder.write("TOOLS_DISCOVERED", {
+        "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
+    })
+    # --------------------------------------------------------------------
+    # Custom (non-MCP) file tools, letting the agent read/write files
+    # itself inside the isolated Sandbox.
+    # --------------------------------------------------------------------
+    @tool
+    def list_project_files() -> str:
+        """List relevant editable files in the project. Use this before deciding which file to read or edit."""
+        if platform_lower == 'ios':
+            allowed_suffixes = {".swift", ".plist", ".podspec", ".pbxproj", ".xcodeproj", ".xcworkspace"}
+            allowed_names = {"Podfile", "Package.swift"}
+        elif platform_lower == 'android':
+            allowed_suffixes = {".java", ".kt", ".xml", ".gradle", ".kts", ".properties"}
+            allowed_names = {"AndroidManifest.xml"}
+        else:
+            return json.dumps({"error": f"Unsupported platform: {platform_lower}"})
+        files = [
+            str(p.relative_to(project_root)) for p in project_root.rglob("*")
+            if p.is_file() and (p.name in allowed_names or p.suffix in allowed_suffixes)
+        ]
+        return json.dumps({"project_root": str(project_root), "files": files}, ensure_ascii=False, indent=2)
+    @tool
+    def read_project_file(file_path: str) -> str:
+        """Read a project file (relative to project root)."""
+        try:
+            path = safe_project_path(project_root, file_path)  # Sandbox guard
+            if not path.is_file():
+                return json.dumps({"status": "FAILED", "reason": "Not a file or does not exist"}, indent=2)
+            return json.dumps({"status": "OK", "content": path.read_text(encoding="utf-8")}, indent=2)
+        except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+    @tool
+    def write_to_project_file(file_path: str, content: str) -> str:
+        """Write exact content to a project file. You must prepare the full updated file content yourself."""
+        try:
+            path = safe_project_path(project_root, file_path)  # Sandbox guard
+            path.parent.mkdir(parents=True, exist_ok=True)
+            old_content = path.read_text(encoding="utf-8") if path.is_file() else ""
+            path.write_text(content, encoding="utf-8")
+            changed = old_content != content
+            # Recorded immediately, not at end-of-turn, since a file write
+            # is a sensitive action worth auditing the moment it happens.
+            audit_recorder.write("PROJECT_FILE_WRITTEN", {
+                "file_path": file_path,
+                "changed": changed,
+            })
+            return json.dumps({"status": "WRITTEN" if changed else "NO_CHANGES", "file_path": file_path}, indent=2)
+        except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
 
         @tool
         def write_events_manifest(manifest_json: str) -> str:
@@ -337,9 +345,30 @@ async def run_sdk_integration_agent(
     for i in range(MAX_TURNS):
         turn_index = session["turn_offset"] + i
         # One turn: awaits until the LLM stops requesting tools.
-        result = await sdk_agent.ainvoke(
-            {"messages": [("user", prompt)]}, config=config
-        )
+        # A tool that responds with isError=True still returns normally here
+        # (langchain_mcp_adapters turns that into a ToolMessage(status="error")
+        # - see llm_listener.py). What we catch here is the other case: the MCP
+        # subprocess/connection itself dying mid-turn (crash, broken pipe,
+        # timeout, ...), which surfaces as a raw exception out of ainvoke()
+        # instead of a normal ToolMessage.
+        try:
+            result = await sdk_agent.ainvoke(
+                {"messages": [("user", prompt)]}, config=config
+            )
+        except Exception as exc:
+            audit_recorder.write("MCP_TRANSPORT_ERROR", {
+                "turn_index": turn_index,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            })
+            session["turn_offset"] = turn_index + 1
+            inner_state["sdk_agent_status"] = "FAIL"
+            return {
+                "status": "FAIL",
+                "agent_id": agent_id,
+                "turns": turn_index + 1,
+                "reason": f"MCP server transport error on turn {turn_index}: {exc}",
+            }
         all_messages = result["messages"]  # Full accumulated Memory, including prior turns
         # Listener classifies the turn, answers questions if needed, and audits it.
         action, next_prompt, updates = listener_on_agent_turn(
