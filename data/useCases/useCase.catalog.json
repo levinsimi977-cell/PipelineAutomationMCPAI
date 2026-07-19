@@ -44,38 +44,6 @@
       "type": "critical",
       "enabled": true,
       "supports_rule_override": true
-    },
-    {
-      "id": "custom-adhj",
-      "platform": "ios",
-      "path": "./custom/custom-adhj.json",
-      "type": "custom",
-      "enabled": true,
-      "supports_rule_override": true
-    },
-    {
-      "id": "custom-sdk-ios-intigration",
-      "platform": "ios",
-      "path": "./custom/custom-sdk-ios-intigration.json",
-      "type": "custom",
-      "enabled": true,
-      "supports_rule_override": true
-    },
-    {
-      "id": "custom-merav-use-case",
-      "platform": "ios",
-      "path": "./custom/custom-merav-use-case.json",
-      "type": "custom",
-      "enabled": true,
-      "supports_rule_override": true
-    },
-    {
-      "id": "custom-merav-use-case-2",
-      "platform": "ios",
-      "path": "./custom/custom-merav-use-case-2.json",
-      "type": "custom",
-      "enabled": true,
-      "supports_rule_override": true
     }
   ]
 }

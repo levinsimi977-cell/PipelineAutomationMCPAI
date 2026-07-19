@@ -1001,6 +1001,19 @@ def _render_use_case_entry(entry: repo.CatalogEntry, *, run_platform: str) -> No
             st.error("This use case file is invalid and cannot be loaded.")
             _display_validation_errors(exc)
             return
+        except FileNotFoundError:
+            st.markdown(f"**{entry.id}**", unsafe_allow_html=True)
+            st.error(
+                f"This use case is listed in the catalog but its file ({entry.path}) "
+                "is missing on disk."
+            )
+            if entry.is_editable and st.button(
+                "🗑️ Remove broken entry", key=f"remove_missing_{entry.id}"
+            ):
+                repo.delete_custom_use_case(entry.id)
+                _flash("success", f"Removed broken catalog entry '{entry.id}'.")
+                st.rerun()
+            return
 
         is_editing = st.session_state.get("editing_use_case_id") == entry.id
 
