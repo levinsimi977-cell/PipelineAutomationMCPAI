@@ -133,7 +133,6 @@ async def create_sdk_integration_agent(
             "env": {"APP_ID": resolved_app_id, "DEV_KEY": resolved_dev_key},
         }
     })
-<<<<<<< Updated upstream
     # get_tools() spawns/handshakes with the MCP subprocess - a communication
     # failure here (npx missing, server crash on startup, timeout, ...) is a
     # transport error, not a tool-level failure, so it is recorded distinctly
@@ -149,11 +148,8 @@ async def create_sdk_integration_agent(
         raise RuntimeError(
             f"Failed to connect to AppsFlyer MCP server: {exc}"
         ) from exc
-=======
-    mcp_tools = await mcp_client.get_tools()
     if device_id_holder is not None:
         _bind_live_device_id(mcp_tools, device_id_holder)
->>>>>>> Stashed changes
     audit_recorder.write("TOOLS_DISCOVERED", {
         "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
     })
