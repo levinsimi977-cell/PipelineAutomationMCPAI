@@ -75,3 +75,13 @@ class AuditRecorder:
         Returns the entire events list.
         """
         return self.events
+
+    def clear_memory(self) -> None:
+        """
+        Drop in-memory events so the next use case's report is isolated.
+
+        Does not truncate audit.jsonl on disk — the full run history remains
+        append-only for debugging; only the live list used by per-UC reports
+        is cleared.
+        """
+        self.events.clear()

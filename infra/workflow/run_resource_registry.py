@@ -1,0 +1,147 @@
+"""
+In-process registry of per-run resources that may exist before LangGraph
+commits the next state snapshot (e.g. sandbox created mid-node, then crash).
+
+Teardown reads this registry so cleanup still works when `latest_state` is
+stale relative to what the crashing node already allocated.
+"""
+from __future__ import annotations
+
+import threading
+from typing import Any
+
+_lock = threading.Lock()
+_sandboxes: dict[str, set[str]] = {}
+_agents: dict[str, set[str]] = {}
+_drivers: dict[str, list[Any]] = {}
+
+
+def register_sandbox(run_id: str, path: str) -> None:
+    if not run_id or not path:
+        return
+    with _lock:
+        _sandboxes.setdefault(str(run_id), set()).add(str(path))
+
+
+def unregister_sandbox(run_id: str | None, path: str | None) -> None:
+    if not run_id or not path:
+        return
+    with _lock:
+        paths = _sandboxes.get(str(run_id))
+        if not paths:
+            return
+        paths.discard(str(path))
+        if not paths:
+            _sandboxes.pop(str(run_id), None)
+
+
+def forget_sandbox_path(path: str | None) -> None:
+    """Remove `path` from every run entry (used after disk cleanup)."""
+    if not path:
+        return
+    needle = str(path)
+    with _lock:
+        for run_id, paths in list(_sandboxes.items()):
+            paths.discard(needle)
+            if not paths:
+                _sandboxes.pop(run_id, None)
+
+
+def register_agent(run_id: str, agent_id: str) -> None:
+    if not run_id or not agent_id:
+        return
+    with _lock:
+        _agents.setdefault(str(run_id), set()).add(str(agent_id))
+
+
+def unregister_agent(run_id: str | None, agent_id: str | None) -> None:
+    if not run_id or not agent_id:
+        return
+    with _lock:
+        ids = _agents.get(str(run_id))
+        if not ids:
+            return
+        ids.discard(str(agent_id))
+        if not ids:
+            _agents.pop(str(run_id), None)
+
+
+def register_driver(run_id: str, driver: Any) -> None:
+    if not run_id or driver is None:
+        return
+    with _lock:
+        _drivers.setdefault(str(run_id), []).append(driver)
+
+
+def unregister_driver(run_id: str | None, driver: Any) -> None:
+    """Remove one driver handle after quit so the registry does not retain dead refs."""
+    if not run_id or driver is None:
+        return
+    with _lock:
+        drivers = _drivers.get(str(run_id))
+        if not drivers:
+            return
+        remaining = [d for d in drivers if d is not driver]
+        if remaining:
+            _drivers[str(run_id)] = remaining
+        else:
+            _drivers.pop(str(run_id), None)
+
+
+def release_run_resources(run_id: str, state: dict[str, Any] | None = None) -> None:
+    """
+    Best-effort release of agents, drivers, and sandboxes for `run_id`.
+
+    Merges handles from the registry with whatever is still on `state`, so
+    either source alone is enough. Never raises.
+    """
+    state = state or {}
+    rid = str(run_id)
+
+    with _lock:
+        agent_ids = set(_agents.pop(rid, set()))
+        drivers = list(_drivers.pop(rid, []))
+        sandbox_paths = set(_sandboxes.pop(rid, set()))
+
+    agent_from_state = state.get("agent_id")
+    if agent_from_state:
+        agent_ids.add(str(agent_from_state))
+
+    driver_from_state = state.get("driver")
+    if driver_from_state is not None:
+        drivers.append(driver_from_state)
+
+    sandbox_from_state = state.get("sandbox_path")
+    if sandbox_from_state:
+        sandbox_paths.add(str(sandbox_from_state))
+
+    audit_recorder = state.get("audit_recorder")
+    try:
+        from infra.agents.sdkAgent.tools.agent import close_sdk_integration_agent_by_id
+
+        for agent_id in agent_ids:
+            try:
+                close_sdk_integration_agent_by_id(agent_id, audit_recorder)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    for driver in drivers:
+        try:
+            quit_fn = getattr(driver, "quit", None)
+            if callable(quit_fn):
+                quit_fn()
+        except Exception:
+            pass
+
+    try:
+        from infra.application.app import cleanup_environment
+
+        for path in sandbox_paths:
+            try:
+                cleanup_environment(path)
+            except Exception:
+                pass
+    except Exception:
+        pass
