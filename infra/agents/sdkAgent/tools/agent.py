@@ -15,7 +15,7 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.listener.llm_listener import listener_on_agent_turn
 
 load_project_env(override=True)
-APP_ID = os.getenv("APP_ID", "id1512793879")
+APP_ID = os.getenv("APP_ID", "sQ84wpdxRTR4RMCaE9YqS4")
 # Safety net: caps how many sdk_agent.ainvoke() turns a single call to
 # run_sdk_integration_agent() may take before giving up.
 MAX_TURNS = 15
