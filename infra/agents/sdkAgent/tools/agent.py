@@ -15,7 +15,7 @@ from infra.agents.AuditRecorder import AuditRecorder
 from infra.listener.llm_listener import listener_on_agent_turn
 
 load_project_env(override=True)
-APP_ID = os.getenv("APP_ID", "id1512793879")
+APP_ID = os.getenv("APP_ID", "sQ84wpdxRTR4RMCaE9YqS4")
 # Safety net: caps how many sdk_agent.ainvoke() turns a single call to
 # run_sdk_integration_agent() may take before giving up.
 MAX_TURNS = 15
@@ -148,6 +148,8 @@ async def create_sdk_integration_agent(
         raise RuntimeError(
             f"Failed to connect to AppsFlyer MCP server: {exc}"
         ) from exc
+    if device_id_holder is not None:
+        _bind_live_device_id(mcp_tools, device_id_holder)
     audit_recorder.write("TOOLS_DISCOVERED", {
         "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
     })

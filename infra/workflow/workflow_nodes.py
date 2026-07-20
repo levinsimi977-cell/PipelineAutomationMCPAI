@@ -28,7 +28,8 @@ from infra.agents.userActions.deep_link import (
 )
 from infra.workflow.nodes.nodeEmulator import (
     emulator_node as _emulator_node_impl,
-    route_from_emulator as _route_from_emulator_impl,)
+    route_from_emulator as _route_from_emulator_impl,
+)
 from infra.load_env import get_app_id_for_platform, get_dev_key
 from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
@@ -530,7 +531,6 @@ def _reset_runtime_fields_for_next_use_case(state: PipelineState) -> None:
         # Compilation / emulator
         "compilation_passed",
         "compilation_result",
-        "device_id",
         "driver",
         "available_devices",
         "emulator_checking",
@@ -592,7 +592,7 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         platform = (
             current_use_case.get("run_platform")
             or current_use_case.get("platform")
-            or "android"
+            or state.get("platform", "android")
         )
         if isinstance(platform, str):
             platform = platform.strip().lower()
@@ -621,71 +621,81 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
 
     # Repo was cleared in _reset_runtime_fields_for_next_use_case; reload
     # only when this UC actually ships a policy (empty/missing → stay clear).
-    # if current_use_case.get("answer_policy"):
-    #     get_answer_policy_repository().load_from_use_case(
-    #         run_id or "run",
-    #         current_use_case,
-    #     )
-    #     state["test_status"] = "FAIL"
-    #     state["fail_reason"] = reason
-    #     state["nodes_log"] = [
-    #         *(state.get("nodes_log") or []),
-    #         {
-    #             "node": "artifact_generator",
-    #             "status": "Failure",
-    #             "message": reason,
-    #         },
-    #     ]
-    #     return state
+    if current_use_case.get("answer_policy"):
+        get_answer_policy_repository().load_from_use_case(
+            run_id or "run",
+            current_use_case,
+        )
 
-    use_case = selected[0] if isinstance(selected[0], dict) else None
-    if current_path:
-        stem = Path(str(current_path)).stem
-        for case in selected:
-            if isinstance(case, dict) and str(case.get("id", "")) == stem:
-                use_case = case
-                break
-        else:
-            if stem.isdigit():
-                index = int(stem)
-                if 0 <= index < len(selected) and isinstance(selected[index], dict):
-                    use_case = selected[index]
+    # current_use_case_path already fully resolved current_use_case above --
+    # only fall back to selected_use_cases (reloading it from disk for this
+    # run_id if even that memory is empty, per this function's docstring)
+    # when there was no valid current_use_case_path to load from.
+    if not current_use_case:
+        if not selected:
+            selected = load_selected_use_cases(run_id)
 
-    if not isinstance(use_case, dict):
-        reason = "Active use case could not be resolved for this run."
-        state["test_status"] = "FAIL"
-        state["fail_reason"] = reason
-        state["nodes_log"] = [
-            *(state.get("nodes_log") or []),
-            {
-                "node": "artifact_generator",
-                "status": "Failure",
-                "message": reason,
-            },
-        ]
-        return state
+        use_case = selected[0] if selected and isinstance(selected[0], dict) else None
+        if current_path:
+            stem = Path(str(current_path)).stem
+            for case in selected:
+                if isinstance(case, dict) and str(case.get("id", "")) == stem:
+                    use_case = case
+                    break
+            else:
+                if stem.isdigit():
+                    index = int(stem)
+                    if 0 <= index < len(selected) and isinstance(selected[index], dict):
+                        use_case = selected[index]
 
-    state["current_use_case"] = use_case
-    state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
-    state["platform"] = use_case.get("platform", state.get("platform", "android"))
-    state["app_path"] = state.get("app_path") or use_case.get("app_path")
-    # Each use case gets its own sdk_agent conversation: reset agent_id so
-    # run_sdk_integration_agent builds a fresh agent instead of reusing a
-    # (by now closed) session id left over from the previous use case.
-    state["agent_id"] = None
-    # last_prompt_type/visited_user_actions are per-use-case progress
-    # markers for the sdk_agent loop (see sdk_agent_node/route_from_emulator)
-    # but neither was ever reset between use cases: without this, a use
-    # case after the first would inherit "verify_prompt"/True left over
-    # from the previous use case and skip straight past integrate_prompt,
-    # event_prompt, and user_actions.
-    state["last_prompt_type"] = "integrate_prompt"
-    state["visited_user_actions"] = False
+        if not isinstance(use_case, dict):
+            reason = "Active use case could not be resolved for this run."
+            state["test_status"] = "FAIL"
+            state["fail_reason"] = reason
+            state["nodes_log"] = [
+                *(state.get("nodes_log") or []),
+                {
+                    "node": "artifact_generator",
+                    "status": "Failure",
+                    "message": reason,
+                },
+            ]
+            return state
 
-    if use_case.get("answer_policy"):
-        policy_run_id = run_id or "run"
-        repo = get_answer_policy_repository()
-        repo.load_from_use_case(policy_run_id, use_case)
+        state["current_use_case"] = use_case
+        current_use_case = use_case
+        state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
+        platform = (
+            use_case.get("run_platform")
+            or use_case.get("platform")
+            or state.get("platform", "android")
+        )
+        if isinstance(platform, str):
+            platform = platform.strip().lower()
+        state["platform"] = platform
+        state["app_path"] = state.get("app_path") or use_case.get("app_path")
+        # Each use case gets its own sdk_agent conversation: reset agent_id so
+        # run_sdk_integration_agent builds a fresh agent instead of reusing a
+        # (by now closed) session id left over from the previous use case.
+        state["agent_id"] = None
+        state["dev_key"] = use_case.get("dev_key") or state.get("dev_key") or get_dev_key()
+        state["app_id"] = (
+            use_case.get("app_id") or state.get("app_id") or get_app_id_for_platform(platform)
+        )
+        # last_prompt_type/visited_user_actions are per-use-case progress
+        # markers for the sdk_agent loop (see sdk_agent_node/route_from_emulator)
+        # but neither was ever reset between use cases: without this, a use
+        # case after the first would inherit "verify_prompt"/True left over
+        # from the previous use case and skip straight past integrate_prompt,
+        # event_prompt, and user_actions.
+        state["last_prompt_type"] = "integrate_prompt"
+        state["visited_user_actions"] = False
+
+        if use_case.get("answer_policy"):
+            get_answer_policy_repository().load_from_use_case(
+                run_id or "run",
+                use_case,
+            )
 
     if current_path:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
@@ -1169,109 +1179,6 @@ def emulator_node(state: PipelineState) -> dict:
     return _emulator_node_impl(state)
 
 
-# def emulator_node(
-#     state: PipelineState,
-# ) -> dict:
-#     """
-#     Node 7: Emulator
-
-#     Starts Appium,
-#     starts device,
-#     launches application.
-#     """
-
-#     device_id = state.get(
-#         "device_id"
-#     )
-
-#     app_id = state.get(
-#         "app_id"
-#     )
-
-#     remote_url = state.get(
-#         "remote_url",
-#         "http://127.0.0.1:4723",
-#     )
-
-
-#     steps = []
-
-#     driver_instance = None
-
-#     devices_listing = ""
-
-
-#     try:
-
-#         steps.append(
-#             f"[setup] {setup_appium_environment()}"
-#         )
-
-
-#         steps.append(
-#             f"[server] {start_appium_server()}"
-#         )
-
-
-#         devices_listing = list_devices()
-
-
-#         steps.append(
-#             f"[devices] {devices_listing}"
-#         )
-
-
-#         if not device_id:
-
-#             steps.append(
-#                 "[device] Skipped: device_id missing."
-#             )
-
-#         else:
-
-#             steps.append(
-#                 f"[device] {start_device(device_id)}"
-#             )
-
-
-#             driver_result = launch_app_on_device(
-#                 state.get("platform"),
-#                 device_id,
-#                 app_id,
-#                 remote_url,
-#             )
-
-
-#             if isinstance(driver_result, str):
-
-#                 steps.append(
-#                     f"[launch] {driver_result}"
-#                 )
-
-#             else:
-
-#                 driver_instance = driver_result
-#                 # Register before return so teardown can quit even if this
-#                 # node crashes after launch (or stream misses the update).
-#                 run_id = state.get("run_id")
-#                 if run_id:
-#                     try:
-#                         from infra.workflow.run_resource_registry import (
-#                             register_driver,
-#                         )
-
-#                         register_driver(str(run_id), driver_instance)
-#                     except Exception:
-#                         pass
-
-#                 steps.append(
-#                     "[launch] App launched successfully."
-#                 )
-
-
-#     except Exception as exc:
-
-
 def user_actions_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1509,23 +1416,6 @@ def route_from_emulator(state: PipelineState) -> str:
         return "test_runner"
 
     return _route_from_emulator_impl(state)
-    prompt_just_run = (
-        state.get("prompt_just_run")
-        or state.get("last_prompt_type")
-    )
-
-    if (
-        prompt_just_run
-        == "event_prompt"
-        and not state.get(
-            "visited_user_actions",
-            False,
-        )
-    ):
-        return "user_actions"
-
-    return "sdk_agent"
-
 
 
 def route_from_visual_report(
