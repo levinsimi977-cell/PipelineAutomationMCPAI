@@ -592,7 +592,7 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         platform = (
             current_use_case.get("run_platform")
             or current_use_case.get("platform")
-            or "android"
+            or state.get("platform", "android")
         )
         if isinstance(platform, str):
             platform = platform.strip().lower()
@@ -665,12 +665,23 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         state["current_use_case"] = use_case
         current_use_case = use_case
         state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
-        state["platform"] = use_case.get("platform", state.get("platform", "android"))
+        platform = (
+            use_case.get("run_platform")
+            or use_case.get("platform")
+            or state.get("platform", "android")
+        )
+        if isinstance(platform, str):
+            platform = platform.strip().lower()
+        state["platform"] = platform
         state["app_path"] = state.get("app_path") or use_case.get("app_path")
         # Each use case gets its own sdk_agent conversation: reset agent_id so
         # run_sdk_integration_agent builds a fresh agent instead of reusing a
         # (by now closed) session id left over from the previous use case.
         state["agent_id"] = None
+        state["dev_key"] = use_case.get("dev_key") or state.get("dev_key") or get_dev_key()
+        state["app_id"] = (
+            use_case.get("app_id") or state.get("app_id") or get_app_id_for_platform(platform)
+        )
         # last_prompt_type/visited_user_actions are per-use-case progress
         # markers for the sdk_agent loop (see sdk_agent_node/route_from_emulator)
         # but neither was ever reset between use cases: without this, a use
@@ -1389,6 +1400,9 @@ def route_from_sdk_agent(
 
     if prompt_just_run == "verify_prompt":
         return "test_runner"
+        
+    if prompt_just_run == "event_prompt":
+        return "user_actions" 
 
     return "compilation_check"
 
