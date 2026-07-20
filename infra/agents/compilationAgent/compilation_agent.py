@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import subprocess
 import time
@@ -103,6 +104,73 @@ def _resolve_app_path(state: dict[str, Any]) -> str:
         if value:
             return str(value)
     return ""
+
+
+# "High signal": lines that are themselves a genuine compiler/linker
+# diagnostic. Deliberately does NOT include a bare "ld: " — that substring
+# also occurs inside completely unrelated lines such as
+# "xcodebuild: WARNING: ..." (the "...build:" tail + following space reads
+# as "ld: "), which was flooding the extracted snippet with the
+# multiple-destinations warning noise instead of the actual error.
+_HIGH_SIGNAL_PATTERN = re.compile(
+    r"error:|fatal error:|ld: error:|linker command failed|"
+    r"undefined symbols for architecture|duplicate symbol|no such module|"
+    r"use of undeclared identifier|redefinition of|"
+    r"command \S+ failed with a nonzero exit code",
+    re.IGNORECASE,
+)
+# "Low signal": only worth showing when nothing high-signal was found at
+# all, since on their own they don't explain *why* the build failed.
+_LOW_SIGNAL_PATTERN = re.compile(
+    r"\*\* BUILD FAILED \*\*|the following build commands failed",
+    re.IGNORECASE,
+)
+
+
+def _extract_error_snippet(
+    stdout: str, stderr: str, *, context_lines: int = 1, max_chars: int = 3000
+) -> str:
+    """Pull out just the lines that actually explain a build failure.
+
+    Scans the *full* stdout and stderr (not a last-N-chars tail, which
+    routinely cuts off the one line that matters on a verbose build) for
+    known compiler/linker diagnostic markers, plus a line of context
+    around each match. Both streams are always scanned and combined —
+    xcodebuild/gradle split their output across stdout/stderr in ways that
+    aren't consistent across versions, so checking only one and stopping
+    as soon as it finds *anything* (even irrelevant noise) can hide the
+    real error sitting in the other stream. Returns "" if nothing matched
+    in either stream (caller should fall back to a plain tail then).
+    """
+    def _matches(text: str, pattern: re.Pattern) -> list[int]:
+        if not text:
+            return []
+        return [i for i, line in enumerate(text.splitlines()) if pattern.search(line)]
+
+    def _snippet_for(text: str, indices: list[int]) -> str:
+        if not indices:
+            return ""
+        lines = text.splitlines()
+        keep: set[int] = set()
+        for idx in indices:
+            lo, hi = max(0, idx - context_lines), min(len(lines), idx + context_lines + 1)
+            keep.update(range(lo, hi))
+        return "\n".join(lines[i] for i in sorted(keep))
+
+    stdout_hits = _matches(stdout, _HIGH_SIGNAL_PATTERN)
+    stderr_hits = _matches(stderr, _HIGH_SIGNAL_PATTERN)
+    if not (stdout_hits or stderr_hits):
+        stdout_hits = _matches(stdout, _LOW_SIGNAL_PATTERN)
+        stderr_hits = _matches(stderr, _LOW_SIGNAL_PATTERN)
+    if not (stdout_hits or stderr_hits):
+        return ""
+
+    parts = []
+    if stdout_hits:
+        parts.append(f"[stdout]\n{_snippet_for(stdout, stdout_hits)}")
+    if stderr_hits:
+        parts.append(f"[stderr]\n{_snippet_for(stderr, stderr_hits)}")
+    return "\n\n".join(parts)[:max_chars]
 
 
 def _write_log(log_dir: str | Path, stdout: str, stderr: str, prefix: str) -> str:
@@ -271,6 +339,16 @@ def run_gradle_build(
     success = result.returncode == 0
     log_path = _write_log(log_dir, result.stdout or "", result.stderr or "", prefix="gradle_build")
 
+    detail = (
+        f"`gradlew {gradle_task}` succeeded."
+        if success
+        else f"`gradlew {gradle_task}` failed with exit code {result.returncode}."
+    )
+    if not success:
+        error_snippet = _extract_error_snippet(result.stdout or "", result.stderr or "")
+        if error_snippet:
+            detail = f"{detail}\n\nRelevant output:\n{error_snippet}"
+
     return CompilationResult(
         status="PASSED" if success else "FAILED",
         platform="android",
@@ -278,11 +356,7 @@ def run_gradle_build(
         return_code=result.returncode,
         duration_seconds=duration,
         log_path=log_path,
-        detail=(
-            f"`gradlew {gradle_task}` succeeded."
-            if success
-            else f"`gradlew {gradle_task}` failed with exit code {result.returncode}."
-        ),
+        detail=detail,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
     )
@@ -431,6 +505,21 @@ def run_xcodebuild(
     success = result.returncode == 0
     log_path = _write_log(log_dir, result.stdout or "", result.stderr or "", prefix="xcodebuild")
 
+    detail = (
+        f"`xcodebuild` succeeded for scheme {resolved_scheme!r}."
+        if success
+        else f"`xcodebuild` failed (exit code {result.returncode}) for scheme {resolved_scheme!r}."
+    )
+    if not success:
+        # xcodebuild's actual clang/ld diagnostics can land in either
+        # stdout or stderr depending on the Xcode/build-system version, and
+        # the real "error:" line is very often well before the last
+        # LOG_TAIL_CHARS of a verbose build — scan the full output of both
+        # streams instead of relying on a blind tail to contain it.
+        error_snippet = _extract_error_snippet(result.stdout or "", result.stderr or "")
+        if error_snippet:
+            detail = f"{detail}\n\nRelevant output:\n{error_snippet}"
+
     return CompilationResult(
         status="PASSED" if success else "FAILED",
         platform="ios",
@@ -438,11 +527,7 @@ def run_xcodebuild(
         return_code=result.returncode,
         duration_seconds=duration,
         log_path=log_path,
-        detail=(
-            f"`xcodebuild` succeeded for scheme {resolved_scheme!r}."
-            if success
-            else f"`xcodebuild` failed (exit code {result.returncode}) for scheme {resolved_scheme!r}."
-        ),
+        detail=detail,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
     )
