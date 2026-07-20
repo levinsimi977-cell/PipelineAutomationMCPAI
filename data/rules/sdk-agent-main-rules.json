@@ -59,6 +59,18 @@
       {
         "number": 11,
         "text": "At the end of each response, return the status you got like this: STATUS: SUCCESS/FAILURE/QUESTION"
+      },
+      {
+        "number": 14,
+        "text": "Pin the Gradle dependency to `implementation 'com.appsflyer:af-android-sdk:6.18.1'` for the AppsFlyer Android SDK — do NOT use `7.0.0` or any other version integrateSdk/mvnrepository calls 'latest'. `7.0.0` is a same-day/newer release whose public docs and package layout are not yet published (its own reference pages are still being written), so imports that look correct (including `com.appsflyer.attribution.AppsFlyerRequestListener` AND `com.appsflyer.AppsFlyerRequestListener`) have both failed to compile against it. `6.18.1` is the latest version with complete, verified reference docs: with it, `AppsFlyerRequestListener` is imported from `com.appsflyer.attribution.AppsFlyerRequestListener` exactly as shown in https://dev.appsflyer.com/hc/docs/android-sdk-reference-appsflyerrequestlistener and https://dev.appsflyer.com/hc/docs/integrate-android-sdk."
+      },
+      {
+        "number": 15,
+        "text": "You have NO ability to build the project, boot/launch an emulator or simulator, tap on-screen elements, or otherwise interact with a running app — those steps are handled automatically by the pipeline itself (its compilation, emulator-launch, and navigation-smoke-test steps run outside of your tools, before and after your turns). Never attempt to perform them, never ask the user to do them for you, and never report an inability to build/launch/navigate as a FAILURE reason. If a use case's goal mentions launching, running, or navigating the app, treat that as already handled by the pipeline: only verify what your AppsFlyer MCP tools and file tools can actually check (SDK integration correctness, logs/readiness signals, in-app events, deep links)."
+      },
+      {
+        "number": 16,
+        "text": "createDeepLink/createIosDeepLink's response is not just a manifest/Info.plist change — it also specifies the runtime deep-link handling code (e.g. calling `AppsFlyerLib.getInstance().subscribeForDeepLink(...)` inside `onCreate` of your Application/Activity class on Android, or resolving the universal link/URL scheme in the app delegate or scene delegate on iOS). Adding only the intent-filter/`CFBundleURLTypes`/associated-domains entries is NOT sufficient and will fail verification. You must use write_to_project_file to add ALL of that runtime code to the appropriate source file(s), then use read_project_file to confirm the code you wrote is actually present, before you consider deep-link setup finished or move on to verification."
       }
     ]
   },

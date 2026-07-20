@@ -28,7 +28,8 @@
     },
     "verify_sdk": {
       "verify_logs_ready": true,
-      "app_launched": true
+      "app_launched": true,
+      "validate_basic_navigation": true
     },
     "android": null
   },
