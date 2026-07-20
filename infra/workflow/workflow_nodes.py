@@ -619,6 +619,66 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
             run_id or "run",
             current_use_case,
         )
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
+        return state
+
+    use_case = selected[0] if isinstance(selected[0], dict) else None
+    if current_path:
+        stem = Path(str(current_path)).stem
+        for case in selected:
+            if isinstance(case, dict) and str(case.get("id", "")) == stem:
+                use_case = case
+                break
+        else:
+            if stem.isdigit():
+                index = int(stem)
+                if 0 <= index < len(selected) and isinstance(selected[index], dict):
+                    use_case = selected[index]
+
+    if not isinstance(use_case, dict):
+        reason = "Active use case could not be resolved for this run."
+        state["test_status"] = "FAIL"
+        state["fail_reason"] = reason
+        state["nodes_log"] = [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "artifact_generator",
+                "status": "Failure",
+                "message": reason,
+            },
+        ]
+        return state
+
+    state["current_use_case"] = use_case
+    state["answer_policy"] = use_case.get("answer_policy") or state.get("answer_policy") or {}
+    state["platform"] = use_case.get("platform", state.get("platform", "android"))
+    state["app_path"] = state.get("app_path") or use_case.get("app_path")
+    # Each use case gets its own sdk_agent conversation: reset agent_id so
+    # run_sdk_integration_agent builds a fresh agent instead of reusing a
+    # (by now closed) session id left over from the previous use case.
+    state["agent_id"] = None
+    # last_prompt_type/visited_user_actions are per-use-case progress
+    # markers for the sdk_agent loop (see sdk_agent_node/route_from_emulator)
+    # but neither was ever reset between use cases: without this, a use
+    # case after the first would inherit "verify_prompt"/True left over
+    # from the previous use case and skip straight past integrate_prompt,
+    # event_prompt, and user_actions.
+    state["last_prompt_type"] = "integrate_prompt"
+    state["visited_user_actions"] = False
+
+    if use_case.get("answer_policy"):
+        policy_run_id = run_id or "run"
+        repo = get_answer_policy_repository()
+        repo.load_from_use_case(policy_run_id, use_case)
 
     if current_path:
         state["selected_use_cases_path"] = state.get("selected_use_cases_path") or current_path
@@ -984,6 +1044,7 @@ def sdk_agent_node(
         node_log["reason"] = result["reason"]
 
 
+    state["sdk_agent_is_visited"] = True
 
     state["nodes_log"] = [
         *(state.get("nodes_log") or []),
@@ -994,25 +1055,31 @@ def sdk_agent_node(
 
     if not node_succeeded:
 
-        state["test_status"] = "FAIL"
+        # Intentionally NOT setting state["test_status"] = "FAIL" here:
+        # that field is the shared gate every other node's router checks
+        # (_is_pipeline_fail/route_after_node), so leaving it untouched
+        # lets the pipeline continue past an sdk_agent failure instead of
+        # jumping straight to test_runner. The failure is still fully
+        # recorded above in nodes_log and below in fail_reason.
 
         if "reason" in result:
 
             state["fail_reason"] = result["reason"]
 
+    # Advance to the next prompt type regardless of pass/fail (not just on
+    # success): a FAIL here doesn't necessarily mean the agent actually
+    # failed the task — it still needs to move forward instead of retrying
+    # the same prompt forever. The failure is already recorded in
+    # nodes_log/fail_reason for later inspection.
+    next_prompt_type = _next_prompt_type(
+        current_prompt_type
+    )
 
-    else:
+    if next_prompt_type is not None:
 
-        next_prompt_type = _next_prompt_type(
-            current_prompt_type
+        state["last_prompt_type"] = (
+            next_prompt_type
         )
-
-
-        if next_prompt_type is not None:
-
-            state["last_prompt_type"] = (
-                next_prompt_type
-            )
 
 
 
@@ -1236,7 +1303,40 @@ def test_runner_node(
 ) -> PipelineState:
     """
     Node 10: Test Runner
+
+    Final roll-up for sdk_agent only: sdk_agent_node deliberately does NOT
+    set state["test_status"] on failure (see sdk_agent_node), so the
+    pipeline can keep routing normally instead of jumping straight here.
+    That means, by the time we get here, test_status may still say
+    everything is fine even though sdk_agent actually failed at some point
+    during this use case. Scan nodes_log for that node specifically (not
+    any other node — those already set test_status themselves on failure)
+    and restore "FAIL" so end-of-run consumers (e.g. ui/app.py's
+    final_state.get("test_status") == "FAIL" check) still see the correct
+    verdict for this use case.
+
+    Deliberately does NOT scope this scan to "only entries from the
+    current use case" — nodes_log accumulates across every use case in
+    this run and nothing resets it between use cases yet, so a failure in
+    an earlier use case's sdk_agent calls will also be picked up here for
+    a later, otherwise-passing use case. That is a known, separate
+    limitation (not addressed here).
     """
+    if state.get("test_status") != "FAIL":
+        log = [
+            entry
+            for entry in (state.get("nodes_log") or [])
+            if isinstance(entry, dict)
+        ]
+
+        sdk_agent_failed = any(
+            entry.get("node") == "sdk_agent"
+            and str(entry.get("status", "")).lower() in ("failure", "fail")
+            for entry in log
+        )
+
+        if sdk_agent_failed:
+            state["test_status"] = "FAIL"
 
     return state
 
@@ -1378,13 +1478,14 @@ def route_from_sdk_agent(
     """
     Conditional edge from SDK agent.
 
-    FAIL (any prompt) -> test_runner
-    verify_prompt success -> test_runner
-    integrate/event success -> compilation_check
-    """
-    if _is_pipeline_fail(state):
-        return "test_runner"
+    verify_prompt (pass or fail) -> test_runner
+    integrate/event (pass or fail) -> compilation_check
 
+    Deliberately does NOT check _is_pipeline_fail here: an sdk_agent
+    failure is recorded in nodes_log/fail_reason (see sdk_agent_node) but
+    must not short-circuit straight to test_runner — it should continue
+    to the same next node it would reach on success.
+    """
     prompt_just_run = (
         state.get("prompt_just_run")
         or state.get("last_prompt_type")
