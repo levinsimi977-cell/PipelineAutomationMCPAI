@@ -1400,6 +1400,9 @@ def route_from_sdk_agent(
 
     if prompt_just_run == "verify_prompt":
         return "test_runner"
+        
+    if prompt_just_run == "event_prompt":
+        return "user_actions" 
 
     return "compilation_check"
 
