@@ -9,11 +9,7 @@ from typing import Any, Literal, Optional, TypedDict, get_args
 
 from typing_extensions import NotRequired
 
-from infra.application.app import (
-    cleanup_environment,
-    run_tasks_3_and_4,
-    setup_environment,
-)
+from infra.application.app import run_tasks_3_and_4, setup_environment
 from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
     prompt_agent_node as build_prompts,
 )
@@ -39,7 +35,7 @@ from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
     delete_run_selection,
 )
-from infra.reports.report import McpToolOrderValidator
+
 
 # Resolve emulator tools directory relative to this file
 _TOOLS_DIR = os.path.normpath(
@@ -187,7 +183,6 @@ class PipelineState(TypedDict, total=False):
     original_app_path: NotRequired[str]
 
     sandbox_path: NotRequired[str]
-    cleanup_status: NotRequired[str]
 
 
     dev_key_configured: NotRequired[bool]
@@ -211,15 +206,6 @@ class PipelineState(TypedDict, total=False):
 
     mcp_integration_text: NotRequired[str]
 
-    # MCP validation results
-
-    is_tool_order_valid: NotRequired[bool]
-
-    is_tool_order_valid_message: NotRequired[str]
-
-    expected_tool_order: NotRequired[list[str]]
-
-    actual_tool_order: NotRequired[list[str]]
 
     # ==================================================
     # Agent management
@@ -249,7 +235,7 @@ class PipelineState(TypedDict, total=False):
 
 
     # ==================================================
-    # User actions and deep link validation
+    # User actions
     # ==================================================
 
     prompt_agent_answer: NotRequired[str]
@@ -288,10 +274,6 @@ class PipelineState(TypedDict, total=False):
     compilation_result: NotRequired[Any]
 
     audit_events: NotRequired[list]
-
-    files_modified: NotRequired[bool]
-
-    applied_files: NotRequired[list[str]]
 
 
     # ==================================================
@@ -746,12 +728,6 @@ async def environment_setup_node(
         if extra:
             entry.update(extra)
         return [*(state.get("nodes_log") or []), entry]
-
-    # Drop leftover sandbox from a previous use-case loop iteration.
-    previous = state.get("sandbox_path")
-    if previous:
-        cleanup_environment(previous)
-        state["sandbox_path"] = ""
 
     environment_result = setup_environment(
         dict(state)
@@ -1379,12 +1355,6 @@ def visual_report_node(
 
             state["current_use_case_path"] = None
 
-    # Always delete this use case's sandbox (pass or fail) after its report step.
-    sandbox_path = state.get("sandbox_path")
-    if sandbox_path:
-        cleanup_result = cleanup_environment(sandbox_path)
-        state["cleanup_status"] = cleanup_result.get("cleanup_status")
-        state["sandbox_path"] = ""
 
     if not state.get("current_use_case_path"):
         from data.reports.build_report import attach_index_report
