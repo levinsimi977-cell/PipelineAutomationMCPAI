@@ -320,7 +320,6 @@ async def create_sdk_integration_agent(
         "tools": agent_tools,
         "initial_prompt": final_execution_prompt,
     }
-        }
 
 # ============================================================================
 # Step B - The Orchestrator (this is the single entry point external code calls!)
