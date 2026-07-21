@@ -13,7 +13,7 @@
       "platform": "Platform: {platform.upper()}",
       "platform_instruction": "Make sure to use the correct MCP tools and edit the correct files for {platform.upper()}."
     },
-    "capabilities": "You are connected directly to the AppsFlyer MCP tools, and you have generic file tools.",
+    "capabilities": "You are connected directly to the AppsFlyer MCP tools, and you have generic file tools (on iOS: runPodInstall resolves Podfile dependencies).",
     "important_rules_heading": "Important rules:",
     "important_rules": [
       {
@@ -71,6 +71,10 @@
       {
         "number": 16,
         "text": "createDeepLink/createIosDeepLink's response is not just a manifest/Info.plist change — it also specifies the runtime deep-link handling code (e.g. calling `AppsFlyerLib.getInstance().subscribeForDeepLink(...)` inside `onCreate` of your Application/Activity class on Android, or resolving the universal link/URL scheme in the app delegate or scene delegate on iOS). Adding only the intent-filter/`CFBundleURLTypes`/associated-domains entries is NOT sufficient and will fail verification. You must use write_to_project_file to add ALL of that runtime code to the appropriate source file(s), then use read_project_file to confirm the code you wrote is actually present, before you consider deep-link setup finished or move on to verification."
+      },
+      {
+        "number": 17,
+        "text": "Configure the iOS SDK's dev key and app ID by calling `[[AppsFlyerLib shared] initWithDevKey:appleAppId:]` (Objective-C) or `AppsFlyerLib.shared().initialize(devKey:appId:)` (Swift) BEFORE calling `start` — do NOT assign `.appsFlyerDevKey` / `.appleAppID` as writable properties. In the current AppsFlyerFramework CocoaPods release (installed via a bare `pod 'AppsFlyerFramework'` with no version pin), both `appsFlyerDevKey` and `appleAppID` are declared `readonly` getters in `AppsFlyerLib.h` — assigning them (`[AppsFlyerLib shared].appleAppID = @\"...\"`) fails to compile with `error: assignment to readonly property`. Always check `AppsFlyerLib.h` under `Pods/AppsFlyerFramework/.../Headers/` for the exact current signature of `initWithDevKey:appleAppId:` (or the Swift `initialize(devKey:appId:)`) before writing this code, since the SDK's public API surface can change between versions."
       }
     ]
   },

@@ -30,7 +30,7 @@ from infra.workflow.nodes.nodeEmulator import (
     emulator_node as _emulator_node_impl,
     route_from_emulator as _route_from_emulator_impl,
 )
-from infra.load_env import get_app_id_for_platform, get_dev_key
+from infra.load_env import get_app_id_for_platform, get_dev_key, resolve_app_id_for_platform
 from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
     delete_run_selection,
@@ -603,11 +603,19 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         state["answer_policy"] = current_use_case.get("answer_policy") or {}
         # Resolve credentials for THIS use case (not leftovers from UC-N-1).
         state["dev_key"] = current_use_case.get("dev_key") or get_dev_key()
-        state["app_id"] = (
-            current_use_case.get("app_id") or get_app_id_for_platform(platform)
+        state["app_id"] = resolve_app_id_for_platform(
+            platform,
+            current_use_case.get("app_id") or get_app_id_for_platform(platform),
         )
+        # answer_policy.android only ever applies to an android run — an iOS
+        # (or "common"→ios) use case that happens to carry leftover/copy-pasted
+        # android policy data must never leak its device_id (an AVD name) in as
+        # this run's simulator UDID. Mirrors _resolve_device_id's platform
+        # guard in infra/agents/userActions/deep_link.py.
         android_policy = (
             (current_use_case.get("answer_policy") or {}).get("android") or {}
+            if platform == "android"
+            else {}
         )
         device_id = (
             current_use_case.get("device_id") or android_policy.get("device_id")
@@ -679,8 +687,9 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         # (by now closed) session id left over from the previous use case.
         state["agent_id"] = None
         state["dev_key"] = use_case.get("dev_key") or state.get("dev_key") or get_dev_key()
-        state["app_id"] = (
-            use_case.get("app_id") or state.get("app_id") or get_app_id_for_platform(platform)
+        state["app_id"] = resolve_app_id_for_platform(
+            platform,
+            use_case.get("app_id") or state.get("app_id") or get_app_id_for_platform(platform),
         )
         # last_prompt_type/visited_user_actions are per-use-case progress
         # markers for the sdk_agent loop (see sdk_agent_node/route_from_emulator)
