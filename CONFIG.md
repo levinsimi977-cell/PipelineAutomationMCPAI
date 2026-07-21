@@ -50,12 +50,36 @@ locally).
 | `ANDROID_HOME` / `ANDROID_SDK_ROOT` | auto-detected | `infra/agents/sdkAgent/tools/emulator.py` | Android SDK location for `adb`/emulator/Appium. |
 | `LOCALAPPDATA` (Windows only) | — | `infra/agents/sdkAgent/tools/emulator.py` | Used to build the default SDK path `%LOCALAPPDATA%\Android\Sdk`. |
 | `PATH` | augmented | `infra/agents/sdkAgent/tools/emulator.py` | `platform-tools`, `emulator`, and `cmdline-tools/latest/bin` are prepended. |
+| `GRADLE_USER_HOME` | `C:\Shared_CI_Cache\.gradle-user-home` | `infra/agents/compilationAgent/compilation_agent.py` | Shared Gradle distribution/dependency cache used for every `gradlew assembleDebug` run (see note below). |
 
 If `ANDROID_HOME`/`ANDROID_SDK_ROOT` are unset, the SDK path is guessed by OS:
 
 - Windows: `%LOCALAPPDATA%\Android\Sdk`
 - macOS: `~/Library/Android/sdk`
 - Linux: `~/Android/Sdk`
+
+### Shared Gradle cache (`GRADLE_USER_HOME`)
+
+Each pipeline run copies the app into a fresh `sandboxes/run_<id>/` folder.
+Without a shared cache, every run would re-download the whole Gradle
+distribution (~130MB) and all Maven dependencies from scratch. To avoid
+that, `compilation_agent.py` points Gradle at one fixed, dedicated cache
+directory shared by all runs — only the downloaded binaries/deps are
+shared, not any project source file, so runs stay isolated.
+
+- Default: `C:\Shared_CI_Cache\.gradle-user-home` (Windows-only path — this
+  repo currently only runs the Android build on Windows).
+- To use a different location (e.g. on macOS/Linux, or if that drive
+  doesn't exist on your machine), set `GRADLE_USER_HOME` yourself — in your
+  shell or in the project-root `.env` (loaded by `infra/load_env.py`):
+
+  ```dotenv
+  GRADLE_USER_HOME=D:\dev-cache\.gradle-user-home
+  ```
+
+- The directory is created automatically on first use
+  (`Path(...).mkdir(parents=True, exist_ok=True)`) — just make sure the
+  drive/path you choose is writable by whichever user runs the pipeline.
 
 ### Missing `config` module (used but not committed)
 

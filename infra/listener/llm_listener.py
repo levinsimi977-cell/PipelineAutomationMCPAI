@@ -1,3 +1,4 @@
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from infra.agents.AuditRecorder import AuditRecorder
@@ -8,6 +9,21 @@ from infra.agents.answerAgent.answer_agent import (
 from infra.agents.answerAgent.classification import Classification, classify_llm_output
 
 MAX_QUESTION_ROUNDS = 10
+
+# Matches a `"status": "SUCCESS"` (or FAILURE/PARTIAL_SUCCESS/INCONCLUSIVE)
+# field inside a JSON-formatted final report. Case-insensitive since the
+# agent sometimes lowercases the value despite the schema it was given.
+_JSON_STATUS_RE = re.compile(
+    r'"status"\s*:\s*"(success|failure|partial_success|inconclusive)"', re.IGNORECASE
+)
+
+# nodes_log["text_preview"] used to be capped at 200 chars, which is often
+# just the opening sentence of a multi-section agent report — nowhere near
+# enough to see *why* the Classifier called FAILURE (the reasoning is
+# usually near the end). This is the only place that text ends up visible
+# to the UI/user for a failed run, so keep enough of it to actually debug
+# from, not just a teaser.
+TEXT_PREVIEW_LIMIT = 4000
 
 
 def _merge_answers(
@@ -37,6 +53,8 @@ def _state_for_classifier(
         "last_agent_message": last_message,
         "agent_messages": agent_messages,
     }
+_IOS_TWO_STEP_TOOLS = frozenset({"verifyIosSdk", "verifyIosInAppEvent", "verifyIosDeepLink"})
+
 def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
     """Convert one agent tool_call to validator call_log entry."""
     if isinstance(tool_call, dict):
@@ -49,7 +67,7 @@ def _tool_call_to_log_entry(tool_call: Any, platform: str) -> Dict[str, Any]:
     entry: Dict[str, Any] = {"tool": name}
 
     # iOS verify — action חובה לפי הפורמט של הקולגה
-    if platform == "ios" and name == "verifyIosSdk":
+    if platform == "ios" and name  in _IOS_TWO_STEP_TOOLS:
         action = args.get("action")
         if action:
             entry["action"] = action
@@ -140,7 +158,7 @@ def listener_on_text(
             "listener": "UNCLASSIFIED",
             "status": "INFO",
             "message": str(exc),
-            "text_preview": agent_text[:200],
+            "text_preview": agent_text[:TEXT_PREVIEW_LIMIT],
         })
         return None, updates
 
@@ -150,7 +168,7 @@ def listener_on_text(
             "listener": "SUCCESS",
             "status": "INFO",
             "message": "Classifier reported SUCCESS; continuing node operation.",
-            "text_preview": agent_text[:200],
+            "text_preview": agent_text[:TEXT_PREVIEW_LIMIT],
         })
         return None, updates
 
@@ -160,7 +178,7 @@ def listener_on_text(
             "listener": "FAIL",
             "status": "FAIL",
             "reason": "Classifier reported FAILURE.",
-            "text_preview": agent_text[:200],
+            "text_preview": agent_text[:TEXT_PREVIEW_LIMIT],
         })
         updates["test_status"] = "FAIL"
         return None, updates
@@ -442,7 +460,7 @@ def _record_listener_updates_to_audit(
         "action": action,
         "test_status": updates.get("test_status"),
         "question_rounds": updates.get("question_rounds"),
-        "agent_text_preview": (agent_text or "")[:500],
+        "agent_text_preview": (agent_text or "")[:TEXT_PREVIEW_LIMIT],
         "new_mcp_calls": len(updates.get("call_log") or []),
     })
 
@@ -467,6 +485,32 @@ def _finalize_turn(
             agent_text=agent_text,
         )
     _apply_listener_updates(state, updates)
+
+
+def _fallback_status_from_json(text: str) -> Optional[str]:
+    """
+    Safety net for when a stage's generated prompt required an exact JSON
+    schema for the agent's final answer (e.g. verify_prompt's "Return ONLY
+    this JSON object ... no additional commentary") and — despite
+    BASE_PROMPT_TEMPLATE's instruction to always carve out room for it —
+    the agent's response ends up missing the literal `STATUS: SUCCESS` /
+    `STATUS: FAILURE` line rule 13 requires. Without this, a JSON verdict
+    the agent already produced is invisible to the orchestrator below,
+    which just re-prompts "continue" forever, re-eliciting the same JSON,
+    until MAX_TURNS is exhausted (see agent.py) with nothing to show for it.
+
+    Takes the LAST `"status": "..."` match in the text: a JSON report that
+    separates per-check statuses from one overall verdict conventionally
+    places the overall one last. Only SUCCESS/FAILURE are acted on;
+    PARTIAL_SUCCESS/INCONCLUSIVE are intentionally ambiguous and left to
+    keep "continue"-ing (matches how STATUS: QUESTION also isn't handled
+    here, only SUCCESS/FAILURE are).
+    """
+    matches = _JSON_STATUS_RE.findall(text)
+    if not matches:
+        return None
+    last = matches[-1].upper()
+    return last if last in ("SUCCESS", "FAILURE") else None
 
 
 def listener_on_agent_turn(
@@ -532,6 +576,11 @@ def listener_on_agent_turn(
     elif "STATUS: SUCCESS" in text_upper:
         action, next_prompt = "done", None
     elif "STATUS: FAILURE" in text_upper:
+        updates["test_status"] = "FAIL"
+        action, next_prompt = "fail", None
+    elif (fallback_status := _fallback_status_from_json(final_text)) == "SUCCESS":
+        action, next_prompt = "done", None
+    elif fallback_status == "FAILURE":
         updates["test_status"] = "FAIL"
         action, next_prompt = "fail", None
     else:

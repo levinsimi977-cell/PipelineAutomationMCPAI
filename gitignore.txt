@@ -41,3 +41,4 @@ infra/agents/answerAgent/config.py
 .streamlit/secrets.toml
 # Sandbox app replicas created at runtime during pipeline execution.
 sandboxes/
+.idea/

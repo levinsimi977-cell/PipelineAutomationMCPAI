@@ -32,6 +32,11 @@ class InAppEventPolicy(BaseModel):
 class VerifySdkPolicy(BaseModel):
     verify_logs_ready: bool = True
     app_launched: bool = True
+    # Opt-in: when true, emulator_node runs a best-effort Appium smoke test
+    # (tap a few on-screen buttons, confirm the app stays responsive) right
+    # after launching the app. Off by default since most use cases don't
+    # describe any navigation behavior to verify.
+    validate_basic_navigation: bool = False
 
 
 class AndroidPolicy(BaseModel):

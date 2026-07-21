@@ -77,6 +77,7 @@ def build_workflow():
         route_from_sdk_agent,
         {
             "compilation_check": "compilation_check",
+            "user_actions": "user_actions",
             "test_runner": "test_runner",
         },
     )
