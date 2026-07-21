@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import json
 import uuid
 from pathlib import Path
@@ -23,6 +25,8 @@ load_project_env(override=True)
 # Safety net: caps how many sdk_agent.ainvoke() turns a single call to
 # run_sdk_integration_agent() may take before giving up.
 MAX_TURNS = 15
+# CocoaPods can take a while to resolve/download on a cold cache.
+POD_INSTALL_TIMEOUT_SECONDS = 180
 # infra/agents/sdkAgent/tools/agent.py -> project root is 4 levels up
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _MAIN_RULES_PATH = _PROJECT_ROOT / "data" / "rules" / "sdk-agent-main-rules.json"
@@ -194,7 +198,59 @@ async def create_sdk_integration_agent(
             })
             return json.dumps({"status": "WRITTEN" if changed else "NO_CHANGES", "file_path": file_path}, indent=2)
         except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)      
+    @tool
+    def run_pod_install() -> str:
+        """iOS only: run `pod install` in the directory containing the
+        project's Podfile. Call this immediately after writing/updating
+        the Podfile — do NOT just tell the user to run it manually.
+        Without this, the CocoaPods dependency you added is never
+        actually resolved/linked and the later compilation check fails.
+        """
+        if platform_lower != "ios":
+            return json.dumps({
+                "status": "SKIPPED",
+                "reason": "run_pod_install is iOS-only; Android dependencies are resolved by Gradle at build time.",
+            }, indent=2)
+        if shutil.which("pod") is None:
+            return json.dumps({
+                "status": "FAILED",
+                "reason": "`pod` (CocoaPods) is not installed/available on this machine.",
+            }, indent=2)
+        podfile_matches = list(project_root.rglob("Podfile"))
+        if not podfile_matches:
+            return json.dumps({
+                "status": "FAILED",
+                "reason": "No Podfile found under the project root. Write the Podfile first.",
+            }, indent=2)
+        podfile_dir = podfile_matches[0].parent
+        try:
+            result = subprocess.run(
+                ["pod", "install"],
+                cwd=str(podfile_dir),
+                capture_output=True,
+                text=True,
+                timeout=POD_INSTALL_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            return json.dumps({
+                "status": "FAILED",
+                "reason": f"`pod install` exceeded the {POD_INSTALL_TIMEOUT_SECONDS}s timeout.",
+            }, indent=2)
+        except Exception as e:
             return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+        succeeded = result.returncode == 0
+        audit_recorder.write("POD_INSTALL_RUN", {
+            "cwd": str(podfile_dir),
+            "return_code": result.returncode,
+            "succeeded": succeeded,
+        })
+        return json.dumps({
+            "status": "OK" if succeeded else "FAILED",
+            "return_code": result.returncode,
+            "stdout_tail": (result.stdout or "")[-2000:],
+            "stderr_tail": (result.stderr or "")[-2000:],
+        }, indent=2)
 
     @tool
     def write_events_manifest(manifest_json: str) -> str:
@@ -236,6 +292,7 @@ async def create_sdk_integration_agent(
         )
     # All tools (MCP + local) together - these are the tools registered to the agent
     agent_tools = [*mcp_tools, *local_tools]
+
     # --------------------------------------------------------------------
     # Ground rules for the agent. Rule 13 is critical: it lets the
     # orchestrator below detect true turn completion via "STATUS: SUCCESS".
@@ -262,6 +319,7 @@ async def create_sdk_integration_agent(
         "tools": agent_tools,
         "initial_prompt": final_execution_prompt,
     }
+
 # ============================================================================
 # Step B - The Orchestrator (this is the single entry point external code calls!)
 # ============================================================================
