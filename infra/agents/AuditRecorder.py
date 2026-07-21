@@ -1,5 +1,4 @@
 import json
-from collections import defaultdict
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
@@ -31,8 +30,23 @@ class AuditRecorder:
 
         self.events.append(event)
 
-        with self.audit_log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        line = json.dumps(event, ensure_ascii=False) + "\n"
+        try:
+            with self.audit_log_path.open("a", encoding="utf-8") as f:
+                f.write(line)
+        except FileNotFoundError:
+            # The run directory can legitimately be gone by the time this
+            # fires — e.g. a late/overlapping write racing the end-of-run
+            # cleanup in workflow_nodes.py's _clear_run_dir(). The event is
+            # already kept in self.events above; recreate the directory and
+            # retry once so a merely-missing folder doesn't lose the entry,
+            # but never let a disappeared run directory crash the pipeline.
+            try:
+                self.run_dir.mkdir(parents=True, exist_ok=True)
+                with self.audit_log_path.open("a", encoding="utf-8") as f:
+                    f.write(line)
+            except OSError:
+                pass
 
 
     def agent_decisions(self) -> List[Dict[str, Any]]:

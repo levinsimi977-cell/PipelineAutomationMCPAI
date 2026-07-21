@@ -16,8 +16,15 @@ import subprocess
 import infra.agents.sdkAgent.tools.emulator as emulator
 
 
-def _fake_run(stdout: str):
-    def _run(*args, **kwargs):
+def _fake_run(stdout: str, boot_completed: str = "1"):
+    """`adb devices` and `adb ... shell getprop sys.boot_completed` share the
+    same monkeypatched subprocess.run, so route by whether "getprop" is in
+    the command -- boot_completed defaults to "1" (already fully booted) so
+    existing "ready device" tests don't need to know this check exists."""
+
+    def _run(args, *a, **kwargs):
+        if "getprop" in args:
+            return subprocess.CompletedProcess(args, 0, stdout=boot_completed, stderr="")
         return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
 
     return _run
@@ -52,6 +59,22 @@ def test_get_connected_android_device_skips_non_ready_devices(monkeypatch):
 def test_get_connected_android_device_none_when_no_devices(monkeypatch):
     monkeypatch.setattr(emulator, "_resolve_executable", lambda name, env: name)
     monkeypatch.setattr(subprocess, "run", _fake_run("List of devices attached\n"))
+
+    assert emulator.get_connected_android_device() is None
+
+
+def test_get_connected_android_device_skips_device_still_mid_boot(monkeypatch):
+    """Regression: `adb devices` reports "device" state as soon as adbd is
+    reachable, well before Android's own OS has finished booting (system
+    services like `package`/`settings` aren't registered yet) -- installing
+    or launching against it that early fails with opaque "cmd: Can't find
+    service: package/settings" errors. Must not be treated as ready."""
+    monkeypatch.setattr(emulator, "_resolve_executable", lambda name, env: name)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _fake_run("List of devices attached\nemulator-5554\tdevice\n", boot_completed=""),
+    )
 
     assert emulator.get_connected_android_device() is None
 
@@ -479,6 +502,27 @@ def test_launch_app_on_device_android_sets_udid_capability(monkeypatch):
     assert captured["capabilities"]["appium:appPackage"] == "com.example.app"
 
 
+def test_launch_app_on_device_android_raises_uiautomator2_timeouts(monkeypatch):
+    """Regression: Appium's 30s default for pushing+starting the on-device uiautomator2
+    server is routinely too short on a freshly-booted/loaded emulator -- must be raised
+    well above default so a single attempt is more likely to succeed outright."""
+    captured = {}
+
+    def _fake_remote(remote_url, options):
+        captured["capabilities"] = dict(options.capabilities)
+        return _FakeAppiumDriver()
+
+    monkeypatch.setattr(emulator.webdriver, "Remote", _fake_remote)
+
+    emulator.launch_app_on_device(
+        "android", "emulator-5554", "com.example.app", "http://127.0.0.1:4723"
+    )
+
+    assert captured["capabilities"]["appium:uiautomator2ServerLaunchTimeout"] > 30000
+    assert captured["capabilities"]["appium:uiautomator2ServerInstallTimeout"] >= 30000
+    assert captured["capabilities"]["appium:adbExecTimeout"] >= 30000
+
+
 def test_launch_app_on_device_ios_sets_udid_capability(monkeypatch):
     captured = {}
 
@@ -498,7 +542,14 @@ def test_launch_app_on_device_ios_sets_udid_capability(monkeypatch):
 
 
 def test_launch_app_on_device_returns_error_string_when_session_creation_fails(monkeypatch):
+    """All attempts fail: must exhaust the full retry budget (3 attempts, no more/no
+    fewer) before giving up and returning the formatted failure string."""
+    sleep_calls = []
+    monkeypatch.setattr(emulator.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+    remote_calls = []
+
     def _fake_remote(remote_url, options):
+        remote_calls.append(remote_url)
         raise RuntimeError("more than one device/emulator")
 
     monkeypatch.setattr(emulator.webdriver, "Remote", _fake_remote)
@@ -510,6 +561,35 @@ def test_launch_app_on_device_returns_error_string_when_session_creation_fails(m
     assert isinstance(result, str)
     assert "Failed to connect and launch app" in result
     assert "more than one device/emulator" in result
+    assert len(remote_calls) == 3
+    assert len(sleep_calls) == 2
+
+
+def test_launch_app_on_device_retries_session_creation_and_succeeds(monkeypatch):
+    """Regression: a fresh/loaded emulator's uiautomator2 server routinely fails to
+    start within the first attempt but succeeds on an immediate retry -- session
+    creation alone must be retried, and a later success must still return the driver."""
+    sleep_calls = []
+    monkeypatch.setattr(emulator.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+    remote_calls = []
+    fake_driver = _FakeAppiumDriver()
+
+    def _fake_remote(remote_url, options):
+        remote_calls.append(remote_url)
+        if len(remote_calls) < 3:
+            raise RuntimeError("instrumentation process cannot be initialized within 30000ms timeout")
+        return fake_driver
+
+    monkeypatch.setattr(emulator.webdriver, "Remote", _fake_remote)
+
+    result = emulator.launch_app_on_device(
+        "android", "emulator-5554", "com.example.app", "http://127.0.0.1:4723"
+    )
+
+    assert result is fake_driver
+    assert result.activated_with == "com.example.app"
+    assert len(remote_calls) == 3
+    assert sleep_calls == [5, 5]
 
 
 def test_launch_app_on_device_rejects_unknown_os_type():

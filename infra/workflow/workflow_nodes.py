@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict, get_args
 
@@ -18,7 +16,6 @@ from infra.agents.sdkAgent.tools.agent import (
     close_sdk_integration_agent,
     run_sdk_integration_agent,
 )
-from infra.agents.AuditRecorder import AuditRecorder
 from infra.agents.answerAgent.answer_policy_repository import (
     get_answer_policy_repository,
 )
@@ -34,24 +31,6 @@ from infra.load_env import get_app_id_for_platform, get_dev_key
 from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
     delete_run_selection,
-)
-
-
-# Resolve emulator tools directory relative to this file
-_TOOLS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "agents", "sdkAgent", "tools")
-)
-
-if _TOOLS_DIR not in sys.path:
-    sys.path.insert(0, _TOOLS_DIR)
-
-
-from emulator import (
-    setup_appium_environment,
-    start_appium_server,
-    list_devices,
-    start_device,
-    launch_app_on_device,
 )
 
 

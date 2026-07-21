@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any
 
 from infra.agents.AuditRecorder import AuditRecorder
@@ -140,6 +141,10 @@ async def _ainvoke_tracking_latest(
     return latest
 
 
+_running_lock = threading.Lock()
+_running_run_ids: set[str] = set()
+
+
 def start_workflow(run_id: str) -> dict[str, Any]:
     """
     Build the initial state for `run_id` and run it through the compiled
@@ -154,7 +159,21 @@ def start_workflow(run_id: str) -> dict[str, Any]:
     Always runs `_teardown_after_run` in finally so the next Save and run
     starts clean even if this invoke crashed mid-way. Uses astream so the
     finally block still sees the last known runtime resources on crash.
+
+    Guards against two overlapping invocations for the same run_id (e.g. a
+    page refresh re-entering the UI's locked branch while the first call is
+    still mid-run): without this, the first call's end-of-run cleanup can
+    delete data/runs/<run_id>/ out from under the second call still writing
+    to it (or vice versa), which used to surface as a raw
+    FileNotFoundError on audit.jsonl instead of a clear error.
     """
+    with _running_lock:
+        if run_id in _running_run_ids:
+            raise RuntimeError(
+                f"Run {run_id} is already in progress — ignoring duplicate start_workflow() call."
+            )
+        _running_run_ids.add(run_id)
+
     from infra.workflow.workflow_builder import workflow_app
 
     load_project_env()
@@ -167,3 +186,5 @@ def start_workflow(run_id: str) -> dict[str, Any]:
         )
     finally:
         _teardown_after_run(latest_state, run_id)
+        with _running_lock:
+            _running_run_ids.discard(run_id)
