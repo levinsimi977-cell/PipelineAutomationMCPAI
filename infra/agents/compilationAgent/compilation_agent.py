@@ -481,7 +481,7 @@ def run_gradle_build(
             detail=f"Gradle build exceeded the {timeout_seconds}s timeout.",
             stdout_tail=(exc.stdout or "")[-LOG_TAIL_CHARS:],
             stderr_tail=(exc.stderr or "")[-LOG_TAIL_CHARS:],
-            error_excerpt=_extract_error_excerpt(exc.stdout, exc.stderr),
+            error_excerpt=_extract_error_snippet(exc.stdout or "", exc.stderr or ""),
         )
     except OSError as exc:
         return CompilationResult(
@@ -518,7 +518,7 @@ def run_gradle_build(
         detail=detail,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
-        error_excerpt="" if success else _extract_error_excerpt(result.stdout, result.stderr),
+        error_excerpt="" if success else _extract_error_snippet(result.stdout or "", result.stderr or ""),
         extra=extra,
     )
 
@@ -724,7 +724,7 @@ def run_xcodebuild(
             detail=f"xcodebuild exceeded the {timeout_seconds}s timeout.",
             stdout_tail=(exc.stdout or "")[-LOG_TAIL_CHARS:],
             stderr_tail=(exc.stderr or "")[-LOG_TAIL_CHARS:],
-            error_excerpt=_extract_error_excerpt(exc.stdout, exc.stderr),
+            error_excerpt=_extract_error_snippet(exc.stdout or "", exc.stderr or ""),
         )
     except OSError as exc:
         return CompilationResult(
@@ -766,7 +766,7 @@ def run_xcodebuild(
         detail=detail,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
-        error_excerpt="" if success else _extract_error_excerpt(result.stdout, result.stderr),
+        error_excerpt="" if success else _extract_error_snippet(result.stdout or "", result.stderr or ""),
         extra=extra,
     )
 
