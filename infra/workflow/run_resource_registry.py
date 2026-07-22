@@ -101,7 +101,13 @@ def release_run_resources(run_id: str, state: dict[str, Any] | None = None) -> N
     with _lock:
         agent_ids = set(_agents.pop(rid, set()))
         drivers = list(_drivers.pop(rid, []))
-        sandbox_paths = set(_sandboxes.pop(rid, set()))
+        # Popped so this run stops owning it, but deliberately not deleted
+        # from disk here anymore: sandboxes are left in place after a run
+        # finishes so the built app can still be inspected in between runs.
+        # The next run's environment_setup_node deletes whatever is left
+        # over (see cleanup_stale_sandboxes() in infra/application/app.py)
+        # right before creating its own sandbox.
+        _sandboxes.pop(rid, None)
 
     agent_from_state = state.get("agent_id")
     if agent_from_state:
@@ -110,10 +116,6 @@ def release_run_resources(run_id: str, state: dict[str, Any] | None = None) -> N
     driver_from_state = state.get("driver")
     if driver_from_state is not None:
         drivers.append(driver_from_state)
-
-    sandbox_from_state = state.get("sandbox_path")
-    if sandbox_from_state:
-        sandbox_paths.add(str(sandbox_from_state))
 
     audit_recorder = state.get("audit_recorder")
     try:
@@ -134,14 +136,3 @@ def release_run_resources(run_id: str, state: dict[str, Any] | None = None) -> N
                 quit_fn()
         except Exception:
             pass
-
-    try:
-        from infra.application.app import cleanup_environment
-
-        for path in sandbox_paths:
-            try:
-                cleanup_environment(path)
-            except Exception:
-                pass
-    except Exception:
-        pass

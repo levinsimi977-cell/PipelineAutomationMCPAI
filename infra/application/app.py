@@ -123,11 +123,34 @@ def extract_platform_from_json(state: dict) -> str:
 # FUNCTION 2: Directory Mapping and Sandbox Routing
 # =============================================
 # ========================
+def cleanup_stale_sandboxes() -> None:
+    """
+    Delete every leftover sandbox directory from previous runs.
+
+    Sandboxes are intentionally kept on disk after a run finishes (see
+    release_run_resources() in infra/workflow/run_resource_registry.py) so
+    the built app can still be inspected in between runs. They're only
+    removed here, right before the next run creates its own sandbox, so at
+    most one leftover sandbox ever sits on disk at a time.
+    """
+    sandboxes_root = _PROJECT_ROOT / "sandboxes"
+    if not sandboxes_root.exists():
+        return
+    for entry in sandboxes_root.iterdir():
+        if entry.is_dir() and entry.name.startswith("run_"):
+            try:
+                shutil.rmtree(entry)
+                print(f"🧹 Removed stale sandbox from a previous run: {entry}")
+            except Exception as exc:
+                print(f"⚠️ Could not remove stale sandbox {entry}: {exc}")
+
+
 def resolve_and_replicate_app(platform_name: str) -> str:
     """
     Maps the extracted platform name to the local directory structure 
     and passes the validated absolute path to the sandbox replicator.
     """
+    cleanup_stale_sandboxes()
     absolute_app_path = str(resolve_sample_app_source_path(platform_name))
     return create_sandbox_app(absolute_app_path)
 

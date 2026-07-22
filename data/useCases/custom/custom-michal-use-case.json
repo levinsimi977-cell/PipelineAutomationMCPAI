@@ -1,0 +1,41 @@
+{
+  "app_path": "data/application/banana.apk",
+  "platform": "android",
+  "prompt_goal": "",
+  "rules_policy": {
+    "default_profiles": [
+      "common"
+    ],
+    "allow_user_override": true,
+    "allowed_profiles": [
+      "common",
+      "ios",
+      "android",
+      "strict"
+    ]
+  },
+  "answer_policy": {
+    "deeplink": {
+      "use_deep_linking": true,
+      "use_custom_uri_scheme": false
+    },
+    "in_app_event": {
+      "inapp_event_method": "log_event",
+      "event_params": {}
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true,
+      "validate_basic_navigation": false
+    },
+    "android": {
+      "has_sha256": false
+    }
+  },
+  "installation_answers": [],
+  "agent_messages": [],
+  "installation_agent_summary": "",
+  "app_id": "com.appsflyer.onelink.appsflyeronelinkbasicapp",
+  "dev_key": "sQ84wpdxRTR4RMCaE9YqS4",
+  "llm_model": "gpt-4o-mini"
+}
