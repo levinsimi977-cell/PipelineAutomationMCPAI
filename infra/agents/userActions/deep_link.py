@@ -21,7 +21,9 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 import traceback
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -132,6 +134,40 @@ def build_deep_link_url(state: dict[str, Any]) -> str:
         return f"{scheme}://{path}" if path else f"{scheme}://"
 
     return generate_mock_deep_link(state)
+
+
+# ---------------------------------------------------------------------------
+# 2. איסוף לוגים מהסימולטור לאחר שליחת Deep Link
+# ---------------------------------------------------------------------------
+
+def _collect_ios_deeplink_logs(sandbox_path: str, wait_seconds: float = 5.0) -> str:
+    """Wait for the AppsFlyer SDK callback to fire, then collect AppsFlyer-related
+    lines from the iOS simulator system log.
+
+    Writes the output to ios-deeplink-logs.txt inside `sandbox_path` so that
+    the SDK agent can call verifyIosDeepLink(action="verify", logFilePath=...,
+    confirmLogFileReady=True) without any manual log-pasting step.
+
+    Returns the absolute path to the written file.
+    """
+    time.sleep(wait_seconds)  # let the SDK deep-link callback fire
+
+    result = subprocess.run(
+        [
+            "xcrun", "simctl", "spawn", "booted",
+            "log", "show",
+            "--predicate", 'subsystem CONTAINS "appsflyer" OR process CONTAINS "AppsFlyer"',
+            "--last", "30s",
+            "--style", "compact",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    log_file = Path(sandbox_path) / "ios-deeplink-logs.txt"
+    log_file.write_text(result.stdout or "", encoding="utf-8")
+    return str(log_file)
 
 
 # ---------------------------------------------------------------------------
@@ -249,10 +285,19 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
     try:
         adapter = _get_adapter(platform, state)
         adapter.trigger_deep_link(url)
+
+        extra: dict[str, Any] = {}
+        if platform == "ios":
+            sandbox_path = state.get("sandbox_path") or state.get("app_path") or ""
+            if sandbox_path:
+                log_file = _collect_ios_deeplink_logs(sandbox_path)
+                extra["ios_deeplink_log_file"] = log_file
+
         return {
             "triggered_deep_link_url": url,
             "deep_link_status": "SUCCESS",
             "nodes_logs": f"Simulated deep link click on {platform}: {url}",
+            **extra,
         }
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or str(exc)).strip()

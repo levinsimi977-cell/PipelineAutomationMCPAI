@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from infra.agents.sdkAgent.tools.emulator import (
@@ -15,6 +17,24 @@ from infra.agents.sdkAgent.tools.emulator import (
 
 if TYPE_CHECKING:
     from infra.workflow.workflow_nodes import PipelineState
+
+
+def _read_bundle_id_from_app(app_path: str) -> str | None:
+    """Read CFBundleIdentifier from a built .app bundle's Info.plist.
+
+    iOS needs two different IDs: the App Store numeric ID (for AppsFlyer)
+    and the Bundle Identifier (for Appium). This reads the latter directly
+    from the compiled artifact so it's always accurate.
+    """
+    plist = Path(app_path) / "Info.plist"
+    if not plist.exists():
+        return None
+    result = subprocess.run(
+        ["plutil", "-extract", "CFBundleIdentifier", "raw", str(plist)],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() or None
 
 
 def _resolve_built_artifact_path(state: "PipelineState") -> str | None:
@@ -151,7 +171,14 @@ def emulator_node(state: PipelineState) -> dict:
         elif not all([os_type, app_identifier]):
             steps.append("[launch] Skipped: os_type or app_identifier is missing from state.")
         else:
-            driver_result = launch_app_on_device(os_type, device_id, app_identifier, remote_url)
+            # iOS: Appium needs the Bundle ID (e.g. com.AppsFlyer.KamperDemo),
+            # not the App Store numeric ID (e.g. 1512793879) that AppsFlyer uses.
+            # Read it from the built .app so it's always correct.
+            if os_type == "ios" and artifact_path:
+                bundle_id = _read_bundle_id_from_app(artifact_path) or app_identifier
+            else:
+                bundle_id = app_identifier
+            driver_result = launch_app_on_device(os_type, device_id, bundle_id, remote_url)
             if isinstance(driver_result, str):
                 launch_result = driver_result
                 steps.append(f"[launch] {driver_result}")

@@ -619,11 +619,16 @@ def _find_built_app_bundle(derived_data_path: Path, configuration: str, sdk: str
 
 
 def _ensure_cocoapods_installed(project_root: Path) -> Optional[str]:
-    """Run ``pod install`` when Podfile declares pods but ``Pods/`` is missing."""
+    """Report missing CocoaPods dependencies without auto-fixing them.
+
+    The SDK agent (LLM) is responsible for running `pod install` as part of
+    its integration step. If it didn't, the build will fail and the error
+    should be reported clearly so the root cause is visible — not silently
+    papered over by the pipeline.
+    """
     from infra.agents.sdkAgent.tools.sdk_project_tools import (
         _PODFILE_POD_LINE_RE,
         find_podfile_directory,
-        run_pod_install_command,
     )
 
     pod_dir = find_podfile_directory(project_root)
@@ -640,10 +645,10 @@ def _ensure_cocoapods_installed(project_root: Path) -> Optional[str]:
     if (pod_dir / "Pods" / "Manifest.lock").is_file():
         return None
 
-    outcome = run_pod_install_command(pod_dir)
-    if outcome.get("status") == "OK":
-        return None
-    return outcome.get("reason") or outcome.get("error") or "pod install failed"
+    return (
+        "CocoaPods dependencies are declared in Podfile but 'pod install' was not run. "
+        "The SDK agent must run 'pod install' before compilation."
+    )
 
 
 def run_xcodebuild(
@@ -750,6 +755,12 @@ def run_xcodebuild(
         error_snippet = _extract_error_snippet(result.stdout or "", result.stderr or "")
         if error_snippet:
             detail = f"{detail}\n\nRelevant output:\n{error_snippet}"
+        combined = (result.stdout or "") + (result.stderr or "")
+        if "AppsFlyerLib" in combined and "cannot find" in combined:
+            detail = (
+                f"{detail}\n\nRoot cause: AppsFlyer SDK symbols not found — "
+                "'pod install' was not run by the SDK agent before compilation."
+            )
     extra: dict[str, Any] = {}
     if success:
         app_bundle_path = _find_built_app_bundle(derived_data_path, configuration, sdk)
