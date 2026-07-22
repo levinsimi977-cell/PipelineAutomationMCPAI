@@ -156,6 +156,27 @@ async def create_sdk_integration_agent(
     # itself inside the isolated Sandbox.
     # --------------------------------------------------------------------
     @tool
+    def find_in_project(glob_pattern: str) -> str:
+        """Search for files matching a glob pattern inside the project sandbox.
+
+        Use this when you know a file exists but not its exact path — for example
+        `**/AppsFlyerLib.h` to locate the SDK header regardless of xcframework
+        nesting depth. Returns relative paths you can then pass to read_project_file.
+        Results are capped at 20 matches to avoid overwhelming the context.
+        """
+        try:
+            matches = [
+                str(p.relative_to(project_root))
+                for p in project_root.rglob(glob_pattern.lstrip("**/"))
+                if p.is_file()
+            ][:20]
+            return json.dumps(
+                {"project_root": str(project_root), "matches": matches, "count": len(matches)},
+                ensure_ascii=False, indent=2,
+            )
+        except Exception as e:
+            return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
+    @tool
     def list_project_files() -> str:
         """List relevant editable files in the project. Use this before deciding which file to read or edit."""
         if platform_lower == 'ios':

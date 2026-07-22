@@ -87,16 +87,27 @@ def _teardown_after_run(state: dict[str, Any] | None, run_id: str) -> None:
     - drop in-memory answer_policy for this run_id
     - delete data/runs/<run_id>/ if visual_report did not already
 
+    On a FAILED run, the sandbox and data/runs/<run_id>/ are left on disk
+    (see run_resource_registry.should_keep_failed_run_artifacts) purely so
+    the failure can be inspected after the fact — this does not change any
+    pipeline/agent behavior, only what gets deleted afterwards.
+
     Never raises — teardown must not hide the original workflow error.
     """
     state = state or {"run_id": run_id}
+    is_failed_run = str(state.get("test_status") or "").upper() == "FAIL"
 
     # Registry covers resources allocated mid-node before LangGraph committed
     # them into the streamed state (also covers handles still on `state`).
+    keep_artifacts = False
     try:
-        from infra.workflow.run_resource_registry import release_run_resources
+        from infra.workflow.run_resource_registry import (
+            release_run_resources,
+            should_keep_failed_run_artifacts,
+        )
 
-        release_run_resources(run_id, state)
+        keep_artifacts = is_failed_run and should_keep_failed_run_artifacts()
+        release_run_resources(run_id, state, delete_sandboxes=not keep_artifacts)
     except Exception:
         pass
 
@@ -116,10 +127,11 @@ def _teardown_after_run(state: dict[str, Any] | None, run_id: str) -> None:
     except Exception:
         pass
 
-    try:
-        run_repo.delete_run_selection(run_id)
-    except Exception:
-        pass
+    if not keep_artifacts:
+        try:
+            run_repo.delete_run_selection(run_id)
+        except Exception:
+            pass
 
 
 async def _ainvoke_tracking_latest(

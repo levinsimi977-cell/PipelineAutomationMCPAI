@@ -761,6 +761,30 @@ def run_xcodebuild(
                 f"{detail}\n\nRoot cause: AppsFlyer SDK symbols not found — "
                 "'pod install' was not run by the SDK agent before compilation."
             )
+        # clang's own "did you mean 'X'" suggestion alongside an undeclared-identifier
+        # / missing-protocol error is a strong signal that the SDK agent wrote a
+        # plausible-looking but non-existent API name instead of the real one —
+        # i.e. it invented/hallucinated the identifier rather than verifying it
+        # against the installed SDK headers. Flagged here as its own distinct root
+        # cause (not silently fixed) so it's visible which class of error this is.
+        elif "did you mean" in combined and (
+            "undeclared identifier" in combined
+            or "cannot find protocol declaration" in combined
+        ):
+            detail = (
+                f"{detail}\n\nRoot cause: SDK Agent likely invented API identifiers "
+                "that don't exist in the installed SDK — the compiler's own 'did you "
+                "mean' suggestions point to what the real identifiers probably are. "
+                "The SDK agent should have verified these names against the actual "
+                "SDK headers before writing this code, instead of guessing."
+            )
+        elif "assignment to readonly property" in combined:
+            detail = (
+                f"{detail}\n\nRoot cause: SDK Agent assigned a value to a property "
+                "that the installed SDK version declares as read-only, instead of "
+                "using the SDK's initializer method — it should have verified the "
+                "actual API surface in the installed header before writing this code."
+            )
     extra: dict[str, Any] = {}
     if success:
         app_bundle_path = _find_built_app_bundle(derived_data_path, configuration, sdk)

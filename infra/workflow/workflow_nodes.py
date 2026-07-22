@@ -1004,6 +1004,30 @@ async  def sdk_agent_node(
         current_prompt_type
     ]
 
+    # iOS deep-link logs are collected by deep_link_node only after the app is
+    # launched and the link is fired -- long after prompt_agent_node pre-generated
+    # this static prompt text. Append the concrete file path here, at call time,
+    # so the verify phase can call verifyIosDeepLink directly instead of asking
+    # the user to paste logs manually (which it has no way to do in this pipeline).
+    ios_deeplink_log_file = state.get("ios_deeplink_log_file")
+    if (
+        current_prompt_type == "verify_prompt"
+        and str(platform).lower() == "ios"
+        and ios_deeplink_log_file
+    ):
+        user_prompt = (
+            f"{user_prompt}\n\n"
+            "---\n"
+            "iOS deep-link verification data (already collected by the pipeline):\n"
+            f"- Log file path: {ios_deeplink_log_file}\n"
+            "Call verifyIosDeepLink with action=\"prepare\" and projectPath first if you "
+            "haven't already, then call it again with action=\"verify\", "
+            f"logFilePath=\"{ios_deeplink_log_file}\", and confirmLogFileReady=true. "
+            "Do not ask the user to paste logs manually -- this file was already "
+            "populated automatically from the simulator's system log right after the "
+            "deep link was triggered."
+        )
+
 
     result = await run_sdk_integration_agent(
         state=state,
@@ -1248,10 +1272,23 @@ def _clear_run_dir(state: PipelineState) -> None:
     run_repository.delete_run_selection() — the same delete used by the
     UI's manual "Saved run selections pending cleanup" housekeeping button —
     so there is only one place that knows how to tear down a run dir.
+
+    Skipped on a FAILED run (see run_resource_registry.should_keep_failed_run_artifacts)
+    so audit.jsonl survives for post-mortem inspection — this node runs
+    before run_launcher's own teardown ever gets a chance to apply that
+    same rule to the sandbox, so it must check it too.
     """
     run_id = state.get("run_id")
     if not run_id:
         return
+
+    if state.get("test_status") == "FAIL":
+        from infra.workflow.run_resource_registry import (
+            should_keep_failed_run_artifacts,
+        )
+
+        if should_keep_failed_run_artifacts():
+            return
 
     delete_run_selection(run_id)
 

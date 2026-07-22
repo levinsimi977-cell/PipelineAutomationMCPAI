@@ -78,7 +78,7 @@
       },
       {
         "number": 17,
-        "text": "Configure the iOS SDK's dev key and app ID by calling `[[AppsFlyerLib shared] initWithDevKey:appleAppId:]` (Objective-C) or `AppsFlyerLib.shared().initialize(devKey:appId:)` (Swift) BEFORE calling `start` — do NOT assign `.appsFlyerDevKey` / `.appleAppID` as writable properties. In the current AppsFlyerFramework CocoaPods release (installed via a bare `pod 'AppsFlyerFramework'` with no version pin), both `appsFlyerDevKey` and `appleAppID` are declared `readonly` getters in `AppsFlyerLib.h` — assigning them (`[AppsFlyerLib shared].appleAppID = @\"...\"`) fails to compile with `error: assignment to readonly property`. Always check `AppsFlyerLib.h` under `Pods/AppsFlyerFramework/.../Headers/` for the exact current signature of `initWithDevKey:appleAppId:` (or the Swift `initialize(devKey:appId:)`) before writing this code, since the SDK's public API surface can change between versions."
+        "text": "Before writing SDK initialization code, use the `find_in_project` tool (e.g. pattern `**/AppsFlyerLib.h`) to locate the installed SDK header, then read it with `read_project_file` to confirm the actual method/property signatures — do not assume a signature is correct without checking the installed header first."
       }
     ]
   },
