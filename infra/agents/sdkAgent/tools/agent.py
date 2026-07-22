@@ -10,14 +10,18 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
-from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env
+from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env, resolve_app_id_for_platform
 from infra.agents.AuditRecorder import AuditRecorder
+from infra.agents.sdkAgent.tools.sdk_project_tools import (
+    build_run_pod_install_tool,
+    safe_project_path,
+    wrap_integrate_sdk_with_ios_hint,
+)
 # Classifies each finished turn's Memory (SUCCESS/FAIL/QUESTION), answers
 # questions, and records everything to AuditRecorder. See llm_listener.py.
 from infra.listener.llm_listener import listener_on_agent_turn
 
 load_project_env(override=True)
-APP_ID = os.getenv("APP_ID", "sQ84wpdxRTR4RMCaE9YqS4")
 # Safety net: caps how many sdk_agent.ainvoke() turns a single call to
 # run_sdk_integration_agent() may take before giving up.
 MAX_TURNS = 15
@@ -70,22 +74,6 @@ def _bind_live_device_id(mcp_tools: list, device_id_holder: Dict[str, Any]) -> N
         mcp_tool.coroutine = _coroutine_with_live_device_id
 
 
-def safe_project_path(project_root: Path, requested_path: str) -> Path:
-    """Sandbox guard: resolves requested_path and rejects it if it escapes project_root.
-    Raises: ValueError: If the resolved path is outside project_root.
-        ValueError: If the resolved path is outside project_root.
-    """
-    requested = Path(requested_path)
-    resolved = (
-        requested.resolve()
-        if requested.is_absolute()
-        else (project_root / requested).resolve()
-    )
-    if not str(resolved).startswith(str(project_root.resolve())):
-        raise ValueError(
-            f"Blocked unsafe file path outside project root: {requested_path}"
-        )
-    return resolved
 # ============================================================================
 # Session registry: agent_id -> {agent, tools, turn_offset}.
 # Keeps the built agent (and its in-memory checkpointer) alive across
@@ -119,7 +107,12 @@ async def create_sdk_integration_agent(
     platform_lower = platform.lower()
     openai_api_key = os.getenv("OPENAI_API_KEY")
     resolved_dev_key = dev_key or get_dev_key()
-    resolved_app_id = app_id or get_app_id_for_platform(platform_lower) or APP_ID
+    resolved_app_id = resolve_app_id_for_platform(platform_lower, app_id)
+    if not resolved_app_id:
+        raise RuntimeError(
+            f"Missing valid iOS APP_ID for MCP (platform={platform_lower}). "
+            "Set IOS_APP_ID or APP_ID to a numeric Apple App ID such as id1512793879."
+        )
     if not openai_api_key or not resolved_dev_key:
         raise RuntimeError("Missing OPENAI_API_KEY or APPSFLYER_DEV_KEY in .env")
     model = ChatOpenAI(
@@ -154,6 +147,7 @@ async def create_sdk_integration_agent(
         ) from exc
     if device_id_holder is not None:
         _bind_live_device_id(mcp_tools, device_id_holder)
+    wrap_integrate_sdk_with_ios_hint(mcp_tools)
     audit_recorder.write("TOOLS_DISCOVERED", {
         "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
     })
@@ -286,15 +280,19 @@ async def create_sdk_integration_agent(
         except Exception as e:
             return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
 
-    # All tools (MCP + files) together - these are the tools registered to the agent
-    agent_tools = [
-        *mcp_tools,
+    local_tools = [
         list_project_files,
         read_project_file,
         write_to_project_file,
-        run_pod_install,
         write_events_manifest,
     ]
+    if platform_lower == "ios":
+        local_tools.append(
+            build_run_pod_install_tool(project_root, platform_lower, audit_recorder)
+        )
+    # All tools (MCP + local) together - these are the tools registered to the agent
+    agent_tools = [*mcp_tools, *local_tools]
+
     # --------------------------------------------------------------------
     # Ground rules for the agent. Rule 13 is critical: it lets the
     # orchestrator below detect true turn completion via "STATUS: SUCCESS".
@@ -305,7 +303,8 @@ async def create_sdk_integration_agent(
         f"Project path: {project_root}\n"
         f"Platform: {platform.upper()}\n"
         f"Make sure to use the correct MCP tools and edit the correct files for {platform.upper()}.\n\n"
-        f"You are connected directly to the AppsFlyer MCP tools, and you have generic file tools.\n\n"
+        f"You are connected directly to the AppsFlyer MCP tools, and you have generic file tools"
+        f"{'' if platform_lower != 'ios' else ' (including runPodInstall for CocoaPods dependency resolution)'}.\n\n"
         f"Important rules:\n"
         f"{_load_agent_rules_text()}\n"
     )
@@ -348,7 +347,9 @@ async def run_sdk_integration_agent(
         "reason" (always a string) on failure.
     """
     agent_id = state.get("agent_id")
-    resolved_app_id = state.get("app_id") or get_app_id_for_platform(platform)
+    resolved_app_id = resolve_app_id_for_platform(platform, state.get("app_id"))
+    if resolved_app_id:
+        state["app_id"] = resolved_app_id
     resolved_dev_key = state.get("dev_key") or get_dev_key()
     if agent_id is None:
         # Build a new agent/session; device_id_holder is refreshed from state on

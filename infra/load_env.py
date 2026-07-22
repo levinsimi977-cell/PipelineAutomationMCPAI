@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+_IOS_APP_ID_RE = re.compile(r"^(?:id)?(\d+)$", re.IGNORECASE)
+_IOS_APP_ID_TYPO_RE = re.compile(r"^d(\d+)$", re.IGNORECASE)
+_DEFAULT_IOS_APP_ID = "id1512793879"
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _ENV_PATH = _PROJECT_ROOT / ".env"
@@ -34,14 +39,38 @@ def get_dev_key() -> str | None:
     return os.getenv("DEV_KEY") or os.getenv("APPSFLYER_DEV_KEY")
 
 
+def normalize_ios_app_id(value: str | None) -> str | None:
+    """Return ``id<number>`` for valid iOS Apple App IDs (fixes ``d<number>`` typos)."""
+    if not value or not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    typo = _IOS_APP_ID_TYPO_RE.match(candidate)
+    if typo:
+        candidate = f"id{typo.group(1)}"
+    match = _IOS_APP_ID_RE.match(candidate)
+    if not match:
+        return None
+    return f"id{match.group(1)}"
+
+
+def resolve_app_id_for_platform(platform: str, app_id: str | None = None) -> str | None:
+    """Platform-aware APP_ID for MCP / pipeline state."""
+    normalized_platform = (platform or "").strip().lower()
+    if normalized_platform == "ios":
+        for candidate in (app_id, os.getenv("IOS_APP_ID"), os.getenv("APP_ID"), _DEFAULT_IOS_APP_ID):
+            resolved = normalize_ios_app_id(candidate)
+            if resolved:
+                return resolved
+        return None
+    if app_id and str(app_id).strip():
+        return str(app_id).strip()
+    env_key = "ANDROID_APP_ID" if normalized_platform == "android" else "APP_ID"
+    return os.getenv(env_key) or os.getenv("APP_ID")
+
+
 def get_app_id_for_platform(platform: str) -> str | None:
     """Return platform-specific APP_ID from env (``IOS_APP_ID`` / ``ANDROID_APP_ID``)."""
-    normalized = (platform or "").strip().lower()
-    if normalized == "ios":
-        return os.getenv("IOS_APP_ID") or os.getenv("APP_ID")
-    if normalized == "android":
-        return os.getenv("ANDROID_APP_ID") or os.getenv("APP_ID")
-    return os.getenv("APP_ID")
+    return resolve_app_id_for_platform(platform)
 
 
 load_project_env()

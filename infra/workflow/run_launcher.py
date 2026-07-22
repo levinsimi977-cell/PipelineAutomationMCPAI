@@ -5,7 +5,7 @@ import threading
 from typing import Any
 
 from infra.agents.AuditRecorder import AuditRecorder
-from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env
+from infra.load_env import get_app_id_for_platform, get_dev_key, load_project_env, resolve_app_id_for_platform
 from infra.use_case_service.repositories import run_repository as run_repo
 from infra.workflow.workflow_nodes import PipelineState
 
@@ -36,7 +36,10 @@ def _resolve_run_credentials(
     first_case = use_cases[0] if use_cases else {}
 
     dev_key = first_case.get("dev_key") or get_dev_key()
-    app_id = first_case.get("app_id") or get_app_id_for_platform(platform)
+    app_id = resolve_app_id_for_platform(
+        platform,
+        first_case.get("app_id") or get_app_id_for_platform(platform),
+    )
 
     return platform, dev_key, app_id
 

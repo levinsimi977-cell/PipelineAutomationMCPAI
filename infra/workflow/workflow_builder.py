@@ -79,6 +79,11 @@ def build_workflow():
             "compilation_check": "compilation_check",
             "user_actions": "user_actions",
             "test_runner": "test_runner",
+            # route_from_sdk_agent returns this after an event_prompt turn
+            # (see workflow_nodes.py) -- missing here meant LangGraph raised
+            # a bare `KeyError: 'user_actions'` (uncaught, before any report
+            # could be written) the moment a use case reached that turn.
+            "user_actions": "user_actions",
         },
     )
 
