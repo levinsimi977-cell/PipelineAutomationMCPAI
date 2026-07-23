@@ -21,11 +21,12 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import time
 import traceback
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+from infra.agents.sdkAgent.tools.emulator import wait_for_ios_log_marker
 
 # ---------------------------------------------------------------------------
 # קבועים — פרמטרי AppsFlyer שקבוצת ה-MCP Listener מכירה
@@ -140,33 +141,49 @@ def build_deep_link_url(state: dict[str, Any]) -> str:
 # 2. איסוף לוגים מהסימולטור לאחר שליחת Deep Link
 # ---------------------------------------------------------------------------
 
-def _collect_ios_deeplink_logs(sandbox_path: str, wait_seconds: float = 5.0) -> str:
-    """Wait for the AppsFlyer SDK callback to fire, then collect AppsFlyer-related
-    lines from the iOS simulator system log.
+def _collect_ios_deeplink_logs(sandbox_path: str, timeout_seconds: float = 45.0) -> str:
+    """Poll the iOS simulator system log until the AppsFlyer deep-link delegate
+    callback (`didResolveDeepLink:`, logged by the SDK agent's code as
+    "[AFSDK] ...") actually appears, or `timeout_seconds` elapses.
 
     Writes the output to ios-deeplink-logs.txt inside `sandbox_path` so that
     the SDK agent can call verifyIosDeepLink(action="verify", logFilePath=...,
     confirmLogFileReady=True) without any manual log-pasting step.
 
+    A fixed short sleep here used to give up before the callback fired: resolving
+    a OneLink is a real network round-trip to AppsFlyer's servers and regularly
+    takes longer than a few seconds, so verify_prompt was seeing an empty-looking
+    log and reporting "no deep-link evidence" even when the SDK had genuinely
+    resolved the link a couple of seconds later. Polling for the actual marker
+    (instead of guessing a fixed duration) fixes that without slowing down the
+    common case where the callback fires quickly.
+
     Returns the absolute path to the written file.
     """
-    time.sleep(wait_seconds)  # let the SDK deep-link callback fire
-
-    result = subprocess.run(
-        [
-            "xcrun", "simctl", "spawn", "booted",
-            "log", "show",
-            "--predicate", 'subsystem CONTAINS "appsflyer" OR process CONTAINS "AppsFlyer"',
-            "--last", "30s",
-            "--style", "compact",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
+    output = wait_for_ios_log_marker(
+        # subsystem/process alone only match logs os_log-tagged from
+        # *inside* AppsFlyerLib itself (e.g. its own internal warnings).
+        # The app's own NSLog() calls in AppDelegate.m/SceneDelegate.m
+        # (the ones the SDK agent writes, e.g. "AppsFlyer start
+        # success: ...") run under the app's own process name (its
+        # executable, not "AppsFlyer"), so they were being silently
+        # dropped -- verify_prompt then saw an empty-looking log and
+        # reported no deep-link evidence even when the delegate had
+        # actually fired. eventMessage[c] catches those regardless of
+        # which process/subsystem emitted them.
+        predicate=(
+            'subsystem CONTAINS[c] "appsflyer" OR process CONTAINS[c] "appsflyer" '
+            'OR eventMessage CONTAINS[c] "appsflyer"'
+        ),
+        # "[AFSDK]" is what the SDK agent's didResolveDeepLink: implementation
+        # NSLogs on any outcome (found/not found/failure) -- its appearance
+        # means the callback has fired, so there is no reason to keep polling.
+        marker_substrings=("[AFSDK]",),
+        timeout_seconds=timeout_seconds,
     )
 
     log_file = Path(sandbox_path) / "ios-deeplink-logs.txt"
-    log_file.write_text(result.stdout or "", encoding="utf-8")
+    log_file.write_text(output, encoding="utf-8")
     return str(log_file)
 
 
@@ -270,14 +287,14 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
     """
     skip, reason = _should_skip(state)
     if skip:
-        return {"deep_link_status": "SKIPPED", "nodes_logs": reason}
+        return {"deep_link_status": "SKIPPED", "deep_link_message": reason}
 
     platform = (state.get("platform") or "").lower()
     if platform not in {"ios", "android"}:
         return {
             "deep_link_status": "FAILED",
             "error_reason": f"Unsupported or missing platform: {platform!r}",
-            "nodes_logs": f"Deep link simulation failed: unsupported platform {platform!r}",
+            "deep_link_message": f"Deep link simulation failed: unsupported platform {platform!r}",
         }
 
     url = build_deep_link_url(state)
@@ -296,7 +313,7 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
         return {
             "triggered_deep_link_url": url,
             "deep_link_status": "SUCCESS",
-            "nodes_logs": f"Simulated deep link click on {platform}: {url}",
+            "deep_link_message": f"Simulated deep link click on {platform}: {url}",
             **extra,
         }
     except subprocess.CalledProcessError as exc:
@@ -305,14 +322,14 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
             "deep_link_status": "FAILED",
             "triggered_deep_link_url": url,
             "error_reason": stderr,
-            "nodes_logs": f"Failed to simulate click on {platform}: {stderr}",
+            "deep_link_message": f"Failed to simulate click on {platform}: {stderr}",
         }
     except Exception as exc:
         return {
             "deep_link_status": "FAILED",
             "triggered_deep_link_url": url,
             "error_reason": str(exc),
-            "nodes_logs": (
+            "deep_link_message": (
                 f"Failed to simulate deep link click on {platform}: {exc}\n"
                 f"{traceback.format_exc()}"
             ),

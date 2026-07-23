@@ -4,21 +4,18 @@ Comprehensive pytest suite for ``answer_agent.py``.
 Design goals
 ------------
 * Pure ``pytest`` (fixtures + ``monkeypatch``; no unittest).
-* Zero external services: ``config``, Gemini / ``ChatGoogleGenerativeAI``,
-  the filesystem scan and ``subprocess.run`` are all mocked, and no real
-  ``GEMINI_API_KEY`` is ever required.
+* Zero external services: OpenAI, the filesystem scan and ``subprocess.run``
+  are all mocked, and no real ``OPENAI_API_KEY`` is ever required.
 * Tests are grouped by the function under test and kept independent so they
   can run in any order.
 
 Import bootstrap
 ----------------
-``answer_agent`` does ``import config`` (there is no ``config.py`` in the repo)
-and ``from prompts.answer_templates import ...`` (which pulls in
-``langchain_core``).  Before importing the module we therefore:
+``answer_agent`` does ``from prompts.answer_templates import ...`` (which
+pulls in ``langchain_core``). Before importing the module we therefore:
 
-1. inject a fake ``config`` module into ``sys.modules``,
-2. put the ``answerAgent`` package dir on ``sys.path`` so ``prompts`` resolves,
-3. stub ``langchain_core.prompts.PromptTemplate`` *only if* it is not installed.
+1. put the ``answerAgent`` package dir on ``sys.path`` so ``prompts`` resolves,
+2. stub ``langchain_core.prompts.PromptTemplate`` *only if* it is not installed.
 """
 from __future__ import annotations
 
@@ -32,30 +29,14 @@ import pytest
 # Import bootstrap (runs once, at collection time, before importing the SUT)
 # ---------------------------------------------------------------------------
 
-# 1) Fake ``config`` module — never a real API key.
-_fake_config = sys.modules.get("config")
-if _fake_config is None:
-    _fake_config = types.ModuleType("config")
-    sys.modules["config"] = _fake_config
-# Ensure every attribute answer_agent touches exists, regardless of who created
-# the fake config module (another test file might have registered it first).
-for _attr, _val in (
-    ("APP_ID", "test-app-id"),
-    ("DEV_KEY", ""),
-    ("GEMINI_MODEL", "gemini-test"),
-    ("GEMINI_API_KEY", ""),
-):
-    if not hasattr(_fake_config, _attr):
-        setattr(_fake_config, _attr, _val)
-
-# 2) Make ``answer_agent`` and its ``prompts`` package importable.
+# 1) Make ``answer_agent`` and its ``prompts`` package importable.
 _ANSWER_AGENT_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "infra", "agents", "answerAgent")
 )
 if _ANSWER_AGENT_DIR not in sys.path:
     sys.path.insert(0, _ANSWER_AGENT_DIR)
 
-# 3) Stub langchain_core.prompts.PromptTemplate if the dependency is missing so
+# 2) Stub langchain_core.prompts.PromptTemplate if the dependency is missing so
 #    the suite runs with no third-party packages installed.
 try:  # pragma: no cover - exercised only when langchain_core is absent
     import langchain_core.prompts  # noqa: F401
@@ -88,7 +69,6 @@ from answer_agent import (  # noqa: E402
     answer_question,
     answer_question_node,
     build_prompt_with_answers,
-    classify_question,
 )
 
 
@@ -99,15 +79,17 @@ from answer_agent import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def clean_config(monkeypatch):
-    """Reset the fake ``config`` before every test so tests stay independent.
+    """Reset the module-level config constants before every test so tests
+    stay independent.
 
-    ``GEMINI_API_KEY`` defaults to empty → the deterministic path is used and
-    no LLM is ever contacted unless a test opts in.
+    ``OPENAI_API_KEY`` defaults to empty -> ``_llm_answer`` short-circuits to
+    ``None`` and no LLM is ever contacted unless a test opts in via
+    ``with_api_key``.
     """
-    monkeypatch.setattr(answer_agent.config, "GEMINI_API_KEY", "", raising=False)
-    monkeypatch.setattr(answer_agent.config, "DEV_KEY", "", raising=False)
-    monkeypatch.setattr(answer_agent.config, "APP_ID", "test-app-id", raising=False)
-    monkeypatch.setattr(answer_agent.config, "GEMINI_MODEL", "gemini-test", raising=False)
+    monkeypatch.setattr(answer_agent, "OPENAI_API_KEY", "", raising=False)
+    monkeypatch.setattr(answer_agent, "DEV_KEY", "", raising=False)
+    monkeypatch.setattr(answer_agent, "APP_ID", "test-app-id", raising=False)
+    monkeypatch.setattr(answer_agent, "OPENAI_MODEL", "gpt-test", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -130,8 +112,33 @@ def fake_env(monkeypatch):
 
 @pytest.fixture
 def with_api_key(monkeypatch):
-    """Opt-in helper: pretend a Gemini key is configured."""
-    monkeypatch.setattr(answer_agent.config, "GEMINI_API_KEY", "fake-key-123")
+    """Opt-in helper: pretend an OpenAI key is configured."""
+    monkeypatch.setattr(answer_agent, "OPENAI_API_KEY", "fake-key-123")
+
+
+TEST_RUN_ID = "test-run-id"
+
+
+@pytest.fixture(autouse=True)
+def registered_answer_policy():
+    """Register (and clean up) an answer_policy for ``TEST_RUN_ID``.
+
+    Any test that exercises the *real* ``_llm_answer`` body (i.e. doesn't
+    monkeypatch it away entirely) goes through ``_format_test_decisions``,
+    which does ``get_answer_policy_repository().get(state["run_id"])`` with
+    no fallback -- it raises if nothing was registered for that run_id, and
+    a plain ``state["run_id"]`` lookup raises KeyError if the key is absent
+    altogether. Tests that need the real LLM path to run must include
+    ``"run_id": TEST_RUN_ID`` in their state dict.
+    """
+    from infra.agents.answerAgent.answer_policy_repository import (
+        get_answer_policy_repository,
+    )
+
+    repo = get_answer_policy_repository()
+    repo.register(TEST_RUN_ID, {})
+    yield
+    repo.clear(TEST_RUN_ID)
 
 
 def _policy_state(**policy) -> dict:
@@ -162,266 +169,14 @@ class _FakeLLM:
 
 
 # ===========================================================================
-# classify_question()
-# ===========================================================================
-
-
-class TestClassifyQuestion:
-    """Regex topic routing — first matching category wins."""
-
-    def test_platform_question(self):
-        assert classify_question("Which platform should I use?") == "platform"
-
-    def test_dev_key_question(self):
-        assert classify_question("What is the dev key?") == "dev_key"
-
-    def test_att_question(self):
-        assert classify_question("Should I enable ATT?") == "att_tracking"
-
-    def test_scene_delegate_question(self):
-        assert (
-            classify_question("Does your app already use a SceneDelegate?")
-            == "scene_delegate_exists"
-        )
-
-    def test_deep_link_question(self):
-        assert (
-            classify_question("Do you want OneLink deep linking configured?")
-            == "onelink_deeplink"
-        )
-
-    def test_environment_question(self):
-        assert classify_question("What Swift version does the project use?") == "environment"
-
-    def test_unknown_question_returns_general(self):
-        assert classify_question("How does this whole system work?") == "general"
-
-    @pytest.mark.parametrize("bad", ["", None])
-    def test_empty_or_none_is_general(self, bad):
-        # Guards the ``(question or "")`` branch.
-        assert classify_question(bad) == "general"
-
-
-# ===========================================================================
 # _deterministic_answer()
 # ===========================================================================
-
-
-class TestDeterministicAnswerPositive:
-    """Each topic returns its test-driven answer given the required fields."""
-
-    def test_platform_ios(self):
-        state = {"platform": "ios"}
-        assert answer_agent._deterministic_answer("platform", "platform?", state) == "iOS only."
-
-    def test_platform_android(self):
-        state = {"platform": "android"}
-        assert (
-            answer_agent._deterministic_answer("platform", "platform?", state) == "Android only."
-        )
-
-    def test_response_listener(self):
-        state = _policy_state(use_response_listener=True)
-        assert (
-            answer_agent._deterministic_answer("response_listener", "use listener?", state)
-            == "Yes, use a response listener."
-        )
-
-    def test_att_enabled(self):
-        state = _policy_state(use_att=True)
-        assert (
-            answer_agent._deterministic_answer("att_tracking", "enable att?", state)
-            == "Yes, enable ATT."
-        )
-
-    def test_att_yes_no_formatting(self):
-        # Question phrasing forces a bare yes/no answer.
-        state = _policy_state(use_att=False)
-        assert (
-            answer_agent._deterministic_answer("att_tracking", "ATT? (yes/no)", state) == "no"
-        )
-
-    def test_cuid_disabled(self):
-        state = _policy_state(use_cuid=False)
-        assert (
-            answer_agent._deterministic_answer("cuid", "use cuid?", state) == "No CUID needed."
-        )
-
-    def test_dependency_manager_cocoapods(self):
-        state = _policy_state(dependency_manager="cocoapods")
-        assert (
-            answer_agent._deterministic_answer("dependency_manager", "which dep mgr?", state)
-            == "Use CocoaPods."
-        )
-
-    def test_dependency_manager_spm(self):
-        state = _policy_state(dependency_manager="spm")
-        assert (
-            answer_agent._deterministic_answer("dependency_manager", "which dep mgr?", state)
-            == "Use Swift Package Manager."
-        )
-
-    def test_sdk_integrated_true(self):
-        state = _policy_state(sdk_already_integrated=True)
-        assert (
-            answer_agent._deterministic_answer("sdk_integrated", "already integrated?", state)
-            == "Yes, the AppsFlyer SDK is already integrated."
-        )
-
-    def test_dev_key_with_value(self):
-        state = _policy_state(dev_key="ABC123")
-        assert (
-            answer_agent._deterministic_answer("dev_key", "dev key?", state)
-            == "Use Dev Key: ABC123."
-        )
-
-    def test_dev_key_without_value_uses_configured(self):
-        # dev_key never returns None — falls back to a fixed sentence.
-        assert (
-            answer_agent._deterministic_answer("dev_key", "dev key?", {})
-            == "Use the DEV_KEY configured for this test run."
-        )
-
-    def test_url_identifier(self):
-        state = _policy_state(url_identifier="com.example.deeplink")
-        assert (
-            answer_agent._deterministic_answer("url_identifier", "url identifier?", state)
-            == "com.example.deeplink"
-        )
-
-    def test_uri_scheme_value(self):
-        state = _policy_state(uri_scheme="myapp")
-        assert (
-            answer_agent._deterministic_answer("uri_scheme_value", "which uri scheme?", state)
-            == "myapp"
-        )
-
-    def test_deep_linking_returns_onelink_url(self):
-        state = _policy_state(use_deep_linking=True, onelink_url="https://x.onelink.me/abc")
-        assert (
-            answer_agent._deterministic_answer(
-                "onelink_deeplink", "What is the OneLink URL?", state
-            )
-            == "https://x.onelink.me/abc"
-        )
-
-    def test_deep_linking_disabled_true_false(self):
-        state = _policy_state(use_deep_linking=False)
-        assert (
-            answer_agent._deterministic_answer(
-                "onelink_deeplink", "Use deep linking? (true/false)", state
-            )
-            == "False"
-        )
-
-    def test_app_launched_true(self):
-        state = _policy_state(app_launched=True)
-        assert (
-            answer_agent._deterministic_answer("app_launched", "did you launch the app?", state)
-            == "Yes, the app has been launched."
-        )
-
-    def test_device_id(self):
-        state = _policy_state(device_id="emulator-5554")
-        assert (
-            answer_agent._deterministic_answer("device_id", "device id?", state)
-            == "Use device ID: emulator-5554."
-        )
-
-    def test_sha256_returns_fingerprint(self):
-        state = _policy_state(has_sha256=True, sha256_fingerprint="AA:BB:CC")
-        assert (
-            answer_agent._deterministic_answer("sha256", "what is the sha256?", state)
-            == "AA:BB:CC"
-        )
-
-    def test_sha256_absent_bool(self):
-        state = _policy_state(has_sha256=False)
-        assert (
-            answer_agent._deterministic_answer("sha256", "do you have sha256? (yes/no)", state)
-            == "no"
-        )
-
-    def test_verify_logs_ready(self):
-        state = _policy_state(verify_logs_ready=True)
-        assert (
-            answer_agent._deterministic_answer("verify_logs", "is the log ready?", state)
-            == "Yes, the log file is ready for verification."
-        )
-
-    def test_verify_logs_not_ready(self):
-        state = _policy_state(verify_logs_ready=False)
-        assert (
-            answer_agent._deterministic_answer("verify_logs", "is the log ready?", state)
-            == "No, the log file is not ready yet."
-        )
-
-    def test_inapp_event_with_name(self):
-        state = _policy_state(event_name="af_purchase", event_params="{revenue: 1}")
-        assert (
-            answer_agent._deterministic_answer("inapp_event", "what event name?", state)
-            == "Use event af_purchase with parameters {revenue: 1}."
-        )
-
-    def test_scene_delegate_exists_true(self, fake_env):
-        # Environment scan reports a SceneDelegate file present.
-        fake_env["has_scene_delegate_file"] = "true"
-        assert (
-            answer_agent._deterministic_answer(
-                "scene_delegate_exists", "already use scenedelegate?", {}
-            )
-            == "Yes, the app already uses SceneDelegate."
-        )
-
-    def test_environment_category_delegates_to_scan(self, fake_env):
-        fake_env["xcodeproj"] = "App.xcodeproj"
-        assert (
-            answer_agent._deterministic_answer(
-                "environment", "which xcode project?", {"platform": "ios"}
-            )
-            == "App.xcodeproj"
-        )
-
-    def test_custom_answers_fallback(self):
-        # Unknown category falls through to custom_answers keyword matching.
-        state = _policy_state(custom_answers={"proxy": "use corp proxy"})
-        assert (
-            answer_agent._deterministic_answer(
-                "general", "should I configure the proxy here?", state
-            )
-            == "use corp proxy"
-        )
-
-
-class TestDeterministicAnswerMissingFields:
-    """When the required policy field is absent the function returns ``None``."""
-
-    @pytest.mark.parametrize(
-        "category, question, state",
-        [
-            ("platform", "platform?", {}),
-            ("response_listener", "use listener?", {}),
-            ("att_tracking", "enable att?", {}),
-            ("cuid", "use cuid?", {}),
-            ("scene_delegate_integration", "scene delegate?", {}),
-            ("scene_delegate_deeplink", "deeplink in scenedelegate?", {}),
-            ("sdk_integrated", "already integrated?", {}),
-            ("url_identifier", "url identifier?", {}),
-            ("uri_scheme_value", "which uri scheme?", {}),
-            ("onelink_deeplink", "onelink?", {}),
-            ("verify_logs", "log ready?", {}),
-            ("inapp_event_method", "which option?", {}),
-            ("inapp_event", "event name?", {}),
-            ("deeplink_testing", "deferred or direct?", {}),
-            ("app_launched", "launched the app?", {}),
-            ("device_id", "device id?", {}),
-            ("sha256", "sha256?", {}),
-            ("environment", "which xcode project?", {}),
-            ("dependency_manager", "which dep mgr?", {}),
-        ],
-    )
-    def test_missing_field_returns_none(self, category, question, state):
-        assert answer_agent._deterministic_answer(category, question, state) is None
+#
+# NOTE: classify_question() (regex-based topic routing) was removed from
+# answer_agent.py in 41270e5 "Improve answer agent responses" in favor of the
+# LLM-driven flow below -- its TestClassifyQuestion suite was removed here
+# along with the now-nonexistent import; it had been silently failing this
+# whole module's collection (ImportError) since that commit.
 
 
 # ===========================================================================
@@ -430,52 +185,50 @@ class TestDeterministicAnswerMissingFields:
 
 
 class TestAnswerQuestion:
-    def test_deterministic_path(self):
-        # No API key + simple platform question → deterministic answer.
-        answer = answer_question({"platform": "ios"}, "What platform is this?")
-        assert answer == "iOS only."
-
-    def test_environment_fallback(self, fake_env):
-        # Environment topic, no key → deterministic chain uses the (mocked) scan.
-        fake_env["xcodeproj"] = "App.xcodeproj"
-        answer = answer_question({"platform": "ios"}, "Which xcode project should I open?")
-        assert answer == "App.xcodeproj"
+    def test_no_api_key_raises(self):
+        # No OPENAI_API_KEY -> _llm_answer short-circuits to None -> raise.
+        # There is no rule-based fallback anymore (see NOTE above).
+        with pytest.raises(UnansweredQuestionError):
+            answer_question({"platform": "ios"}, "What platform is this?")
 
     def test_llm_path(self, monkeypatch, with_api_key):
-        # API key set + LLM-preferred category → LLM answer is returned verbatim.
+        # API key set -> the LLM answer is returned verbatim.
         fake_llm = _FakeLLM(content="Do the next integration step.")
         monkeypatch.setattr(answer_agent, "_llm", lambda: fake_llm)
 
         answer = answer_question(
-            {"platform": "android"}, "What should I do next to finish integration?"
+            {"platform": "android", "run_id": TEST_RUN_ID},
+            "What should I do next to finish integration?",
         )
         assert answer == "Do the next integration step."
         assert fake_llm.calls, "the mocked LLM should have been invoked"
 
-    def test_deterministic_fallback_when_llm_returns_none(self, monkeypatch, with_api_key):
-        # LLM-preferred category, but the LLM yields nothing → deterministic wins.
+    def test_raises_when_llm_answer_returns_none(self, monkeypatch, with_api_key):
+        # API key set, but the LLM yields nothing -> no fallback exists, so
+        # answer_question must raise rather than fabricate an answer.
         monkeypatch.setattr(answer_agent, "_llm_answer", lambda *a, **k: None)
 
-        state = _policy_state(app_launched=True)
-        answer = answer_question(state, "Did you launch the app?")
-        assert answer == "Yes, the app has been launched."
+        with pytest.raises(UnansweredQuestionError):
+            answer_question(_policy_state(app_launched=True), "Did you launch the app?")
 
-    def test_llm_failure_falls_back_to_deterministic(self, monkeypatch, with_api_key):
-        # The real _llm_answer runs, its invoke() raises, exception is swallowed,
-        # and the deterministic answer is produced instead.
+    def test_llm_failure_raises(self, monkeypatch, with_api_key):
+        # The real _llm_answer runs, its invoke() raises, the exception is
+        # swallowed internally (returns None) -- with no deterministic
+        # fallback left, answer_question must raise.
         failing = _FakeLLM(error=RuntimeError("network down"))
         monkeypatch.setattr(answer_agent, "_llm", lambda: failing)
 
-        state = _policy_state(app_launched=False)
-        answer = answer_question(state, "Did you launch the app?")
-        assert answer == "No, the app has not been launched yet."
-        assert failing.calls, "the LLM should have been attempted before falling back"
+        state = {**_policy_state(app_launched=False), "run_id": TEST_RUN_ID}
+        with pytest.raises(UnansweredQuestionError):
+            answer_question(state, "Did you launch the app?")
+        assert failing.calls, "the LLM should have been attempted before failing"
 
     def test_raises_when_no_answer_exists(self):
-        # No key, unknown question, empty state → nothing can answer it.
+        # No key, empty state → nothing can answer it; the original question
+        # text is preserved on the exception for the caller to log/report.
         with pytest.raises(UnansweredQuestionError) as exc_info:
             answer_question({}, "Tell me an unrelated story.")
-        assert exc_info.value.category == "general"
+        assert exc_info.value.question == "Tell me an unrelated story."
 
     def test_llm_path_raises_when_all_paths_empty(self, monkeypatch, with_api_key):
         # LLM primary returns nothing AND deterministic chain is empty → raise.

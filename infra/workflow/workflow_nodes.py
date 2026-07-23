@@ -1028,6 +1028,35 @@ async  def sdk_agent_node(
             "deep link was triggered."
         )
 
+    # Same idea as ios_deeplink_log_file above, but for verifyIosSdk's separate
+    # log file: emulator_node collects it right after app launch (before any
+    # deep link exists), since that tool checks base SDK start/conversion-data
+    # readiness, not deep-link-specific behavior.
+    ios_sdk_log_file = state.get("ios_sdk_log_file")
+    if (
+        current_prompt_type == "verify_prompt"
+        and str(platform).lower() == "ios"
+        and ios_sdk_log_file
+    ):
+        user_prompt = (
+            f"{user_prompt}\n\n"
+            "---\n"
+            "iOS SDK verification data (already collected by the pipeline):\n"
+            f"- Log file path: {ios_sdk_log_file}\n"
+            "If you call verifyIosSdk, use action=\"prepare\" and projectPath first if you "
+            "haven't already, then call it again with action=\"verify\", "
+            f"logFilePath=\"{ios_sdk_log_file}\", and confirmLogFileReady=true. "
+            "Do not ask the user to paste logs manually -- this file was already "
+            "populated automatically from the simulator's system log right after the "
+            "app was launched."
+        )
+
+
+    # Snapshot how many audit events exist before this turn so we can tell,
+    # right after the call, whether *this specific turn* actually wrote any
+    # source file -- as opposed to just a Podfile/config tweak. Needed below
+    # to detect a real "integrate_prompt wrote no code at all" failure.
+    events_before_turn = len(audit_recorder.events) if audit_recorder else 0
 
     result = await run_sdk_integration_agent(
         state=state,
@@ -1053,6 +1082,38 @@ async  def sdk_agent_node(
         != "FAIL"
     )
 
+    # Objective (not classifier-dependent) check: integrate_prompt is the one
+    # turn whose whole job is to write the SDK integration code. If it failed
+    # AND no source file (.m/.h/.mm/.swift/.java/.kt) was written during this
+    # exact turn -- only e.g. a Podfile -- then compilation_check/emulator
+    # will just build and boot an app that was never touched by AppsFlyer
+    # code, which cannot possibly pass verify_prompt later. Running that full
+    # build+simulator-boot cycle anyway (as happened in practice, twice, for
+    # ~10 minutes) is pure waste, so short-circuit straight to test_runner
+    # instead. This is deliberately narrower than "classifier said FAIL"
+    # (route_from_sdk_agent still ignores that on its own, since the
+    # classifier can be wrong) -- it only fires on the objective, checkable
+    # fact that zero code exists to compile.
+    sdk_integration_incomplete = False
+    if current_prompt_type == "integrate_prompt" and not node_succeeded and audit_recorder:
+        code_suffixes = (".m", ".h", ".mm", ".swift", ".java", ".kt")
+        wrote_code_file = any(
+            e["event_type"] == "PROJECT_FILE_WRITTEN"
+            and e["payload"].get("changed")
+            and str(e["payload"].get("file_path", "")).endswith(code_suffixes)
+            for e in audit_recorder.events[events_before_turn:]
+        )
+        if not wrote_code_file:
+            sdk_integration_incomplete = True
+            state["test_status"] = "FAIL"
+            state["fail_reason"] = (
+                "sdk_agent failed integrate_prompt without writing any source "
+                "file (.m/.h/.mm/.swift/.java/.kt) -- no AppsFlyer integration "
+                "code exists to compile, so compilation_check/emulator were "
+                "skipped instead of running on a build that could never pass."
+            )
+
+    state["sdk_integration_incomplete"] = sdk_integration_incomplete
 
     node_log = {
         "node": "sdk_agent",
@@ -1214,6 +1275,20 @@ def deep_link_node(
     """
     state["deep_link_is_visited"] = True
     state.update(simulate_deep_link_click(state))
+
+    # Every other node appends a {"node": ..., "status": ...} entry to
+    # nodes_log so the report can show whether it passed -- this one used to
+    # skip that step, so the report always showed "Deep Link: Status —" even
+    # when the URL was sent and logs were collected successfully.
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "deep_link",
+            "status": state.get("deep_link_status") or "UNKNOWN",
+            "message": state.get("deep_link_message") or state.get("error_reason") or "",
+        },
+    ]
+
     return state
 
 
@@ -1413,11 +1488,22 @@ def route_from_sdk_agent(
     verify_prompt (pass or fail) -> test_runner
     integrate/event (pass or fail) -> compilation_check
 
-    Deliberately does NOT check _is_pipeline_fail here: an sdk_agent
-    failure is recorded in nodes_log/fail_reason (see sdk_agent_node) but
-    must not short-circuit straight to test_runner — it should continue
-    to the same next node it would reach on success.
+    Deliberately does NOT check _is_pipeline_fail here in general: a
+    classifier FAIL on its own is recorded in nodes_log/fail_reason (see
+    sdk_agent_node) but must not short-circuit straight to test_runner —
+    the classifier can be wrong, so integrate/event failures still continue
+    to the same next node they'd reach on success.
+
+    The one exception is state["sdk_integration_incomplete"]: an objective
+    (not classifier-dependent) signal set by sdk_agent_node when
+    integrate_prompt failed AND wrote zero source files. In that case there
+    is provably no SDK code to compile, so running compilation_check/emulator
+    anyway would just waste a full build+simulator-boot cycle on a build that
+    cannot pass -- go straight to test_runner instead.
     """
+    if state.get("sdk_integration_incomplete"):
+        return "test_runner"
+
     prompt_just_run = (
         state.get("prompt_just_run")
         or state.get("last_prompt_type")

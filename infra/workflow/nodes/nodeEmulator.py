@@ -13,6 +13,8 @@ from infra.agents.sdkAgent.tools.emulator import (
     launch_app_on_device,
     ensure_device_running,
     run_basic_navigation_smoke,
+    wait_for_ios_log_marker,
+    read_ios_appsflyer_uid,
 )
 
 if TYPE_CHECKING:
@@ -35,6 +37,69 @@ def _read_bundle_id_from_app(app_path: str) -> str | None:
         text=True,
     )
     return result.stdout.strip() or None
+
+
+def _collect_ios_sdk_logs(
+    sandbox_path: str,
+    device_id: str | None = None,
+    bundle_id: str | None = None,
+    timeout_seconds: float = 45.0,
+) -> str | None:
+    """Collect AppsFlyer SDK startup/conversion-data lines from the iOS
+    simulator's system log, polling until the SDK's start completion handler
+    has actually logged something (or `timeout_seconds` elapses).
+
+    verifyIosSdk (unlike verifyIosDeepLink) has no automated log collection
+    today -- it still tells the agent to ask the user to paste Xcode debug
+    logs into ios-sdk-logs.txt, which never happens in this pipeline, so
+    that verify call always reports "log file is empty". This mirrors
+    _collect_ios_deeplink_logs in deep_link.py (same log predicate: it
+    already covers SDK-start/conversion lines, not just deep-link ones) but
+    runs right after launch instead of after a deep link is sent, and
+    writes to a different, dedicated file so it doesn't clash with the
+    deep-link one collected later.
+
+    A fixed short sleep here used to give up before `startWithCompletionHandler:`
+    fired (that also needs a network round-trip), leaving the file looking
+    empty even when the SDK started successfully a moment later. Polling for
+    the actual "start success"/"start error" marker fixes that.
+
+    verifyIosSdk also specifically looks for a UID/app-ID/IDFV payload as
+    proof of a real session -- the SDK agent's own onConversionDataSuccess:
+    implementation typically just stores that data instead of logging it, so
+    it never appears in the console log no matter how long we wait. When
+    `device_id`/`bundle_id` are given, we append the UID AppsFlyerLib already
+    persisted on disk (read_ios_appsflyer_uid) so verifyIosSdk has real
+    evidence to find, without touching any code the SDK agent wrote.
+
+    Returns the absolute path to the written file, or None if collection
+    itself failed (best-effort -- must never fail the emulator node).
+    """
+    try:
+        output = wait_for_ios_log_marker(
+            # See the matching comment in _collect_ios_deeplink_logs
+            # (deep_link.py) -- subsystem/process alone miss the app's
+            # own NSLog() calls (e.g. "AppsFlyer start success: ..." in
+            # AppDelegate.m), which run under the app's own process
+            # name, not "AppsFlyer". eventMessage[c] catches those too.
+            predicate=(
+                'subsystem CONTAINS[c] "appsflyer" OR process CONTAINS[c] "appsflyer" '
+                'OR eventMessage CONTAINS[c] "appsflyer"'
+            ),
+            marker_substrings=("[AppsFlyer] start",),
+            timeout_seconds=timeout_seconds,
+        )
+
+        if device_id and bundle_id:
+            uid = read_ios_appsflyer_uid(device_id, bundle_id)
+            if uid:
+                output += f"\n[pipeline] AppsFlyerUID (read from on-device NSUserDefaults): {uid}\n"
+
+        log_file = Path(sandbox_path) / "ios-sdk-logs.txt"
+        log_file.write_text(output, encoding="utf-8")
+        return str(log_file)
+    except Exception:
+        return None
 
 
 def _resolve_built_artifact_path(state: "PipelineState") -> str | None:
@@ -115,6 +180,7 @@ def emulator_node(state: PipelineState) -> dict:
     install_result: str | None = None
     launch_result: str | None = None
     boot_result: str | None = None
+    ios_sdk_log_file: str | None = None
 
     try:
         # Step 1 — install Appium + platform driver
@@ -187,6 +253,15 @@ def emulator_node(state: PipelineState) -> dict:
                 launch_result = "App launched successfully, driver is ready."
                 steps.append(f"[launch] {launch_result}")
 
+                if os_type == "ios":
+                    sandbox_path = state.get("sandbox_path") or state.get("app_path")
+                    if sandbox_path:
+                        ios_sdk_log_file = _collect_ios_sdk_logs(
+                            str(sandbox_path), device_id=device_id, bundle_id=bundle_id
+                        )
+                        if ios_sdk_log_file:
+                            steps.append(f"[sdk-logs] Collected to {ios_sdk_log_file}")
+
     except Exception as e:
         steps.append(f"[error] Node execution failed: {str(e)}")
 
@@ -236,6 +311,8 @@ def emulator_node(state: PipelineState) -> dict:
         "driver": driver_instance,
         "device_id": device_id,
     }
+    if ios_sdk_log_file:
+        result["ios_sdk_log_file"] = ios_sdk_log_file
 
     # Step 7 — optional navigation smoke test. The sdk_agent has no tools to
     # build/launch/tap the app itself (see sdk-agent-main-rules.json rule

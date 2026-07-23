@@ -1104,7 +1104,7 @@ class RunReportBuilder:
             return "passed"
         if lowered in {"warn", "warning"}:
             return "warning"
-        if lowered in {"error", "failed", "fail"}:
+        if lowered in {"error", "failed", "fail", "failure"}:
             return "failed"
         return "info"
 
