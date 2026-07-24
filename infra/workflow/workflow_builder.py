@@ -90,7 +90,14 @@ def build_workflow():
     graph.add_conditional_edges(
         "compilation_check",
         route_after_compilation_check,
-        {**_FAIL_OR_NEXT, "emulator": "emulator"},
+        {
+            **_FAIL_OR_NEXT,
+            "emulator": "emulator",
+            # One compilation-retry pass: route_after_compilation_check
+            # returns this when the stage that just wrote code (integrate/
+            # event) hasn't used its single self-correction retry yet.
+            "sdk_agent": "sdk_agent",
+        },
     )
 
     graph.add_conditional_edges(

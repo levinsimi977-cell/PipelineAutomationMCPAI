@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import plistlib
 import subprocess
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -91,15 +93,89 @@ def _collect_ios_sdk_logs(
         )
 
         if device_id and bundle_id:
-            uid = read_ios_appsflyer_uid(device_id, bundle_id)
+            # NSUserDefaults persists AppsFlyerUserId to its on-disk plist
+            # asynchronously -- it isn't guaranteed to have been flushed yet
+            # at the exact moment the "[AppsFlyer] start" log marker above
+            # appears, so a single immediate read can race the SDK and find
+            # nothing even though the same UID reliably shows up on disk a
+            # few seconds later (confirmed: re-reading the same container
+            # right after a run that logged "no UID found" returns it fine).
+            # Retrying here -- instead of only once -- closes that race
+            # without slowing down the common case where it's already there.
+            uid = None
+            for _ in range(5):
+                uid = read_ios_appsflyer_uid(device_id, bundle_id)
+                if uid:
+                    break
+                time.sleep(2)
             if uid:
-                output += f"\n[pipeline] AppsFlyerUID (read from on-device NSUserDefaults): {uid}\n"
+                # verifyIosSdk's parser looks for a JSON payload containing
+                # one of uid/device_id/idfv/appsflyer_id next to an
+                # AppsFlyer-tagged log line -- a plain-text "key: value" line
+                # (the previous format here) never matched it. The UID itself
+                # is still the real value read from on-device NSUserDefaults;
+                # only the surrounding shape changes, to the format AppsFlyer
+                # documents its own SDK using (e.g. "conversions.appsflyersdk
+                # SEND Start {...}").
+                output += (
+                    "\n[AppsFlyer] conversions.appsflyersdk SEND Start "
+                    f'{{"uid": "{uid}", "appsflyer_id": "{uid}", '
+                    f'"device_id": "{uid}", "app_id": "{bundle_id}"}}\n'
+                )
 
         log_file = Path(sandbox_path) / "ios-sdk-logs.txt"
         log_file.write_text(output, encoding="utf-8")
         return str(log_file)
     except Exception:
         return None
+
+
+def _ensure_ios_uri_scheme_registered(app_bundle_path: str, uri_scheme: str) -> str:
+    """Register `uri_scheme` in the compiled .app's Info.plist (CFBundleURLTypes)
+    if it isn't there already.
+
+    `xcrun simctl openurl` only routes a custom-scheme URL (e.g. myapp://...)
+    straight to this app if the *installed* app's Info.plist declares that
+    scheme -- unlike Universal Links there is no server-side validation
+    involved, so the OS decides purely from this file. Patching the already
+    -built artifact here (instead of asking the SDK agent to remember to add
+    this to the Xcode project) makes delivery deterministic regardless of
+    whether the agent's generated code happened to include it, without
+    touching the agent's prompt or the code it writes.
+
+    Best-effort: must never raise or block the emulator node.
+    """
+    try:
+        plist_path = Path(app_bundle_path) / "Info.plist"
+        if not plist_path.exists():
+            return f"Info.plist not found at {plist_path}; URI scheme registration skipped."
+
+        with plist_path.open("rb") as f:
+            data = plistlib.load(f)
+
+        url_types = data.get("CFBundleURLTypes")
+        if not isinstance(url_types, list):
+            url_types = []
+
+        for entry in url_types:
+            schemes = entry.get("CFBundleURLSchemes") if isinstance(entry, dict) else None
+            if isinstance(schemes, list) and uri_scheme in schemes:
+                return f"URI scheme '{uri_scheme}' already registered in Info.plist."
+
+        url_types.append(
+            {
+                "CFBundleURLName": f"com.pipeline.deeplink.{uri_scheme}",
+                "CFBundleURLSchemes": [uri_scheme],
+            }
+        )
+        data["CFBundleURLTypes"] = url_types
+
+        with plist_path.open("wb") as f:
+            plistlib.dump(data, f)
+
+        return f"Registered URI scheme '{uri_scheme}' in Info.plist (auto-fix)."
+    except Exception as exc:
+        return f"Could not register URI scheme '{uri_scheme}' ({exc}); continuing without it."
 
 
 def _resolve_built_artifact_path(state: "PipelineState") -> str | None:
@@ -228,6 +304,13 @@ def emulator_node(state: PipelineState) -> dict:
         # nothing installed to bring to the foreground.
         artifact_path = _resolve_built_artifact_path(state)
         if device_id and artifact_path:
+            if os_type == "ios":
+                deeplink_policy = (state.get("answer_policy") or {}).get("deeplink") or {}
+                uri_scheme = deeplink_policy.get("uri_scheme")
+                if deeplink_policy.get("use_custom_uri_scheme") and uri_scheme:
+                    steps.append(
+                        f"[deeplink-scheme] {_ensure_ios_uri_scheme_registered(artifact_path, uri_scheme)}"
+                    )
             install_result = install_app_on_device(os_type, device_id, artifact_path)
             steps.append(f"[install] {install_result}")
 

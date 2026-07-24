@@ -180,7 +180,17 @@ async def create_sdk_integration_agent(
     def list_project_files() -> str:
         """List relevant editable files in the project. Use this before deciding which file to read or edit."""
         if platform_lower == 'ios':
-            allowed_suffixes = {".swift", ".plist", ".podspec", ".pbxproj", ".xcodeproj", ".xcworkspace"}
+            # .h/.m/.mm are the app's own Objective-C source files AND (critically)
+            # the only way this list surfaces "headers exist" to the agent at all --
+            # without them, an Obj-C project's list_project_files shows zero header
+            # files, which reads as "no headers in this sandbox" and has repeatedly
+            # driven the agent to declare compile errors unfixable instead of using
+            # find_in_project (unbounded rglob, so it already finds vendored SDK
+            # headers however deep the xcframework nests them) to actually look.
+            allowed_suffixes = {
+                ".swift", ".plist", ".podspec", ".pbxproj", ".xcodeproj", ".xcworkspace",
+                ".h", ".m", ".mm",
+            }
             allowed_names = {"Podfile", "Package.swift"}
         elif platform_lower == 'android':
             allowed_suffixes = {".java", ".kt", ".xml", ".gradle", ".kts", ".properties"}
@@ -302,6 +312,7 @@ async def create_sdk_integration_agent(
             return json.dumps({"status": "FAILED", "error": str(e)}, indent=2)
 
     local_tools = [
+        find_in_project,
         list_project_files,
         read_project_file,
         write_to_project_file,

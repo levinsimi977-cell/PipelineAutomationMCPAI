@@ -140,7 +140,14 @@ _HIGH_SIGNAL_PATTERN = re.compile(
     r"error:|fatal error:|ld: error:|linker command failed|"
     r"undefined symbols for architecture|duplicate symbol|no such module|"
     r"use of undeclared identifier|redefinition of|"
-    r"command \S+ failed with a nonzero exit code",
+    r"command \S+ failed with a nonzero exit code|"
+    # Gradle's own top-level failure summary line, e.g.
+    # "FAILURE: Build failed with an exception." -- doesn't contain the word
+    # "error" at all, so without this it fell through to the low-signal
+    # "** BUILD FAILED **"/"the following build commands failed" patterns
+    # (Xcode-only phrasing that Gradle never emits), leaving Gradle failures
+    # with no excerpt at all.
+    r"FAILURE:",
     re.IGNORECASE,
 )
 # "Low signal": only worth showing when nothing high-signal was found at
@@ -171,6 +178,22 @@ def _extract_error_snippet(
             return []
         return [i for i, line in enumerate(text.splitlines()) if pattern.search(line)]
 
+    # xcodebuild prints the full clang/ld invocation (every flag, every
+    # -isysroot path, etc.) as its own single line immediately before each
+    # diagnostic -- confirmed on a real failure: that one line alone was
+    # 3318 chars, bigger than the entire max_chars budget, while the actual
+    # "error: ..." line right after it was only 145 chars. Because
+    # context_lines pulls in the line(s) around a match and _snippet_for
+    # used to keep them at full length, that single command-invocation
+    # "context" line silently consumed the whole budget and the real error
+    # text never made it into the final [:max_chars] slice -- the agent
+    # receiving this saw a giant clang command and nothing that looked like
+    # an actual error, and correctly (but unhelpfully) refused to guess.
+    # Compiler diagnostics themselves are always short; only raw command
+    # lines run this long, so capping any single line this way never cuts
+    # into real error text.
+    _MAX_LINE_CHARS = 400
+
     def _snippet_for(text: str, indices: list[int]) -> str:
         if not indices:
             return ""
@@ -179,7 +202,20 @@ def _extract_error_snippet(
         for idx in indices:
             lo, hi = max(0, idx - context_lines), min(len(lines), idx + context_lines + 1)
             keep.update(range(lo, hi))
-        return "\n".join(lines[i] for i in sorted(keep))
+        # xcodebuild/gradle commonly repeat the exact same diagnostic line
+        # several times (once per architecture, or once per retry) -- keeping
+        # every literal duplicate wastes max_chars budget that a genuinely
+        # different error later in the log could otherwise fit into.
+        seen: set[str] = set()
+        deduped = []
+        for i in sorted(keep):
+            line = lines[i]
+            if len(line) > _MAX_LINE_CHARS:
+                line = line[:_MAX_LINE_CHARS] + " …(truncated)"
+            if line not in seen:
+                seen.add(line)
+                deduped.append(line)
+        return "\n".join(deduped)
 
     stdout_hits = _matches(stdout, _HIGH_SIGNAL_PATTERN)
     stderr_hits = _matches(stderr, _HIGH_SIGNAL_PATTERN)

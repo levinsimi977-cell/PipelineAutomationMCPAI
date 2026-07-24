@@ -52,22 +52,32 @@ class FakeCompletedProcess:
         self.stderr = stderr
 
 
-# ── _extract_error_excerpt ────────────────────────────────────────────────
+# ── _extract_error_snippet ────────────────────────────────────────────────
 
 
 def test_extract_error_excerpt_finds_compiler_error_line():
-    stdout = "note: building target\nAppDelegate.m:23:5: error: assignment to readonly property 'appleAppID'\nnote: done"
+    """The excerpt includes 1 line of context around the match (default
+    context_lines=1), but must not pull in unrelated noise sitting further
+    away in a long, verbose build log."""
+    stdout = (
+        "note: some unrelated earlier build step\n"
+        "note: building target\n"
+        "AppDelegate.m:23:5: error: assignment to readonly property 'appleAppID'\n"
+        "note: done\n"
+        "note: some unrelated later build step\n"
+    )
 
-    excerpt = ca._extract_error_excerpt(stdout, "")
+    excerpt = ca._extract_error_snippet(stdout, "")
 
     assert "error: assignment to readonly property 'appleAppID'" in excerpt
-    assert "note: building target" not in excerpt
+    assert "note: some unrelated earlier build step" not in excerpt
+    assert "note: some unrelated later build step" not in excerpt
 
 
 def test_extract_error_excerpt_dedupes_repeated_lines():
     stdout = "x.m:1:1: error: boom\n" * 3
 
-    excerpt = ca._extract_error_excerpt(stdout, "")
+    excerpt = ca._extract_error_snippet(stdout, "")
 
     assert excerpt.count("error: boom") == 1
 
@@ -89,7 +99,7 @@ def test_extract_error_excerpt_scans_full_text_not_just_the_tail():
     )
     assert "error:" not in stdout[-ca.LOG_TAIL_CHARS:]  # sanity check the setup actually reproduces the bug
 
-    excerpt = ca._extract_error_excerpt(stdout, "")
+    excerpt = ca._extract_error_snippet(stdout, "")
 
     assert "error: assignment to readonly property 'appleAppID'" in excerpt
 
@@ -97,13 +107,13 @@ def test_extract_error_excerpt_scans_full_text_not_just_the_tail():
 def test_extract_error_excerpt_matches_gradle_failure_marker():
     stderr = "> Task :app:compileDebugJavaWithJavac FAILED\n\nFAILURE: Build failed with an exception.\n"
 
-    excerpt = ca._extract_error_excerpt("", stderr)
+    excerpt = ca._extract_error_snippet("", stderr)
 
     assert "FAILURE: Build failed with an exception." in excerpt
 
 
 def test_extract_error_excerpt_empty_when_no_error_markers():
-    assert ca._extract_error_excerpt("BUILD SUCCEEDED", "") == ""
+    assert ca._extract_error_snippet("BUILD SUCCEEDED", "") == ""
 
 
 # ── iOS: _find_ios_project ──────────────────────────────────────────────
@@ -657,7 +667,14 @@ def test_prefers_posix_wrapper_when_both_exist(tmp_path: Path):
 
 
 @POSIX_ONLY
-def test_ensure_cocoapods_installed_runs_when_pods_missing(monkeypatch, tmp_path: Path):
+def test_ensure_cocoapods_installed_reports_missing_pods_without_running_install(
+    monkeypatch, tmp_path: Path
+):
+    """_ensure_cocoapods_installed is report-only: the SDK agent (LLM) is
+    responsible for running `pod install` itself as part of integration. If
+    Pods/Manifest.lock is still missing by compile time, this must surface a
+    clear error message -- and must NOT silently run `pod install` itself,
+    which would paper over the agent's mistake instead of reporting it."""
     project_root = _make_project(tmp_path)
     (project_root / "Podfile").write_text(
         "target 'basic_app' do\n  pod 'AppsFlyerFramework'\nend\n",
@@ -676,8 +693,11 @@ def test_ensure_cocoapods_installed_runs_when_pods_missing(monkeypatch, tmp_path
         fake_run_pod_install_command,
     )
 
-    assert ca._ensure_cocoapods_installed(project_root) is None
-    assert calls == [str(project_root)]
+    error = ca._ensure_cocoapods_installed(project_root)
+
+    assert error is not None
+    assert "pod install" in error
+    assert calls == []
 
 
 @POSIX_ONLY
