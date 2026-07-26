@@ -155,6 +155,7 @@ def test_run_xcodebuild_success(monkeypatch, tmp_path):
     def fake_run(command, cwd, capture_output, text, timeout):
         assert "build" in command
         assert "-scheme" in command and "basic_app" in command
+        assert "-derivedDataPath" in command
         return FakeCompletedProcess(0, stdout="** BUILD SUCCEEDED **", stderr="")
 
     monkeypatch.setattr(ca.subprocess, "run", fake_run)
@@ -167,6 +168,59 @@ def test_run_xcodebuild_success(monkeypatch, tmp_path):
     assert result.log_path is not None
     assert Path(result.log_path).exists()
     assert "BUILD SUCCEEDED" in Path(result.log_path).read_text()
+
+
+# ── iOS: built .app bundle discovery (_find_built_app_bundle) ────────────
+
+
+def test_find_built_app_bundle_at_exact_configuration_sdk_dir(tmp_path: Path):
+    derived_data = tmp_path / "DerivedData"
+    products_dir = derived_data / "Build" / "Products" / "Debug-iphonesimulator"
+    products_dir.mkdir(parents=True)
+    app_bundle = products_dir / "basic_app.app"
+    app_bundle.mkdir()
+
+    found = ca._find_built_app_bundle(derived_data, "Debug", "iphonesimulator")
+
+    assert found == str(app_bundle)
+
+
+def test_find_built_app_bundle_falls_back_to_most_recent(tmp_path: Path):
+    derived_data = tmp_path / "DerivedData"
+    other_dir = derived_data / "Build" / "Products" / "Release-iphoneos"
+    other_dir.mkdir(parents=True)
+    app_bundle = other_dir / "basic_app.app"
+    app_bundle.mkdir()
+
+    found = ca._find_built_app_bundle(derived_data, "Debug", "iphonesimulator")
+
+    assert found == str(app_bundle)
+
+
+def test_find_built_app_bundle_returns_none_when_nothing_built(tmp_path: Path):
+    assert ca._find_built_app_bundle(tmp_path / "DerivedData", "Debug", "iphonesimulator") is None
+
+
+def test_run_xcodebuild_success_populates_app_bundle_path(monkeypatch, tmp_path):
+    project_root = _make_project(tmp_path, use_workspace=True)
+    log_dir = tmp_path / "run_dir" / "compilation-logs"
+
+    monkeypatch.setattr(ca, "_detect_scheme", lambda workspace, project: "basic_app")
+
+    def fake_run(command, cwd, capture_output, text, timeout):
+        # Simulate xcodebuild actually producing the .app at -derivedDataPath.
+        derived_data_index = command.index("-derivedDataPath") + 1
+        derived_data_path = Path(command[derived_data_index])
+        products_dir = derived_data_path / "Build" / "Products" / "Debug-iphonesimulator"
+        products_dir.mkdir(parents=True)
+        (products_dir / "basic_app.app").mkdir()
+        return FakeCompletedProcess(0, stdout="** BUILD SUCCEEDED **", stderr="")
+
+    monkeypatch.setattr(ca.subprocess, "run", fake_run)
+
+    result = ca.run_xcodebuild(str(project_root), log_dir=log_dir)
+
+    assert result.extra["app_bundle_path"].endswith("basic_app.app")
 
 
 def test_run_xcodebuild_failure(monkeypatch, tmp_path):
@@ -335,6 +389,91 @@ def _make_fake_gradlew(project_dir: Path, exit_code: int, stdout: str = "", stde
     return gradlew
 
 
+# ── Android: SDK location discovery (_find_android_sdk_root / _ensure_android_sdk_location) ──
+
+
+def test_find_android_sdk_root_uses_env_var(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path))
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+
+    assert ca._find_android_sdk_root() == str(tmp_path)
+
+
+def test_find_android_sdk_root_falls_back_to_os_default(tmp_path, monkeypatch):
+    """
+    Regression test: previously only ANDROID_HOME/ANDROID_SDK_ROOT were
+    checked, so an SDK actually installed at the OS's common default
+    location (but not exported as an env var) was invisible to the
+    compilation check — Gradle then failed with "SDK location not found"
+    even though the SDK was genuinely installed.
+    """
+    monkeypatch.delenv("ANDROID_HOME", raising=False)
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    monkeypatch.setattr(ca.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(ca.os.path, "expanduser", lambda p: str(tmp_path))
+
+    assert ca._find_android_sdk_root() == str(tmp_path)
+
+
+def test_find_android_sdk_root_returns_none_when_nothing_found(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANDROID_HOME", raising=False)
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    monkeypatch.setattr(ca.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(ca.os.path, "expanduser", lambda p: str(tmp_path / "does-not-exist"))
+
+    assert ca._find_android_sdk_root() is None
+
+
+def test_ensure_android_sdk_location_writes_local_properties(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    sdk_dir = tmp_path / "sdk"
+    sdk_dir.mkdir()
+    monkeypatch.setenv("ANDROID_HOME", str(sdk_dir))
+
+    ca._ensure_android_sdk_location(project_root)
+
+    local_properties = project_root / "local.properties"
+    assert local_properties.exists()
+    assert "sdk.dir=" in local_properties.read_text()
+
+
+def test_ensure_android_sdk_location_uses_default_when_env_unset(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    monkeypatch.delenv("ANDROID_HOME", raising=False)
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    monkeypatch.setattr(ca, "_find_android_sdk_root", lambda: str(tmp_path / "default-sdk"))
+
+    ca._ensure_android_sdk_location(project_root)
+
+    local_properties = project_root / "local.properties"
+    assert local_properties.exists()
+    assert "default-sdk" in local_properties.read_text()
+
+
+def test_ensure_android_sdk_location_noop_when_already_exists(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    local_properties = project_root / "local.properties"
+    local_properties.write_text("sdk.dir=/existing/path\n", encoding="utf-8")
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path))
+
+    ca._ensure_android_sdk_location(project_root)
+
+    assert local_properties.read_text() == "sdk.dir=/existing/path\n"
+
+
+def test_ensure_android_sdk_location_noop_when_sdk_not_found(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    monkeypatch.setattr(ca, "_find_android_sdk_root", lambda: None)
+
+    ca._ensure_android_sdk_location(project_root)
+
+    assert not (project_root / "local.properties").exists()
+
+
 @POSIX_ONLY
 def test_run_gradle_build_success(tmp_path: Path):
     _make_fake_gradlew(tmp_path, exit_code=0, stdout="BUILD SUCCESSFUL")
@@ -348,6 +487,63 @@ def test_run_gradle_build_success(tmp_path: Path):
     assert result.return_code == 0
     assert "BUILD SUCCESSFUL" in result.stdout_tail
     assert result.log_path and Path(result.log_path).exists()
+
+
+# ── Android: built APK discovery (_find_built_apk) ───────────────────────
+#
+# Regression coverage for the bug where a device that didn't already have
+# the app installed (e.g. a freshly auto-booted emulator) was left sitting
+# on its home screen: the pipeline built an APK but never installed it.
+
+
+def _make_apk(project_root: Path, module: str, build_type: str, name: str) -> Path:
+    apk_dir = project_root / module / "build" / "outputs" / "apk" / build_type
+    apk_dir.mkdir(parents=True, exist_ok=True)
+    apk = apk_dir / name
+    apk.write_bytes(b"fake-apk-bytes")
+    return apk
+
+
+def test_find_built_apk_prefers_matching_build_type(tmp_path: Path):
+    _make_apk(tmp_path, "app", "release", "app-release.apk")
+    debug_apk = _make_apk(tmp_path, "app", "debug", "app-debug.apk")
+
+    found = ca._find_built_apk(tmp_path, "assembleDebug")
+
+    assert found == str(debug_apk)
+
+
+def test_find_built_apk_falls_back_to_most_recent_when_no_match(tmp_path: Path):
+    older = _make_apk(tmp_path, "app", "customFlavor", "app-custom.apk")
+    os.utime(older, (1, 1))
+
+    found = ca._find_built_apk(tmp_path, "assembleCustomFlavorRelease")
+
+    assert found == str(older)
+
+
+def test_find_built_apk_returns_none_when_nothing_built(tmp_path: Path):
+    assert ca._find_built_apk(tmp_path, "assembleDebug") is None
+
+
+@POSIX_ONLY
+def test_run_gradle_build_success_populates_apk_path(tmp_path: Path):
+    _make_fake_gradlew(tmp_path, exit_code=0, stdout="BUILD SUCCESSFUL")
+    debug_apk = _make_apk(tmp_path, "app", "debug", "app-debug.apk")
+
+    result = ca.run_gradle_build(tmp_path)
+
+    assert result.extra["apk_path"] == str(debug_apk)
+
+
+@POSIX_ONLY
+def test_run_gradle_build_failure_does_not_populate_apk_path(tmp_path: Path):
+    _make_apk(tmp_path, "app", "debug", "app-debug.apk")
+    _make_fake_gradlew(tmp_path, exit_code=1, stderr="error: cannot find symbol")
+
+    result = ca.run_gradle_build(tmp_path)
+
+    assert result.extra == {}
 
 
 @POSIX_ONLY

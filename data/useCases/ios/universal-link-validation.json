@@ -16,7 +16,7 @@
     },
     "deeplink": {
       "use_deep_linking": true,
-      "onelink_url": "https://example.onelink.me/abc1",
+      "onelink_url": "https://example.onelink.me/abc1/iosLink",
       "url_identifier": "ios-offers",
       "uri_scheme": "myapp",
       "use_custom_uri_scheme": true

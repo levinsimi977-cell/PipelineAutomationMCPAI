@@ -30,8 +30,23 @@ class AuditRecorder:
 
         self.events.append(event)
 
-        with self.audit_log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        line = json.dumps(event, ensure_ascii=False) + "\n"
+        try:
+            with self.audit_log_path.open("a", encoding="utf-8") as f:
+                f.write(line)
+        except FileNotFoundError:
+            # The run directory can legitimately be gone by the time this
+            # fires — e.g. a late/overlapping write racing the end-of-run
+            # cleanup in workflow_nodes.py's _clear_run_dir(). The event is
+            # already kept in self.events above; recreate the directory and
+            # retry once so a merely-missing folder doesn't lose the entry,
+            # but never let a disappeared run directory crash the pipeline.
+            try:
+                self.run_dir.mkdir(parents=True, exist_ok=True)
+                with self.audit_log_path.open("a", encoding="utf-8") as f:
+                    f.write(line)
+            except OSError:
+                pass
 
 
     def agent_decisions(self) -> List[Dict[str, Any]]:
@@ -48,16 +63,29 @@ class AuditRecorder:
 
     def mcp_tool_results(self) -> List[Dict[str, Any]]:
         """
-        Getter function: Retrieves all the answers and results returned from the tools (MCP Tools) after execution.
-        Filters the events list and returns only the payload of events with type "MCP_TOOL_RESULT".
+        Getter function: Retrieves MCP_TOOL_RESULT payloads, enriched with the
+        "action" argument (e.g. "prepare"/"verify" for iOS two-step tools)
+        taken from the matching AGENT_DECISION that triggered it - matched by
+        tool name, in call order. Existing fields ("tool", "status",
+        "is_error", "result") are unchanged; "action" is only added when the
+        matching decision actually had one.
         """
-        return [
-            e["payload"]
-            for e in self.events
-            if e["event_type"] == "MCP_TOOL_RESULT"
-        ]
-
-
+        pending_by_tool: Dict[str, List[Dict[str, Any]]] = {}
+        results: List[Dict[str, Any]] = []
+        for e in self.events:
+            if e["event_type"] == "AGENT_DECISION":
+                decision = e["payload"]
+                pending_by_tool.setdefault(decision.get("tool"), []).append(decision)
+            elif e["event_type"] == "MCP_TOOL_RESULT":
+                payload = dict(e["payload"])
+                queue = pending_by_tool.get(payload.get("tool"))
+                if queue:
+                    matching_decision = queue.pop(0)
+                    action = (matching_decision.get("args") or {}).get("action")
+                    if action:
+                        payload["action"] = action
+                results.append(payload)
+        return results
     def simulated_user_replies(self) -> List[Dict[str, Any]]:
         """
         Getter function: Retrieves all messages and responses received from the "Simulated User" during the conversation.

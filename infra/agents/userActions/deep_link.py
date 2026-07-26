@@ -18,6 +18,8 @@ Deep Link Node — סימולציה בלבד (קבוצה 5).
 
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 import traceback
 from typing import Any
@@ -83,13 +85,39 @@ def _append_appsflyer_params(url: str, media_source: str, campaign: str) -> str:
     return urlunparse(parsed._replace(query=flat_query))
 
 
+def extract_deep_link_url_from_audit(audit_recorder: Any) -> str | None:
+    if audit_recorder is None:
+        return None
+    for payload in reversed(audit_recorder.mcp_tool_results()):
+        if payload.get("tool") not in ("createDeepLink", "createIosDeepLink"):
+            continue
+        text = payload.get("result") or ""
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                for value in data.values():
+                    if isinstance(value, str) and "://" in value:
+                        return value
+        except json.JSONDecodeError:
+            pass
+        match = re.search(r"https?://\S+", text)
+        if match:
+            return match.group(0).rstrip('",}')
+    return None
+
+
 def build_deep_link_url(state: dict[str, Any]) -> str:
     """
     בונה את הקישור הסופי לפי סדר עדיפויות:
-      1. onelink_url מה-use case (עם pid/c של AppsFlyer)
-      2. Custom URI scheme (myapp://offers)
-      3. Mock OneLink דינמי (generate_mock_deep_link)
+      1. deep_link_url מה-agent (MCP)
+      2. onelink_url מה-use case (עם pid/c של AppsFlyer)
+      3. Custom URI scheme (myapp://offers)
+      4. Mock OneLink דינמי (generate_mock_deep_link)
     """
+    agent_url = state.get("deep_link_url")
+    if isinstance(agent_url, str) and agent_url.strip():
+        return agent_url.strip()
+
     policy = _get_deeplink_policy(state)
     media_source = policy.get("media_source") or DEFAULT_MEDIA_SOURCE
     campaign = policy.get("campaign") or DEFAULT_CAMPAIGN
