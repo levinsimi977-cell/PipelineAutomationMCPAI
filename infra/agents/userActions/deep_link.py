@@ -21,9 +21,13 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 import traceback
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+from infra.agents.sdkAgent.tools.emulator import wait_for_ios_log_marker
 
 # ---------------------------------------------------------------------------
 # קבועים — פרמטרי AppsFlyer שקבוצת ה-MCP Listener מכירה
@@ -109,18 +113,35 @@ def extract_deep_link_url_from_audit(audit_recorder: Any) -> str | None:
 def build_deep_link_url(state: dict[str, Any]) -> str:
     """
     בונה את הקישור הסופי לפי סדר עדיפויות:
-      1. deep_link_url מה-agent (MCP)
-      2. onelink_url מה-use case (עם pid/c של AppsFlyer)
-      3. Custom URI scheme (myapp://offers)
-      4. Mock OneLink דינמי (generate_mock_deep_link)
-    """
-    agent_url = state.get("deep_link_url")
-    if isinstance(agent_url, str) and agent_url.strip():
-        return agent_url.strip()
+      1. iOS + custom URI scheme מוגדר (myapp://offers) -- ראה הערה למטה
+      2. deep_link_url מה-agent (MCP)
+      3. onelink_url מה-use case (עם pid/c של AppsFlyer)
+      4. Custom URI scheme (myapp://offers) -- fallback לפלטפורמות אחרות
+      5. Mock OneLink דינמי (generate_mock_deep_link)
 
+    iOS מקבל טיפול מיוחד: קישורי Universal Link (https://...onelink.me/...,
+    בין אם מה-use case ובין אם מה-agent) דורשים אימות apple-app-site-association
+    אמיתי מול הרשת, שלא עובד באופן עקבי בסימולטור -- אומת בפועל שקריאה ל-
+    `xcrun simctl openurl` עם קישור כזה נותבה ל-Safari ולא לאפליקציה שלנו,
+    כך שה-delegate של ה-SDK לעולם לא נקרא. סכמת URI מותאמת-אישית לא דורשת
+    אימות כזה ומנותבת תמיד ישירות לאפליקציה (בהנחה שהיא רשומה ב-Info.plist,
+    ראו _ensure_ios_uri_scheme_registered ב-nodeEmulator.py), ולכן היא
+    היחידה שמובטח שתגיע בפועל ל-SDK בסימולטור.
+    """
     policy = _get_deeplink_policy(state)
     media_source = policy.get("media_source") or DEFAULT_MEDIA_SOURCE
     campaign = policy.get("campaign") or DEFAULT_CAMPAIGN
+    platform = (state.get("platform") or "").lower()
+
+    if platform == "ios" and policy.get("use_custom_uri_scheme") and policy.get("uri_scheme"):
+        scheme = policy["uri_scheme"]
+        path = policy.get("url_identifier", "")
+        uri = f"{scheme}://{path}" if path else f"{scheme}://"
+        return _append_appsflyer_params(uri, media_source, campaign)
+
+    agent_url = state.get("deep_link_url")
+    if isinstance(agent_url, str) and agent_url.strip():
+        return agent_url.strip()
 
     onelink_url = policy.get("onelink_url")
     if onelink_url:
@@ -132,6 +153,56 @@ def build_deep_link_url(state: dict[str, Any]) -> str:
         return f"{scheme}://{path}" if path else f"{scheme}://"
 
     return generate_mock_deep_link(state)
+
+
+# ---------------------------------------------------------------------------
+# 2. איסוף לוגים מהסימולטור לאחר שליחת Deep Link
+# ---------------------------------------------------------------------------
+
+def _collect_ios_deeplink_logs(sandbox_path: str, timeout_seconds: float = 45.0) -> str:
+    """Poll the iOS simulator system log until the AppsFlyer deep-link delegate
+    callback (`didResolveDeepLink:`, logged by the SDK agent's code as
+    "[AFSDK] ...") actually appears, or `timeout_seconds` elapses.
+
+    Writes the output to ios-deeplink-logs.txt inside `sandbox_path` so that
+    the SDK agent can call verifyIosDeepLink(action="verify", logFilePath=...,
+    confirmLogFileReady=True) without any manual log-pasting step.
+
+    A fixed short sleep here used to give up before the callback fired: resolving
+    a OneLink is a real network round-trip to AppsFlyer's servers and regularly
+    takes longer than a few seconds, so verify_prompt was seeing an empty-looking
+    log and reporting "no deep-link evidence" even when the SDK had genuinely
+    resolved the link a couple of seconds later. Polling for the actual marker
+    (instead of guessing a fixed duration) fixes that without slowing down the
+    common case where the callback fires quickly.
+
+    Returns the absolute path to the written file.
+    """
+    output = wait_for_ios_log_marker(
+        # subsystem/process alone only match logs os_log-tagged from
+        # *inside* AppsFlyerLib itself (e.g. its own internal warnings).
+        # The app's own NSLog() calls in AppDelegate.m/SceneDelegate.m
+        # (the ones the SDK agent writes, e.g. "AppsFlyer start
+        # success: ...") run under the app's own process name (its
+        # executable, not "AppsFlyer"), so they were being silently
+        # dropped -- verify_prompt then saw an empty-looking log and
+        # reported no deep-link evidence even when the delegate had
+        # actually fired. eventMessage[c] catches those regardless of
+        # which process/subsystem emitted them.
+        predicate=(
+            'subsystem CONTAINS[c] "appsflyer" OR process CONTAINS[c] "appsflyer" '
+            'OR eventMessage CONTAINS[c] "appsflyer"'
+        ),
+        # "[AFSDK]" is what the SDK agent's didResolveDeepLink: implementation
+        # NSLogs on any outcome (found/not found/failure) -- its appearance
+        # means the callback has fired, so there is no reason to keep polling.
+        marker_substrings=("[AFSDK]",),
+        timeout_seconds=timeout_seconds,
+    )
+
+    log_file = Path(sandbox_path) / "ios-deeplink-logs.txt"
+    log_file.write_text(output, encoding="utf-8")
+    return str(log_file)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +223,43 @@ class IOSDeepLinkAdapter:
             text=True,
         )
         print(f"[iOS] Deep link triggered: {url}")
+
+
+def dismiss_ios_open_in_app_alert(
+    driver: Any, timeout_seconds: float = 6.0, poll_interval: float = 0.5
+) -> str:
+    """Best-effort: taps "Open" on iOS's native "Open in '<app>'?" confirmation
+    that can appear after `simctl openurl` (owned by SpringBoard, not this
+    app -- it is not a Swift/Obj-C alert our own code could dismiss).
+
+    Without this, the alert sits waiting for a real tap that never comes,
+    so the URL is never actually delivered to the app's
+    AppDelegate/SceneDelegate -- confirmed visually (see the run where the
+    simulator sat on this exact alert). `driver` is the same Appium/XCUITest
+    session emulator_node already created; XCUITest can dismiss system
+    alerts through it regardless of which app is nominally frontmost.
+
+    Best-effort only: never raises, and returns a short human-readable
+    outcome for the caller's steps log (empty and "no alert" both remain
+    valid, non-fatal outcomes -- this alert isn't guaranteed to appear).
+    """
+    if driver is None:
+        return "No Appium driver available; cannot dismiss any confirmation alert."
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            driver.switch_to.alert.accept()
+            return "Accepted an 'Open in App?' system confirmation alert."
+        except Exception:
+            pass
+        try:
+            driver.execute_script("mobile: alert", {"action": "accept"})
+            return "Accepted an 'Open in App?' system confirmation alert (mobile: alert)."
+        except Exception:
+            pass
+        time.sleep(poll_interval)
+    return "No confirmation alert appeared (or it could not be dismissed) within timeout."
 
 
 # ---------------------------------------------------------------------------
@@ -234,14 +342,14 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
     """
     skip, reason = _should_skip(state)
     if skip:
-        return {"deep_link_status": "SKIPPED", "nodes_logs": reason}
+        return {"deep_link_status": "SKIPPED", "deep_link_message": reason}
 
     platform = (state.get("platform") or "").lower()
     if platform not in {"ios", "android"}:
         return {
             "deep_link_status": "FAILED",
             "error_reason": f"Unsupported or missing platform: {platform!r}",
-            "nodes_logs": f"Deep link simulation failed: unsupported platform {platform!r}",
+            "deep_link_message": f"Deep link simulation failed: unsupported platform {platform!r}",
         }
 
     url = build_deep_link_url(state)
@@ -249,10 +357,23 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
     try:
         adapter = _get_adapter(platform, state)
         adapter.trigger_deep_link(url)
+
+        extra: dict[str, Any] = {}
+        if platform == "ios":
+            alert_outcome = dismiss_ios_open_in_app_alert(state.get("driver"))
+            extra["deep_link_alert_dismissal"] = alert_outcome
+            print(f"[iOS] {alert_outcome}")
+
+            sandbox_path = state.get("sandbox_path") or state.get("app_path") or ""
+            if sandbox_path:
+                log_file = _collect_ios_deeplink_logs(sandbox_path)
+                extra["ios_deeplink_log_file"] = log_file
+
         return {
             "triggered_deep_link_url": url,
             "deep_link_status": "SUCCESS",
-            "nodes_logs": f"Simulated deep link click on {platform}: {url}",
+            "deep_link_message": f"Simulated deep link click on {platform}: {url}",
+            **extra,
         }
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or str(exc)).strip()
@@ -260,14 +381,14 @@ def simulate_deep_link_click(state: dict[str, Any]) -> dict[str, Any]:
             "deep_link_status": "FAILED",
             "triggered_deep_link_url": url,
             "error_reason": stderr,
-            "nodes_logs": f"Failed to simulate click on {platform}: {stderr}",
+            "deep_link_message": f"Failed to simulate click on {platform}: {stderr}",
         }
     except Exception as exc:
         return {
             "deep_link_status": "FAILED",
             "triggered_deep_link_url": url,
             "error_reason": str(exc),
-            "nodes_logs": (
+            "deep_link_message": (
                 f"Failed to simulate deep link click on {platform}: {exc}\n"
                 f"{traceback.format_exc()}"
             ),

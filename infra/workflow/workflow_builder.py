@@ -79,13 +79,25 @@ def build_workflow():
             "compilation_check": "compilation_check",
             "user_actions": "user_actions",
             "test_runner": "test_runner",
+            # route_from_sdk_agent returns this after an event_prompt turn
+            # (see workflow_nodes.py) -- missing here meant LangGraph raised
+            # a bare `KeyError: 'user_actions'` (uncaught, before any report
+            # could be written) the moment a use case reached that turn.
+            "user_actions": "user_actions",
         },
     )
 
     graph.add_conditional_edges(
         "compilation_check",
         route_after_compilation_check,
-        {**_FAIL_OR_NEXT, "emulator": "emulator"},
+        {
+            **_FAIL_OR_NEXT,
+            "emulator": "emulator",
+            # One compilation-retry pass: route_after_compilation_check
+            # returns this when the stage that just wrote code (integrate/
+            # event) hasn't used its single self-correction retry yet.
+            "sdk_agent": "sdk_agent",
+        },
     )
 
     graph.add_conditional_edges(

@@ -7,6 +7,7 @@ stale relative to what the crashing node already allocated.
 """
 from __future__ import annotations
 
+import os
 import threading
 from typing import Any
 
@@ -14,6 +15,22 @@ _lock = threading.Lock()
 _sandboxes: dict[str, set[str]] = {}
 _agents: dict[str, set[str]] = {}
 _drivers: dict[str, list[Any]] = {}
+
+
+def should_keep_failed_run_artifacts() -> bool:
+    """
+    Debugging aid: a run ending with test_status == FAIL normally has its
+    sandbox (compiled project + xcodebuild logs) and data/runs/<run_id>/
+    (audit.jsonl) deleted before there's any chance to inspect what went
+    wrong -- deleted from two separate places (visual_report_node's
+    _clear_run_dir, and this module's own sandbox cleanup in
+    release_run_resources). Both call this same check so a FAILED run's
+    artifacts are consistently kept on disk for post-mortem inspection.
+
+    Set PIPELINE_KEEP_FAILED_RUN_ARTIFACTS=0 to restore the old
+    always-delete behavior; defaults to keeping them.
+    """
+    return os.environ.get("PIPELINE_KEEP_FAILED_RUN_ARTIFACTS", "1") != "0"
 
 
 def register_sandbox(run_id: str, path: str) -> None:
@@ -88,12 +105,21 @@ def unregister_driver(run_id: str | None, driver: Any) -> None:
             _drivers.pop(str(run_id), None)
 
 
-def release_run_resources(run_id: str, state: dict[str, Any] | None = None) -> None:
+def release_run_resources(
+    run_id: str,
+    state: dict[str, Any] | None = None,
+    *,
+    delete_sandboxes: bool = True,
+) -> None:
     """
     Best-effort release of agents, drivers, and sandboxes for `run_id`.
 
     Merges handles from the registry with whatever is still on `state`, so
     either source alone is enough. Never raises.
+
+    `delete_sandboxes=False` still closes SDK agents and quits Appium
+    drivers, but leaves the sandbox directory on disk (used to preserve
+    artifacts for post-mortem debugging of a FAILED run).
     """
     state = state or {}
     rid = str(run_id)
@@ -134,5 +160,17 @@ def release_run_resources(run_id: str, state: dict[str, Any] | None = None) -> N
             quit_fn = getattr(driver, "quit", None)
             if callable(quit_fn):
                 quit_fn()
+        except Exception:
+            pass
+
+    if delete_sandboxes:
+        try:
+            from infra.application.app import cleanup_environment
+
+            for path in sandbox_paths:
+                try:
+                    cleanup_environment(path)
+                except Exception:
+                    pass
         except Exception:
             pass

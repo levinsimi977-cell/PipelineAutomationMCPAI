@@ -1,4 +1,14 @@
 pyproject.toml
+data/example/integration5/ios_update_demo/agent.py
+data/example/integration5/ios_update_demo/history_event_handler.py
+data/example/integration5/ios_update_demo/integration_status.py
+data/example/integration5/ios_update_demo/ios_simulator_automation.py
+data/example/integration5/ios_update_demo/ios_verify_automation.py
+data/example/integration5/ios_update_demo/mcp_agent_automation.py
+data/example/integration5/ios_update_demo/promt_automation.py
+data/example/integration5/ios_update_demo/rate_limit_retry.py
+data/example/integration5/ios_update_demo/sdk_integration_graph.py
+data/example/integration5/ios_update_demo/simulated_user_agent.py
 data/reports/__init__.py
 data/reports/build_report.py
 data/reports/demo_failed_report.py
@@ -22,8 +32,10 @@ infra/agents/sdkAgent/__init__.py
 infra/agents/sdkAgent/tools/__init__.py
 infra/agents/sdkAgent/tools/agent.py
 infra/agents/sdkAgent/tools/emulator.py
+infra/agents/sdkAgent/tools/sdk_project_tools.py
 infra/agents/sdkAgent/tools/tests/test_agent_device_id.py
 infra/agents/sdkAgent/tools/tests/test_emulator.py
+infra/agents/sdkAgent/tools/tests/test_sdk_project_tools.py
 infra/agents/userActions/__init__.py
 infra/agents/userActions/appium_runner.py
 infra/agents/userActions/core.py
@@ -61,6 +73,7 @@ infra/workflow/workflow_builder.py
 infra/workflow/workflow_nodes.py
 infra/workflow/nodes/nodeEmulator.py
 infra/workflow/nodes/tests/test_node_emulator.py
+infra/workflow/tests/test_workflow_builder.py
 infra/workflow/tests/test_workflow_nodes.py
 pipeline_automation_mcp.egg-info/PKG-INFO
 pipeline_automation_mcp.egg-info/SOURCES.txt
@@ -70,4 +83,5 @@ pipeline_automation_mcp.egg-info/top_level.txt
 tests/test_answer_agent.py
 tests/test_answer_question.py
 tests/test_application_tasks_3_4.py
+tests/test_load_env_app_id.py
 tests/test_use_cases_table.py
