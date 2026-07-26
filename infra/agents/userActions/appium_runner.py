@@ -21,12 +21,28 @@ def load_config(config_path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
+_UPPER_XPATH_TRANSLATE = 'translate({attr},"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ")'
+
+
 def navigate_to_screen(driver: webdriver.Remote, navigation_path: list[str], wait_seconds: float) -> None:
     """Tap on-screen elements by visible text/label, in order, to reach the screen
     that hosts a triggerId not present on the app's main/launch screen (see
-    navigationPath in events.wired.json / write_events_manifest)."""
+    navigationPath in events.wired.json / write_events_manifest).
+
+    Matches case-insensitively: the SDK agent (an LLM) writes navigationPath
+    as free text and isn't consistent about casing (e.g. "APPLES" vs the
+    real on-screen "Apples") -- write_events_manifest's own check is
+    case-insensitive too (it only confirms the label exists somewhere in the
+    project), so an exact-case match here recreated the same
+    NoSuchElementException that check was meant to prevent.
+    """
     for label in navigation_path:
-        driver.find_element(AppiumBy.XPATH, f'//*[@text="{label}" or @content-desc="{label}"]').click()
+        label_upper = label.upper()
+        xpath = (
+            f'//*[{_UPPER_XPATH_TRANSLATE.format(attr="@text")}="{label_upper}" '
+            f'or {_UPPER_XPATH_TRANSLATE.format(attr="@content-desc")}="{label_upper}"]'
+        )
+        driver.find_element(AppiumBy.XPATH, xpath).click()
         time.sleep(wait_seconds)
 
 
@@ -86,7 +102,16 @@ def build_driver(appium_url: str, config: dict[str, Any], platform: Platform) ->
             capabilities["appium:bundleId"] = config["bundleId"]
 
     options.load_capabilities(capabilities)
-    return webdriver.Remote(appium_url, options=options)
+    driver = webdriver.Remote(appium_url, options=options)
+    # This session is created fresh right after the previous step
+    # (emulator_node) just reinstalled + relaunched the app and quit its own
+    # driver -- the first screen can still be mid-render at that exact
+    # moment. Without this, find_element() below fails immediately
+    # (NoSuchElementException) instead of polling for the element to
+    # actually appear, which is what made navigate_to_screen's very first
+    # lookup flaky right after a fresh install/launch.
+    driver.implicitly_wait(10)
+    return driver
 
 
 def main() -> int:

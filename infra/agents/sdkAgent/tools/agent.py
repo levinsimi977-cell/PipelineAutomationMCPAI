@@ -283,6 +283,25 @@ async def create_sdk_integration_agent(
             "stderr_tail": (result.stderr or "")[-2000:],
         }, indent=2)
 
+    def _label_in_project(label: str) -> bool:
+        """Case-insensitive search for `label` across the project's XML files
+        (layouts, strings.xml, ...). On-screen text always originates from one
+        of these, so a navigationPath label that isn't found in any of them
+        (e.g. "APPLES" when the real string resource is "Apples") almost
+        certainly won't match anything on screen either -- exactly the class
+        of mismatch that made Appium's tap-by-text step fail with
+        NoSuchElementException even though the event itself wired correctly."""
+        needle = label.lower()
+        for xml_file in project_root.rglob("*.xml"):
+            if "build" in xml_file.parts:
+                continue
+            try:
+                if needle in xml_file.read_text(encoding="utf-8", errors="ignore").lower():
+                    return True
+            except OSError:
+                continue
+        return False
+
     @tool
     def write_events_manifest(manifest_json: str) -> str:
         """After wiring in-app event UI, write events.wired.json in the project for Appium.
@@ -319,6 +338,17 @@ async def create_sdk_integration_agent(
                         f"triggerId {trigger_id!r} not found in {layout_file} -- wire it into the "
                         f"UI (android:contentDescription / accessibilityIdentifier) before calling this tool"
                     )
+                # Same idea as the triggerId check above, applied to
+                # navigationPath: don't trust a made-up on-screen label
+                # either -- confirm it actually appears (case-insensitively)
+                # somewhere in the project before writing the manifest.
+                for label in event.get("navigationPath") or []:
+                    if not _label_in_project(label):
+                        raise ValueError(
+                            f"navigationPath label {label!r} for {name} was not found "
+                            f"(case-insensitively) anywhere in the project's XML files -- "
+                            f"use the exact on-screen text/label."
+                        )
             if platform_lower == "android" and not (data.get("appPackage") and data.get("mainActivity")):
                 raise ValueError("android requires appPackage and mainActivity")
             if platform_lower == "ios" and not data.get("bundleId"):
