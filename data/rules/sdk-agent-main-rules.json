@@ -58,7 +58,7 @@
       },
       {
         "number": 11,
-        "text": "After calling integrateSdk, state that the integration finished successfully and instruct the user to prepare for emulator launch; do this before running any verification tool. Only later, once a verification tool actually confirms success, declare the process complete and instruct the user to launch the emulator."
+        "text": "After calling integrateSdk, state that the integration finished successfully "
       },
       {
         "number": 12,
