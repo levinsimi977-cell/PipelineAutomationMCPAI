@@ -285,7 +285,13 @@ async def create_sdk_integration_agent(
 
     @tool
     def write_events_manifest(manifest_json: str) -> str:
-        """After wiring in-app event UI, write events.wired.json in the project for Appium."""
+        """After wiring in-app event UI, write events.wired.json in the project for Appium.
+
+        manifest_json must be a JSON object: {"platform": ..., "appPackage"/"bundleId": ...,
+        "mainActivity" (android): ..., "events": [{"eventName": "af_x", "triggerId": "af_trigger_af_x",
+        "layoutFile": "<path to the UI file, relative to the project root, where triggerId was wired
+        as android:contentDescription / accessibilityIdentifier>"}]}. layoutFile is verified against
+        the real file on disk -- this call fails if triggerId isn't actually found in it."""
         try:
             data = json.loads(manifest_json)
             events = data.get("events") or []
@@ -294,8 +300,21 @@ async def create_sdk_integration_agent(
             for event in events:
                 name = event.get("eventName", "")
                 trigger_id = event.get("triggerId", "")
+                layout_file = event.get("layoutFile", "")
                 if not name.startswith("af_") or trigger_id != f"af_trigger_{name}":
                     raise ValueError(f"invalid event wiring for {name}")
+                # Don't just trust the agent's claim -- confirm triggerId was
+                # actually written into the UI file (android:contentDescription /
+                # accessibilityIdentifier), the way "invalid event wiring" above
+                # already refuses to trust a made-up triggerId string.
+                if not layout_file:
+                    raise ValueError(f"layoutFile is required for {name}")
+                layout_path = safe_project_path(project_root, layout_file)
+                if not layout_path.exists() or trigger_id not in layout_path.read_text(encoding="utf-8", errors="ignore"):
+                    raise ValueError(
+                        f"triggerId {trigger_id!r} not found in {layout_file} -- wire it into the "
+                        f"UI (android:contentDescription / accessibilityIdentifier) before calling this tool"
+                    )
             if platform_lower == "android" and not (data.get("appPackage") and data.get("mainActivity")):
                 raise ValueError("android requires appPackage and mainActivity")
             if platform_lower == "ios" and not data.get("bundleId"):

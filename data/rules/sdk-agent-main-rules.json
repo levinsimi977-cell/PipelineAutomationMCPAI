@@ -78,6 +78,10 @@
       },
       {
         "number": 17,
+        "text": "Call the relevant MCP creation tool (createInAppEvent/createDeepLink, etc.) BEFORE writing any code it informs, never after. Before writing Android code that references a UI element by ID (`findViewById(R.id.foo)`/`R.id.foo`), first add that exact ID to the corresponding XML layout file if it does not already exist, and confirm with read_project_file that it is present — in the same turn, before the code that references it is written."
+      },
+      {
+        "number": 18,
         "text": "Before writing SDK initialization code, use the `find_in_project` tool (e.g. pattern `**/AppsFlyerLib.h`) to locate the installed SDK header, then read it with `read_project_file` to confirm the actual method/property signatures — do not assume a signature is correct without checking the installed header first."
       }
     ]
@@ -114,8 +118,8 @@
       {
         "id": "android_xml",
         "heading": "Android XML",
-        "description": "Every wired control must include this attribute on the button/view:",
-        "example": "android:contentDescription=\"af_trigger_{eventName}\""
+        "description": "Every wired control must have BOTH an `android:id` (added first, before any code references it via findViewById/R.id) and this attribute:",
+        "example": "android:id=\"@+id/<button_id>\" android:contentDescription=\"af_trigger_{eventName}\""
       },
       {
         "id": "ios_ui",
