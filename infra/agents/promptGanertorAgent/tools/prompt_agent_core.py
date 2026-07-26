@@ -72,7 +72,6 @@ STAGE_CONFIG = {
             "- If the event already exists, guide the agent to validate that it is emitted with the expected name and parameters.\n"
             "- If no in-app event is defined, tell the agent not to invent one.\n"
             "- If deep linking is enabled, guide the agent to prepare or validate the required deep-link behavior.\n"
-            "- Do not repeat SDK installation unless the previous integration is missing or broken."
         ),
     },
     "verify_prompt": {
