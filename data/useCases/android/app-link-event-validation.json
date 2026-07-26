@@ -29,7 +29,7 @@
       "app_launched": true
     },
     "android": {
-      "device_id": "emulator-5554",
+      "device_id": "Pixel_8a",
       "has_sha256": false,
       "sha256_fingerprint": null
     }

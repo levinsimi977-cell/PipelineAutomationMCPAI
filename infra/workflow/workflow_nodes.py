@@ -947,6 +947,23 @@ def prompt_agent_node(
 
     return state
 
+def _event_logged_without_manifest(project_root: str) -> bool:
+    """True if source code calls AppsFlyer's logEvent but events.wired.json was
+    never written -- signals the agent skipped write_events_manifest despite
+    wiring an event in code."""
+    root = Path(project_root)
+    if (root / "events.wired.json").exists():
+        return False
+    for ext in ("*.java", "*.kt", "*.swift"):
+        for path in root.rglob(ext):
+            try:
+                if ".logEvent(" in path.read_text(encoding="utf-8", errors="ignore"):
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 async  def sdk_agent_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1003,6 +1020,26 @@ async  def sdk_agent_node(
         user_prompt=user_prompt,
         audit_recorder=audit_recorder,
     )
+
+    # event_prompt commonly finishes "successfully" having written a
+    # logEvent call but never called write_events_manifest -- silently
+    # proceeding to compilation then leaves user_actions/deep_link with
+    # nothing to discover later. Give the agent one corrective round,
+    # in the same session, with an explicit error instead.
+    if current_prompt_type == "event_prompt" and result.get("status") != "FAIL":
+        if _event_logged_without_manifest(sandbox_path):
+            result = await run_sdk_integration_agent(
+                state=state,
+                project_root_str=sandbox_path,
+                platform=platform,
+                user_prompt=(
+                    "Your code calls AppsFlyer's logEvent, but events.wired.json was never "
+                    "written. Call write_events_manifest now with the correct eventName, "
+                    "triggerId (af_trigger_{eventName}) and layoutFile for every wired event "
+                    "before finishing."
+                ),
+                audit_recorder=audit_recorder,
+            )
 
     deep_link_url = extract_deep_link_url_from_audit(audit_recorder)
     if deep_link_url:
@@ -1224,6 +1261,15 @@ def test_runner_node(
 
         if sdk_agent_failed:
             state["test_status"] = "FAIL"
+
+    # This node never marked itself visited or logged anything, so
+    # build_report.py always showed it as "Skipped"/"Not executed" even on
+    # runs where it clearly ran (e.g. right after an emulator failure).
+    state["test_runner_is_visited"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {"node": "test_runner", "status": "Success", "message": "Test Runner ran."},
+    ]
 
     return state
 

@@ -75,6 +75,10 @@
       {
         "number": 16,
         "text": "createDeepLink/createIosDeepLink's response is not just a manifest/Info.plist change — it also specifies the runtime deep-link handling code (e.g. calling `AppsFlyerLib.getInstance().subscribeForDeepLink(...)` inside `onCreate` of your Application/Activity class on Android, or resolving the universal link/URL scheme in the app delegate or scene delegate on iOS). Adding only the intent-filter/`CFBundleURLTypes`/associated-domains entries is NOT sufficient and will fail verification. You must use write_to_project_file to add ALL of that runtime code to the appropriate source file(s), then use read_project_file to confirm the code you wrote is actually present, before you consider deep-link setup finished or move on to verification."
+      },
+      {
+        "number": 17,
+        "text": "Call the relevant MCP creation tool (createInAppEvent/createDeepLink, etc.) BEFORE writing any code it informs, never after. Before writing Android code that references a UI element by ID (`findViewById(R.id.foo)`/`R.id.foo`), first add that exact ID to the corresponding XML layout file if it does not already exist, and confirm with read_project_file that it is present — in the same turn, before the code that references it is written."
       }
     ]
   },
@@ -110,8 +114,8 @@
       {
         "id": "android_xml",
         "heading": "Android XML",
-        "description": "Every wired control must include this attribute on the button/view:",
-        "example": "android:contentDescription=\"af_trigger_{eventName}\""
+        "description": "Every wired control must have BOTH an `android:id` (added first, before any code references it via findViewById/R.id) and this attribute:",
+        "example": "android:id=\"@+id/<button_id>\" android:contentDescription=\"af_trigger_{eventName}\""
       },
       {
         "id": "ios_ui",
