@@ -52,6 +52,70 @@ class FakeCompletedProcess:
         self.stderr = stderr
 
 
+# ── _extract_error_snippet ────────────────────────────────────────────────
+
+
+def test_extract_error_excerpt_finds_compiler_error_line():
+    """The excerpt includes 1 line of context around the match (default
+    context_lines=1), but must not pull in unrelated noise sitting further
+    away in a long, verbose build log."""
+    stdout = (
+        "note: some unrelated earlier build step\n"
+        "note: building target\n"
+        "AppDelegate.m:23:5: error: assignment to readonly property 'appleAppID'\n"
+        "note: done\n"
+        "note: some unrelated later build step\n"
+    )
+
+    excerpt = ca._extract_error_snippet(stdout, "")
+
+    assert "error: assignment to readonly property 'appleAppID'" in excerpt
+    assert "note: some unrelated earlier build step" not in excerpt
+    assert "note: some unrelated later build step" not in excerpt
+
+
+def test_extract_error_excerpt_dedupes_repeated_lines():
+    stdout = "x.m:1:1: error: boom\n" * 3
+
+    excerpt = ca._extract_error_snippet(stdout, "")
+
+    assert excerpt.count("error: boom") == 1
+
+
+def test_extract_error_excerpt_scans_full_text_not_just_the_tail():
+    """
+    Regression: xcodebuild (without -quiet) echoes each clang invocation as
+    one giant raw command-line dump per source file, easily >LOG_TAIL_CHARS
+    on its own. A plain `text[-LOG_TAIL_CHARS:]` slice can land entirely
+    inside one such dump and never surface the actual "error:" line that
+    caused the failure, even though it appears earlier in the very same
+    stdout. _extract_error_excerpt must find it regardless of where in the
+    text it sits or how much noise follows it.
+    """
+    huge_trailing_noise = "clang -cc1 " + ("-Wno-something " * 2000)  # far over LOG_TAIL_CHARS
+    stdout = (
+        "AppDelegate.m:23:5: error: assignment to readonly property 'appleAppID'\n"
+        + huge_trailing_noise
+    )
+    assert "error:" not in stdout[-ca.LOG_TAIL_CHARS:]  # sanity check the setup actually reproduces the bug
+
+    excerpt = ca._extract_error_snippet(stdout, "")
+
+    assert "error: assignment to readonly property 'appleAppID'" in excerpt
+
+
+def test_extract_error_excerpt_matches_gradle_failure_marker():
+    stderr = "> Task :app:compileDebugJavaWithJavac FAILED\n\nFAILURE: Build failed with an exception.\n"
+
+    excerpt = ca._extract_error_snippet("", stderr)
+
+    assert "FAILURE: Build failed with an exception." in excerpt
+
+
+def test_extract_error_excerpt_empty_when_no_error_markers():
+    assert ca._extract_error_snippet("BUILD SUCCEEDED", "") == ""
+
+
 # ── iOS: _find_ios_project ──────────────────────────────────────────────
 
 
@@ -168,6 +232,7 @@ def test_run_xcodebuild_success(monkeypatch, tmp_path):
     assert result.log_path is not None
     assert Path(result.log_path).exists()
     assert "BUILD SUCCEEDED" in Path(result.log_path).read_text()
+    assert result.error_excerpt == ""
 
 
 # ── iOS: built .app bundle discovery (_find_built_app_bundle) ────────────
@@ -239,6 +304,7 @@ def test_run_xcodebuild_failure(monkeypatch, tmp_path):
     assert result.status == "FAILED"
     assert result.return_code == 65
     assert "AppsFlyerLib" in Path(result.log_path).read_text()
+    assert "error: cannot find 'AppsFlyerLib' in scope" in result.error_excerpt
 
 
 def test_run_xcodebuild_missing_project(tmp_path):
@@ -556,6 +622,7 @@ def test_run_gradle_build_failure(tmp_path: Path):
     assert result.status == "FAILED"
     assert result.return_code == 1
     assert "cannot find symbol" in result.stderr_tail
+    assert "cannot find symbol" in result.error_excerpt
 
 
 def test_run_gradle_build_missing_wrapper(tmp_path: Path):
@@ -597,6 +664,40 @@ def test_prefers_posix_wrapper_when_both_exist(tmp_path: Path):
     wrapper = ca._find_gradle_wrapper(tmp_path)
 
     assert wrapper.name == "gradlew"
+
+
+@POSIX_ONLY
+def test_ensure_cocoapods_installed_reports_missing_pods_without_running_install(
+    monkeypatch, tmp_path: Path
+):
+    """_ensure_cocoapods_installed is report-only: the SDK agent (LLM) is
+    responsible for running `pod install` itself as part of integration. If
+    Pods/Manifest.lock is still missing by compile time, this must surface a
+    clear error message -- and must NOT silently run `pod install` itself,
+    which would paper over the agent's mistake instead of reporting it."""
+    project_root = _make_project(tmp_path)
+    (project_root / "Podfile").write_text(
+        "target 'basic_app' do\n  pod 'AppsFlyerFramework'\nend\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def fake_run_pod_install_command(work_dir: Path, *, timeout: int = 120):
+        calls.append(str(work_dir))
+        (work_dir / "Pods").mkdir()
+        (work_dir / "Pods" / "Manifest.lock").write_text("LOCK", encoding="utf-8")
+        return {"status": "OK"}
+
+    monkeypatch.setattr(
+        "infra.agents.sdkAgent.tools.sdk_project_tools.run_pod_install_command",
+        fake_run_pod_install_command,
+    )
+
+    error = ca._ensure_cocoapods_installed(project_root)
+
+    assert error is not None
+    assert "pod install" in error
+    assert calls == []
 
 
 @POSIX_ONLY

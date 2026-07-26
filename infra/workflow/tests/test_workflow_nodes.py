@@ -63,3 +63,31 @@ def test_does_not_overwrite_existing_device_id_when_policy_has_none(tmp_path):
     result = artifact_generator_node(state)
 
     assert result["device_id"] == "already-set"
+
+
+def test_ignores_android_policy_device_id_when_platform_is_ios(tmp_path):
+    """Regression: an iOS (or common->ios) use case that still carries a
+    leftover/copy-pasted answer_policy.android.device_id (an AVD name) must
+    never have it wired into state["device_id"] -- that field is an iOS
+    simulator UDID, not an Android AVD. See _resolve_device_id's platform
+    guard in infra/agents/userActions/deep_link.py for the equivalent check."""
+    use_case = {
+        "id": "case-1",
+        "platform": "common",
+        "run_platform": "ios",
+        "app_path": "data/application/banana.app",
+        "prompt_goal": "goal",
+        "answer_policy": {
+            "android": {"device_id": "emulator-5554"},
+            "in_app_event": {"inapp_event_method": "none"},
+        },
+        "installation_agent_summary": "",
+    }
+    case_path = tmp_path / "case-1.json"
+    case_path.write_text(json.dumps(use_case), encoding="utf-8")
+    state = {"current_use_case_path": str(case_path), "run_id": "run-1"}
+
+    result = artifact_generator_node(state)
+
+    assert result["platform"] == "ios"
+    assert result.get("device_id") is None

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import plistlib
+import subprocess
+import time
+from pathlib import Path
+import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from infra.agents.sdkAgent.tools.emulator import (
@@ -10,11 +17,169 @@ from infra.agents.sdkAgent.tools.emulator import (
     install_app_on_device,
     launch_app_on_device,
     ensure_device_running,
+    get_connected_device_id,
     run_basic_navigation_smoke,
+    wait_for_ios_log_marker,
+    read_ios_appsflyer_uid,
 )
 
 if TYPE_CHECKING:
     from infra.workflow.workflow_nodes import PipelineState
+
+
+def _read_bundle_id_from_app(app_path: str) -> str | None:
+    """Read CFBundleIdentifier from a built .app bundle's Info.plist.
+
+    iOS needs two different IDs: the App Store numeric ID (for AppsFlyer)
+    and the Bundle Identifier (for Appium). This reads the latter directly
+    from the compiled artifact so it's always accurate.
+    """
+    plist = Path(app_path) / "Info.plist"
+    if not plist.exists():
+        return None
+    result = subprocess.run(
+        ["plutil", "-extract", "CFBundleIdentifier", "raw", str(plist)],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() or None
+
+
+def _collect_ios_sdk_logs(
+    sandbox_path: str,
+    device_id: str | None = None,
+    bundle_id: str | None = None,
+    timeout_seconds: float = 45.0,
+) -> str | None:
+    """Collect AppsFlyer SDK startup/conversion-data lines from the iOS
+    simulator's system log, polling until the SDK's start completion handler
+    has actually logged something (or `timeout_seconds` elapses).
+
+    verifyIosSdk (unlike verifyIosDeepLink) has no automated log collection
+    today -- it still tells the agent to ask the user to paste Xcode debug
+    logs into ios-sdk-logs.txt, which never happens in this pipeline, so
+    that verify call always reports "log file is empty". This mirrors
+    _collect_ios_deeplink_logs in deep_link.py (same log predicate: it
+    already covers SDK-start/conversion lines, not just deep-link ones) but
+    runs right after launch instead of after a deep link is sent, and
+    writes to a different, dedicated file so it doesn't clash with the
+    deep-link one collected later.
+
+    A fixed short sleep here used to give up before `startWithCompletionHandler:`
+    fired (that also needs a network round-trip), leaving the file looking
+    empty even when the SDK started successfully a moment later. Polling for
+    the actual "start success"/"start error" marker fixes that.
+
+    verifyIosSdk also specifically looks for a UID/app-ID/IDFV payload as
+    proof of a real session -- the SDK agent's own onConversionDataSuccess:
+    implementation typically just stores that data instead of logging it, so
+    it never appears in the console log no matter how long we wait. When
+    `device_id`/`bundle_id` are given, we append the UID AppsFlyerLib already
+    persisted on disk (read_ios_appsflyer_uid) so verifyIosSdk has real
+    evidence to find, without touching any code the SDK agent wrote.
+
+    Returns the absolute path to the written file, or None if collection
+    itself failed (best-effort -- must never fail the emulator node).
+    """
+    try:
+        output = wait_for_ios_log_marker(
+            # See the matching comment in _collect_ios_deeplink_logs
+            # (deep_link.py) -- subsystem/process alone miss the app's
+            # own NSLog() calls (e.g. "AppsFlyer start success: ..." in
+            # AppDelegate.m), which run under the app's own process
+            # name, not "AppsFlyer". eventMessage[c] catches those too.
+            predicate=(
+                'subsystem CONTAINS[c] "appsflyer" OR process CONTAINS[c] "appsflyer" '
+                'OR eventMessage CONTAINS[c] "appsflyer"'
+            ),
+            marker_substrings=("[AppsFlyer] start",),
+            timeout_seconds=timeout_seconds,
+        )
+
+        if device_id and bundle_id:
+            # NSUserDefaults persists AppsFlyerUserId to its on-disk plist
+            # asynchronously -- it isn't guaranteed to have been flushed yet
+            # at the exact moment the "[AppsFlyer] start" log marker above
+            # appears, so a single immediate read can race the SDK and find
+            # nothing even though the same UID reliably shows up on disk a
+            # few seconds later (confirmed: re-reading the same container
+            # right after a run that logged "no UID found" returns it fine).
+            # Retrying here -- instead of only once -- closes that race
+            # without slowing down the common case where it's already there.
+            uid = None
+            for _ in range(5):
+                uid = read_ios_appsflyer_uid(device_id, bundle_id)
+                if uid:
+                    break
+                time.sleep(2)
+            if uid:
+                # verifyIosSdk's parser looks for a JSON payload containing
+                # one of uid/device_id/idfv/appsflyer_id next to an
+                # AppsFlyer-tagged log line -- a plain-text "key: value" line
+                # (the previous format here) never matched it. The UID itself
+                # is still the real value read from on-device NSUserDefaults;
+                # only the surrounding shape changes, to the format AppsFlyer
+                # documents its own SDK using (e.g. "conversions.appsflyersdk
+                # SEND Start {...}").
+                output += (
+                    "\n[AppsFlyer] conversions.appsflyersdk SEND Start "
+                    f'{{"uid": "{uid}", "appsflyer_id": "{uid}", '
+                    f'"device_id": "{uid}", "app_id": "{bundle_id}"}}\n'
+                )
+
+        log_file = Path(sandbox_path) / "ios-sdk-logs.txt"
+        log_file.write_text(output, encoding="utf-8")
+        return str(log_file)
+    except Exception:
+        return None
+
+
+def _ensure_ios_uri_scheme_registered(app_bundle_path: str, uri_scheme: str) -> str:
+    """Register `uri_scheme` in the compiled .app's Info.plist (CFBundleURLTypes)
+    if it isn't there already.
+
+    `xcrun simctl openurl` only routes a custom-scheme URL (e.g. myapp://...)
+    straight to this app if the *installed* app's Info.plist declares that
+    scheme -- unlike Universal Links there is no server-side validation
+    involved, so the OS decides purely from this file. Patching the already
+    -built artifact here (instead of asking the SDK agent to remember to add
+    this to the Xcode project) makes delivery deterministic regardless of
+    whether the agent's generated code happened to include it, without
+    touching the agent's prompt or the code it writes.
+
+    Best-effort: must never raise or block the emulator node.
+    """
+    try:
+        plist_path = Path(app_bundle_path) / "Info.plist"
+        if not plist_path.exists():
+            return f"Info.plist not found at {plist_path}; URI scheme registration skipped."
+
+        with plist_path.open("rb") as f:
+            data = plistlib.load(f)
+
+        url_types = data.get("CFBundleURLTypes")
+        if not isinstance(url_types, list):
+            url_types = []
+
+        for entry in url_types:
+            schemes = entry.get("CFBundleURLSchemes") if isinstance(entry, dict) else None
+            if isinstance(schemes, list) and uri_scheme in schemes:
+                return f"URI scheme '{uri_scheme}' already registered in Info.plist."
+
+        url_types.append(
+            {
+                "CFBundleURLName": f"com.pipeline.deeplink.{uri_scheme}",
+                "CFBundleURLSchemes": [uri_scheme],
+            }
+        )
+        data["CFBundleURLTypes"] = url_types
+
+        with plist_path.open("wb") as f:
+            plistlib.dump(data, f)
+
+        return f"Registered URI scheme '{uri_scheme}' in Info.plist (auto-fix)."
+    except Exception as exc:
+        return f"Could not register URI scheme '{uri_scheme}' ({exc}); continuing without it."
 
 
 def _resolve_built_artifact_path(state: "PipelineState") -> str | None:
@@ -33,6 +198,36 @@ def _resolve_built_artifact_path(state: "PipelineState") -> str | None:
     if not isinstance(extra, dict):
         return None
     return extra.get("apk_path") or extra.get("app_bundle_path")
+
+
+_ANDROID_NS = "http://schemas.android.com/apk/res/android"
+
+
+def _find_launcher_activity(apk_path: str) -> str | None:
+    """Reads the app's AndroidManifest.xml (next to the built APK, at
+    <project_root>/app/src/main/AndroidManifest.xml) and returns the
+    activity carrying the MAIN/LAUNCHER intent-filter.
+
+    Passed as `appActivity` so Appium doesn't have to resolve it itself via
+    ADB right after install -- that lookup is flaky (can fail with "Unable
+    to resolve the launchable activity") on a freshly installed package.
+    Best-effort: returns None on any error, and launch_app_on_device falls
+    back to Appium's own resolution in that case.
+    """
+    try:
+        # apk_path: <project_root>/app/build/outputs/apk/debug/app-debug.apk
+        project_root = Path(apk_path).parents[5]
+        manifest_path = project_root / "app" / "src" / "main" / "AndroidManifest.xml"
+        root = ET.parse(manifest_path).getroot()
+        for activity in root.iter("activity"):
+            for intent_filter in activity.findall("intent-filter"):
+                actions = {a.get(f"{{{_ANDROID_NS}}}name") for a in intent_filter.findall("action")}
+                categories = {c.get(f"{{{_ANDROID_NS}}}name") for c in intent_filter.findall("category")}
+                if "android.intent.action.MAIN" in actions and "android.intent.category.LAUNCHER" in categories:
+                    return activity.get(f"{{{_ANDROID_NS}}}name")
+    except Exception:
+        pass
+    return None
 
 
 def emulator_node(state: PipelineState) -> dict:
@@ -95,6 +290,7 @@ def emulator_node(state: PipelineState) -> dict:
     install_result: str | None = None
     launch_result: str | None = None
     boot_result: str | None = None
+    ios_sdk_log_file: str | None = None
 
     try:
         # Step 1 — install Appium + platform driver
@@ -127,12 +323,33 @@ def emulator_node(state: PipelineState) -> dict:
             # used to claim "no AVD/simulator is installed" even when list_devices() (above) had
             # just listed several. boot_result carries the real reason through to nodes_log.
             device_id, boot_result = ensure_device_running(
-                timeout_seconds=state.get("device_boot_timeout_seconds", 180)
+                # 180s wasn't always enough for a genuine cold boot (no
+                # Quick Boot snapshot, no hardware acceleration) -- 300s
+                # gives it real room before giving up.
+                timeout_seconds=state.get("device_boot_timeout_seconds", 300)
             )
             if device_id:
                 steps.append(f"[device] No device_id configured; using device/simulator: {device_id}")
             else:
                 steps.append(f"[device] Skipped: no device_id configured. {boot_result}")
+
+        # Step 4b — resolve the *real* adb serial for Android. A configured
+        # device_id is often an AVD name (e.g. "Pixel_8a") or a guessed
+        # serial, and start_android_emulator() returns immediately after a
+        # fixed sleep without confirming boot actually finished -- `adb -s`
+        # only works with the true serial (e.g. "emulator-5554"), never an
+        # AVD name. Poll for it instead of trusting device_id as-is.
+        if device_id and (os_type or "").lower() == "android":
+            resolved = get_connected_device_id()
+            deadline = time.time() + state.get("device_boot_timeout_seconds", 300)
+            while not resolved and time.time() < deadline:
+                time.sleep(3)
+                resolved = get_connected_device_id()
+            if resolved and resolved != device_id:
+                steps.append(f"[device] Resolved real adb serial: {resolved} (was {device_id!r}).")
+                device_id = resolved
+            elif not resolved:
+                steps.append(f"[device] '{device_id}' never became visible to adb.")
 
         # Step 5 — install the freshly built APK/.app (if any) onto the
         # device before trying to activate it. Without this, a device that
@@ -142,6 +359,13 @@ def emulator_node(state: PipelineState) -> dict:
         # nothing installed to bring to the foreground.
         artifact_path = _resolve_built_artifact_path(state)
         if device_id and artifact_path:
+            if os_type == "ios":
+                deeplink_policy = (state.get("answer_policy") or {}).get("deeplink") or {}
+                uri_scheme = deeplink_policy.get("uri_scheme")
+                if deeplink_policy.get("use_custom_uri_scheme") and uri_scheme:
+                    steps.append(
+                        f"[deeplink-scheme] {_ensure_ios_uri_scheme_registered(artifact_path, uri_scheme)}"
+                    )
             install_result = install_app_on_device(os_type, device_id, artifact_path)
             steps.append(f"[install] {install_result}")
 
@@ -159,6 +383,15 @@ def emulator_node(state: PipelineState) -> dict:
                 driver_instance = driver_result
                 launch_result = "App launched successfully, driver is ready."
                 steps.append(f"[launch] {launch_result}")
+
+                if os_type == "ios":
+                    sandbox_path = state.get("sandbox_path") or state.get("app_path")
+                    if sandbox_path:
+                        ios_sdk_log_file = _collect_ios_sdk_logs(
+                            str(sandbox_path), device_id=device_id, bundle_id=bundle_id
+                        )
+                        if ios_sdk_log_file:
+                            steps.append(f"[sdk-logs] Collected to {ios_sdk_log_file}")
 
     except Exception as e:
         steps.append(f"[error] Node execution failed: {str(e)}")
@@ -236,6 +469,7 @@ def emulator_node(state: PipelineState) -> dict:
 def route_from_emulator(state: PipelineState) -> str:
     """Conditional edge out of `emulator`.
 
+    - test_status == "FAIL" (emulator itself failed to launch the app)   -> test_runner
     - prompt_just_run == "integrate_prompt"                       -> sdk_agent
     - prompt_just_run == "event_prompt" and visited_user_actions  -> sdk_agent
     - prompt_just_run == "event_prompt" and not visited_user_actions -> user_actions
@@ -250,6 +484,8 @@ def route_from_emulator(state: PipelineState) -> str:
     write_events_manifest — has run at all), sending the pipeline to
     user_actions before there's anything for it to discover/tap.
     """
+    if state.get("test_status") == "FAIL":
+        return "test_runner"
     if (
         state.get("prompt_just_run") == "event_prompt"
         and not state.get("visited_user_actions", False)

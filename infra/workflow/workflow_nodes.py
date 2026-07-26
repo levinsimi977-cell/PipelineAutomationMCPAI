@@ -7,11 +7,7 @@ from typing import Any, Literal, Optional, TypedDict, get_args
 
 from typing_extensions import NotRequired
 
-from infra.application.app import (
-    cleanup_environment,
-    run_tasks_3_and_4,
-    setup_environment,
-)
+from infra.application.app import run_tasks_3_and_4, setup_environment
 from infra.agents.promptGanertorAgent.tools.prompt_agent_core import (
     prompt_agent_node as build_prompts,
 )
@@ -31,30 +27,12 @@ from infra.workflow.nodes.nodeEmulator import (
     emulator_node as _emulator_node_impl,
     route_from_emulator as _route_from_emulator_impl,
 )
-from infra.load_env import get_app_id_for_platform, get_dev_key
+from infra.load_env import get_app_id_for_platform, get_dev_key, resolve_app_id_for_platform
 from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
     delete_run_selection,
 )
-
-
-# Resolve emulator tools directory relative to this file
-_TOOLS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "agents", "sdkAgent", "tools")
-)
-
-if _TOOLS_DIR not in sys.path:
-    sys.path.insert(0, _TOOLS_DIR)
-
-
-from emulator import (
-    setup_appium_environment,
-    start_appium_server,
-    list_devices,
-    start_device,
-    launch_app_on_device,
-)
-
+from infra.reports.report import McpToolOrderValidator
 
 PromptType = Literal[
     "integrate_prompt",
@@ -114,6 +92,8 @@ def route_after_prompt_agent(state: PipelineState) -> str:
 
 
 def route_after_compilation_check(state: PipelineState) -> str:
+    if state.get("compilation_retry_pending"):
+        return "sdk_agent"
     return route_after_node(state, on_success="emulator")
 
 
@@ -246,7 +226,7 @@ class PipelineState(TypedDict, total=False):
 
 
     # ==================================================
-    # User actions and deep link validation
+    # User actions
     # ==================================================
 
     prompt_agent_answer: NotRequired[str]
@@ -289,6 +269,21 @@ class PipelineState(TypedDict, total=False):
     files_modified: NotRequired[bool]
 
     applied_files: NotRequired[list[str]]
+
+    # Real compiler stderr/stdout excerpt from the failing build, handed back
+    # to sdk_agent_node for exactly one self-correction retry per prompt
+    # stage (see compilation_check_node / route_after_compilation_check).
+    compilation_fix_context: NotRequired[str]
+
+    # Prompt stages ("integrate_prompt" / "event_prompt") that have already
+    # consumed their one compilation retry -- prevents an infinite
+    # compile-fail -> retry -> compile-fail loop.
+    compilation_retry_used_for: NotRequired[list[str]]
+
+    # True for exactly the compilation_check_node run that just armed a
+    # retry -- route_after_compilation_check reads this to send flow back
+    # to sdk_agent instead of test_runner despite test_status not being FAIL.
+    compilation_retry_pending: NotRequired[bool]
 
 
     # ==================================================
@@ -546,6 +541,9 @@ def _reset_runtime_fields_for_next_use_case(state: PipelineState) -> None:
         # Compilation / emulator
         "compilation_passed",
         "compilation_result",
+        "compilation_fix_context",
+        "compilation_retry_used_for",
+        "compilation_retry_pending",
         "driver",
         "available_devices",
         "emulator_checking",
@@ -618,11 +616,19 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         state["answer_policy"] = current_use_case.get("answer_policy") or {}
         # Resolve credentials for THIS use case (not leftovers from UC-N-1).
         state["dev_key"] = current_use_case.get("dev_key") or get_dev_key()
-        state["app_id"] = (
-            current_use_case.get("app_id") or get_app_id_for_platform(platform)
+        state["app_id"] = resolve_app_id_for_platform(
+            platform,
+            current_use_case.get("app_id") or get_app_id_for_platform(platform),
         )
+        # answer_policy.android only ever applies to an android run — an iOS
+        # (or "common"→ios) use case that happens to carry leftover/copy-pasted
+        # android policy data must never leak its device_id (an AVD name) in as
+        # this run's simulator UDID. Mirrors _resolve_device_id's platform
+        # guard in infra/agents/userActions/deep_link.py.
         android_policy = (
             (current_use_case.get("answer_policy") or {}).get("android") or {}
+            if platform == "android"
+            else {}
         )
         device_id = (
             current_use_case.get("device_id") or android_policy.get("device_id")
@@ -694,8 +700,9 @@ def artifact_generator_node(state: PipelineState) -> PipelineState:
         # (by now closed) session id left over from the previous use case.
         state["agent_id"] = None
         state["dev_key"] = use_case.get("dev_key") or state.get("dev_key") or get_dev_key()
-        state["app_id"] = (
-            use_case.get("app_id") or state.get("app_id") or get_app_id_for_platform(platform)
+        state["app_id"] = resolve_app_id_for_platform(
+            platform,
+            use_case.get("app_id") or state.get("app_id") or get_app_id_for_platform(platform),
         )
         # last_prompt_type/visited_user_actions are per-use-case progress
         # markers for the sdk_agent loop (see sdk_agent_node/route_from_emulator)
@@ -754,12 +761,6 @@ async def environment_setup_node(
         if extra:
             entry.update(extra)
         return [*(state.get("nodes_log") or []), entry]
-
-    # Drop leftover sandbox from a previous use-case loop iteration.
-    previous = state.get("sandbox_path")
-    if previous:
-        cleanup_environment(previous)
-        state["sandbox_path"] = ""
 
     environment_result = setup_environment(
         dict(state)
@@ -989,6 +990,23 @@ def prompt_agent_node(
 
     return state
 
+def _event_logged_without_manifest(project_root: str) -> bool:
+    """True if source code calls AppsFlyer's logEvent but events.wired.json was
+    never written -- signals the agent skipped write_events_manifest despite
+    wiring an event in code."""
+    root = Path(project_root)
+    if (root / "events.wired.json").exists():
+        return False
+    for ext in ("*.java", "*.kt", "*.swift"):
+        for path in root.rglob(ext):
+            try:
+                if ".logEvent(" in path.read_text(encoding="utf-8", errors="ignore"):
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 async  def sdk_agent_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1037,6 +1055,134 @@ async  def sdk_agent_node(
         current_prompt_type
     ]
 
+    # Set by compilation_check_node when the build after this exact prompt
+    # stage failed and this stage hasn't used its one retry yet -- hand the
+    # agent the real compiler output so it can fix its own mistake, the same
+    # way a human developer would react to a failed build.
+    compilation_fix_context = state.pop("compilation_fix_context", None)
+    if compilation_fix_context:
+        user_prompt = (
+            f"{user_prompt}\n\n"
+            "---\n"
+            "Your previous changes were compiled and the build FAILED. This is the "
+            "real compiler output (not a guess) -- fix the exact issue(s) it "
+            "reports, then make sure the project still satisfies the rest of "
+            "this prompt:\n"
+            f"{compilation_fix_context}"
+        )
+
+    # The meta-prompt that generates agent_prompts (prompt_agent_core.py) only
+    # ever sees answer_policy -- it never sees the real dev_key/app_id, so it
+    # cannot embed them, and integrateSdk's own example snippets use
+    # placeholder text like "YOUR_DEV_KEY_HERE"/"YOUR_APP_ID_HERE" as a stand-
+    # in for wherever the caller's real credentials come from. Observed
+    # failure: the agent mechanically copied that placeholder text verbatim
+    # into AppDelegate.m instead of substituting a real value nowhere in its
+    # context, which compiled fine but made every AppsFlyer network call
+    # fail for real ("App ID is incorrect" / HTTP 404) -- not a hallucinated
+    # API, just missing configuration data no amount of header-reading could
+    # ever supply. Injecting the literal values here removes the ambiguity.
+    real_dev_key = state.get("dev_key")
+    real_app_id = state.get("app_id")
+    if real_dev_key and real_app_id:
+        user_prompt = (
+            f"{user_prompt}\n\n"
+            "---\n"
+            "Real AppsFlyer credentials for this app (use these exact literal "
+            "strings anywhere SDK initialization code needs a dev key / app ID "
+            "-- e.g. initWithDevKey:appleAppId: or equivalent). Do NOT write "
+            "placeholder text such as YOUR_DEV_KEY_HERE or YOUR_APP_ID_HERE; "
+            "if you see that placeholder text in an MCP tool's example output, "
+            "replace it with these real values instead of copying it verbatim:\n"
+            f"- devKey: {real_dev_key}\n"
+            f"- appId / appleAppId: {real_app_id}"
+        )
+
+    # iOS deep-link logs are collected by deep_link_node only after the app is
+    # launched and the link is fired -- long after prompt_agent_node pre-generated
+    # this static prompt text. Append the concrete file path here, at call time,
+    # so the verify phase can call verifyIosDeepLink directly instead of asking
+    # the user to paste logs manually (which it has no way to do in this pipeline).
+    ios_deeplink_log_file = state.get("ios_deeplink_log_file")
+    if (
+        current_prompt_type == "verify_prompt"
+        and str(platform).lower() == "ios"
+        and ios_deeplink_log_file
+    ):
+        user_prompt = (
+            f"{user_prompt}\n\n"
+            "---\n"
+            "iOS deep-link verification data (already collected by the pipeline):\n"
+            f"- Log file path: {ios_deeplink_log_file}\n"
+            "Call verifyIosDeepLink directly with action=\"verify\", "
+            f"logFilePath=\"{ios_deeplink_log_file}\", and confirmLogFileReady=true. "
+            "You do not need to call action=\"prepare\" first -- the log file "
+            "already exists and is populated with the real data described above. "
+            "Do not ask the user to paste logs manually -- this file was already "
+            "populated automatically from the simulator's system log right after the "
+            "deep link was triggered."
+        )
+
+    # Same idea as ios_deeplink_log_file above, but for verifyIosSdk's separate
+    # log file: emulator_node collects it right after app launch (before any
+    # deep link exists), since that tool checks base SDK start/conversion-data
+    # readiness, not deep-link-specific behavior.
+    #
+    # emulator_node only merges "ios_sdk_log_file" into the returned partial
+    # state when it collected something on THIS invocation -- if a later
+    # invocation (e.g. the post-event_prompt emulator pass) collects nothing
+    # (a transient log-marker timeout, log_show hiccup, etc.) its partial
+    # result simply omits the key, and depending on how the graph merges
+    # state, a previously-set value can end up unavailable here even though
+    # emulator_node always writes to the exact same fixed path on disk. Fall
+    # back to that fixed path and confirm it's actually there with content --
+    # cheap, and it turns a state-propagation gap into a correct mandatory
+    # verifyIosSdk call instead of a silent, evidence-free FAIL.
+    ios_sdk_log_file = state.get("ios_sdk_log_file")
+    if not ios_sdk_log_file and str(platform).lower() == "ios":
+        candidate = Path(str(state.get("sandbox_path") or "")) / "ios-sdk-logs.txt"
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            ios_sdk_log_file = str(candidate)
+    if (
+        current_prompt_type == "verify_prompt"
+        and str(platform).lower() == "ios"
+        and ios_sdk_log_file
+    ):
+        # verify_sdk.verify_logs_ready in the use case's answer_policy is this
+        # use case's own explicit request for a real SDK-level check (it hits
+        # AppsFlyer's backend with the UID from the logs) -- when it's set,
+        # calling verifyIosSdk is not optional, otherwise an agent that
+        # already "thinks" it knows the answer from a manual code read can
+        # skip the one check that would actually confirm or refute that.
+        verify_sdk_policy = (state.get("answer_policy") or {}).get("verify_sdk") or {}
+        sdk_check_required = bool(verify_sdk_policy.get("verify_logs_ready"))
+        directive = (
+            "This use case requires SDK-level verification -- you MUST call verifyIosSdk"
+            if sdk_check_required
+            else "If you call verifyIosSdk, call it"
+        )
+        user_prompt = (
+            f"{user_prompt}\n\n"
+            "---\n"
+            "iOS SDK verification data (already collected by the pipeline):\n"
+            f"- Log file path: {ios_sdk_log_file}\n"
+            f"{directive} directly with action=\"verify\", "
+            f"logFilePath=\"{ios_sdk_log_file}\", and confirmLogFileReady=true. "
+            "You do not need to call action=\"prepare\" first -- the log file "
+            "already exists and is populated with the real data described above. "
+            "The same applies to verifyIosInAppEvent, which reads this same log file: "
+            "call it directly with action=\"verify\" too. "
+            "Do not ask the user to paste logs manually -- this file was already "
+            "populated automatically from the simulator's system log right after the "
+            "app was launched."
+        )
+
+
+    # Snapshot how many audit events exist before this turn so we can tell,
+    # right after the call, whether *this specific turn* actually wrote any
+    # source file -- as opposed to just a Podfile/config tweak. Needed below
+    # to detect a real "integrate_prompt wrote no code at all" failure.
+    events_before_turn = len(audit_recorder.events) if audit_recorder else 0
 
     result = await run_sdk_integration_agent(
         state=state,
@@ -1046,6 +1192,21 @@ async  def sdk_agent_node(
         audit_recorder=audit_recorder,
     )
 
+    # Validate MCP tool execution order after SDK agent finishes
+    if audit_recorder:
+        validator = McpToolOrderValidator()
+
+        is_valid, message = validator.validate_sequence(
+            recorder=audit_recorder,
+            state=state,
+        )
+
+        state["is_tool_order_valid"] = is_valid
+        state["is_tool_order_valid_message"] = message
+
+    deep_link_url = extract_deep_link_url_from_audit(audit_recorder)
+    if deep_link_url:
+        state["deep_link_url"] = deep_link_url
 
     state["type_agent"] = "sdk_agent"
 
@@ -1059,6 +1220,38 @@ async  def sdk_agent_node(
         != "FAIL"
     )
 
+    # Objective (not classifier-dependent) check: integrate_prompt is the one
+    # turn whose whole job is to write the SDK integration code. If it failed
+    # AND no source file (.m/.h/.mm/.swift/.java/.kt) was written during this
+    # exact turn -- only e.g. a Podfile -- then compilation_check/emulator
+    # will just build and boot an app that was never touched by AppsFlyer
+    # code, which cannot possibly pass verify_prompt later. Running that full
+    # build+simulator-boot cycle anyway (as happened in practice, twice, for
+    # ~10 minutes) is pure waste, so short-circuit straight to test_runner
+    # instead. This is deliberately narrower than "classifier said FAIL"
+    # (route_from_sdk_agent still ignores that on its own, since the
+    # classifier can be wrong) -- it only fires on the objective, checkable
+    # fact that zero code exists to compile.
+    sdk_integration_incomplete = False
+    if current_prompt_type == "integrate_prompt" and not node_succeeded and audit_recorder:
+        code_suffixes = (".m", ".h", ".mm", ".swift", ".java", ".kt")
+        wrote_code_file = any(
+            e["event_type"] == "PROJECT_FILE_WRITTEN"
+            and e["payload"].get("changed")
+            and str(e["payload"].get("file_path", "")).endswith(code_suffixes)
+            for e in audit_recorder.events[events_before_turn:]
+        )
+        if not wrote_code_file:
+            sdk_integration_incomplete = True
+            state["test_status"] = "FAIL"
+            state["fail_reason"] = (
+                "sdk_agent failed integrate_prompt without writing any source "
+                "file (.m/.h/.mm/.swift/.java/.kt) -- no AppsFlyer integration "
+                "code exists to compile, so compilation_check/emulator were "
+                "skipped instead of running on a build that could never pass."
+            )
+
+    state["sdk_integration_incomplete"] = sdk_integration_incomplete
 
     node_log = {
         "node": "sdk_agent",
@@ -1137,8 +1330,13 @@ def compilation_check_node(
     """
     Node 6: Compilation Check
 
-    Runs compilation validation
-    and stores results.
+    Runs compilation validation and stores results. On failure, the prompt
+    stage that just wrote the failing code (integrate_prompt / event_prompt)
+    gets exactly one retry: the real compiler output is handed back to
+    sdk_agent_node via compilation_fix_context, and last_prompt_type is
+    rewound so that same stage runs again instead of advancing. This mirrors
+    how a human developer reacts to a failed build, without ever telling the
+    agent what the fix should be.
     """
 
     platform = (
@@ -1157,8 +1355,37 @@ def compilation_check_node(
 
     state.update(result)
 
-    if not result.get("compilation_passed"):
+    compilation_passed = bool(result.get("compilation_passed"))
+    retry_pending = False
+
+    if not compilation_passed:
         state["test_status"] = "FAIL"
+
+        prompt_just_run = state.get("prompt_just_run")
+        already_retried = prompt_just_run in (state.get("compilation_retry_used_for") or [])
+
+        # verify_prompt never writes new code that reaches this node, so
+        # only integrate/event stages are eligible for a retry.
+        if prompt_just_run and prompt_just_run != "verify_prompt" and not already_retried:
+            compilation_result = result.get("compilation_result")
+            fix_context = (
+                getattr(compilation_result, "error_excerpt", "")
+                or getattr(compilation_result, "detail", "")
+                or "Build failed (no error detail captured)."
+            )
+            state["compilation_fix_context"] = fix_context
+            state["compilation_retry_used_for"] = [
+                *(state.get("compilation_retry_used_for") or []),
+                prompt_just_run,
+            ]
+            # sdk_agent_node already advanced last_prompt_type past
+            # prompt_just_run right after that turn -- rewind it so the same
+            # stage is re-run instead of moving on to the next one.
+            state["last_prompt_type"] = prompt_just_run
+            state["test_status"] = "READY"
+            retry_pending = True
+
+    state["compilation_retry_pending"] = retry_pending
 
     state["current_node"] = (
         "compilation_check"
@@ -1180,10 +1407,8 @@ def compilation_check_node(
 
             "status": (
                 "SUCCESS"
-                if result.get(
-                    "compilation_passed"
-                )
-                else "FAIL"
+                if compilation_passed
+                else ("RETRY" if retry_pending else "FAIL")
             ),
         },
     ]
@@ -1220,6 +1445,21 @@ def deep_link_node(
     """
     state["deep_link_is_visited"] = True
     state.update(simulate_deep_link_click(state))
+
+    # Every other node appends a {"node": ..., "status": ...} entry to
+    # nodes_log so the report can show whether it passed -- this one used to
+    # skip that step, so the report always showed "Deep Link: Status —" even
+    # when the URL was sent and logs were collected successfully.
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {
+            "node": "deep_link",
+            "status": state.get("deep_link_status") or "UNKNOWN",
+            "message": state.get("deep_link_message") or state.get("error_reason") or "",
+            "alert_dismissal": state.get("deep_link_alert_dismissal") or "",
+        },
+    ]
+
     return state
 
 
@@ -1264,6 +1504,15 @@ def test_runner_node(
         if sdk_agent_failed:
             state["test_status"] = "FAIL"
 
+    # This node never marked itself visited or logged anything, so
+    # build_report.py always showed it as "Skipped"/"Not executed" even on
+    # runs where it clearly ran (e.g. right after an emulator failure).
+    state["test_runner_is_visited"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {"node": "test_runner", "status": "Success", "message": "Test Runner ran."},
+    ]
+
     return state
 
 
@@ -1278,10 +1527,23 @@ def _clear_run_dir(state: PipelineState) -> None:
     run_repository.delete_run_selection() — the same delete used by the
     UI's manual "Saved run selections pending cleanup" housekeeping button —
     so there is only one place that knows how to tear down a run dir.
+
+    Skipped on a FAILED run (see run_resource_registry.should_keep_failed_run_artifacts)
+    so audit.jsonl survives for post-mortem inspection — this node runs
+    before run_launcher's own teardown ever gets a chance to apply that
+    same rule to the sandbox, so it must check it too.
     """
     run_id = state.get("run_id")
     if not run_id:
         return
+
+    if state.get("test_status") == "FAIL":
+        from infra.workflow.run_resource_registry import (
+            should_keep_failed_run_artifacts,
+        )
+
+        if should_keep_failed_run_artifacts():
+            return
 
     delete_run_selection(run_id)
 
@@ -1384,12 +1646,6 @@ def visual_report_node(
 
             state["current_use_case_path"] = None
 
-    # Always delete this use case's sandbox (pass or fail) after its report step.
-    sandbox_path = state.get("sandbox_path")
-    if sandbox_path:
-        cleanup_result = cleanup_environment(sandbox_path)
-        state["cleanup_status"] = cleanup_result.get("cleanup_status")
-        state["sandbox_path"] = ""
 
     if not state.get("current_use_case_path"):
         from data.reports.build_report import attach_index_report
@@ -1412,11 +1668,22 @@ def route_from_sdk_agent(
     verify_prompt (pass or fail) -> test_runner
     integrate/event (pass or fail) -> compilation_check
 
-    Deliberately does NOT check _is_pipeline_fail here: an sdk_agent
-    failure is recorded in nodes_log/fail_reason (see sdk_agent_node) but
-    must not short-circuit straight to test_runner — it should continue
-    to the same next node it would reach on success.
+    Deliberately does NOT check _is_pipeline_fail here in general: a
+    classifier FAIL on its own is recorded in nodes_log/fail_reason (see
+    sdk_agent_node) but must not short-circuit straight to test_runner —
+    the classifier can be wrong, so integrate/event failures still continue
+    to the same next node they'd reach on success.
+
+    The one exception is state["sdk_integration_incomplete"]: an objective
+    (not classifier-dependent) signal set by sdk_agent_node when
+    integrate_prompt failed AND wrote zero source files. In that case there
+    is provably no SDK code to compile, so running compilation_check/emulator
+    anyway would just waste a full build+simulator-boot cycle on a build that
+    cannot pass -- go straight to test_runner instead.
     """
+    if state.get("sdk_integration_incomplete"):
+        return "test_runner"
+
     prompt_just_run = (
         state.get("prompt_just_run")
         or state.get("last_prompt_type")

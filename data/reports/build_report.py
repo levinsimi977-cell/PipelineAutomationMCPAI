@@ -313,6 +313,12 @@ class RunReportBuilder:
             return self._parse_bool(state[legacy_key]) is True
         if log_entries:
             return self._aggregate_node_status(log_entries) == "passed"
+        # See _SILENT_ALWAYS_RUN_NODES: these two run unconditionally on
+        # every pipeline execution but never log anything on success.
+        if node_id == "json_use_case_input":
+            return state.get("failed_node") != "json_use_case_input_node"
+        if node_id == "test_runner":
+            return True
         return False
 
     def _resolve_node_log(
@@ -458,6 +464,20 @@ class RunReportBuilder:
             },
         }
 
+    # json_use_case_input_node and test_runner_node are unconditional graph
+    # nodes (workflow_builder.py wires START -> json_use_case_input, and
+    # every route eventually passes through test_runner -> visual_report),
+    # so they run on literally every pipeline execution -- but neither one
+    # ever appends to nodes_log: json_use_case_input_node is a silent
+    # setup step (writes use-case JSON files, nothing to report unless it
+    # raises), and test_runner_node is a pure test_status roll-up with no
+    # checks of its own. Without this, _format_workflow_node's "no log
+    # entries -> not_run" fallback below permanently counts both of them
+    # as unvisited, which made _build_validation's all_visited requirement
+    # impossible to satisfy -- every run, regardless of actual success,
+    # was unconditionally reported "Failed" overall.
+    _SILENT_ALWAYS_RUN_NODES = {"json_use_case_input", "test_runner"}
+
     def _format_workflow_node(
         self,
         state: dict[str, Any],
@@ -478,6 +498,40 @@ class RunReportBuilder:
         }
 
         if not log_entries:
+            if node_id == "json_use_case_input":
+                # json_use_case_input_node sets these two fields itself,
+                # specifically on failure (e.g. no use cases selected, or an
+                # unexpected exception) -- their absence is real evidence it
+                # ran and succeeded silently, not that it never ran.
+                if state.get("failed_node") == "json_use_case_input_node":
+                    return {
+                        "step": step,
+                        "node": node_id,
+                        "label": display_name,
+                        "status": "failed",
+                        "status_label": status_labels["failed"],
+                        "checks": checks,
+                    }
+                return {
+                    "step": step,
+                    "node": node_id,
+                    "label": display_name,
+                    "status": "passed",
+                    "status_label": status_labels["passed"],
+                    "checks": checks,
+                }
+            if node_id == "test_runner":
+                # test_runner_node only ever adjusts state["test_status"]
+                # based on other nodes' own (already-reported) failures; it
+                # never fails "on its own", so it's always a pass.
+                return {
+                    "step": step,
+                    "node": node_id,
+                    "label": display_name,
+                    "status": "passed",
+                    "status_label": status_labels["passed"],
+                    "checks": checks,
+                }
             return {
                 "step": step,
                 "node": node_id,
@@ -1098,13 +1152,26 @@ class RunReportBuilder:
 
     @staticmethod
     def _normalize_status(value: str) -> str:
-        """Collapses every status spelling used anywhere in this codebase (ok/success/pass/ready/warn/error/fail/...) down to one of exactly four buckets: passed/warning/failed/info."""
+        """Collapses every status spelling used anywhere in this codebase (ok/success/pass/ready/warn/error/fail/...) down to one of exactly four buckets: passed/warning/failed/info.
+
+        "skipped" is bucketed as passed, not info: nodes like user_actions
+        and deep_link deliberately report this status when the use case's
+        own policy says there's nothing for them to do (e.g.
+        inapp_event_method == "none") -- that is a correct, successful
+        outcome for that node, not a failure or an unknown state. Before
+        this, a "skipped" node counted toward neither passed_nodes nor
+        failed_nodes in _build_workflow_detail, so passed_nodes could never
+        reach total_nodes and _build_validation's all_success check failed
+        every such run -- mislabeling entirely successful runs as "Failed"
+        on the report/index card for the sole reason that a step correctly
+        decided there was nothing to do.
+        """
         lowered = value.lower().strip()
-        if lowered in {"ok", "success", "pass", "passed", "ready"}:
+        if lowered in {"ok", "success", "pass", "passed", "ready", "skipped", "skip"}:
             return "passed"
         if lowered in {"warn", "warning"}:
             return "warning"
-        if lowered in {"error", "failed", "fail"}:
+        if lowered in {"error", "failed", "fail", "failure"}:
             return "failed"
         return "info"
 

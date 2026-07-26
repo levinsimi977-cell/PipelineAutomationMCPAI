@@ -35,6 +35,7 @@ import json
 import os
 import re
 import platform
+import re
 import stat
 import subprocess
 import time
@@ -48,20 +49,33 @@ DEFAULT_IOS_CONFIGURATION = "Debug"
 DEFAULT_IOS_SDK = "iphonesimulator"
 DEFAULT_TIMEOUT_SECONDS = 900  # 15 min: a first/clean build downloads the whole toolchain + deps
 LOG_TAIL_CHARS = 4000
+ERROR_EXCERPT_CHARS = 4000
 
-<<<<<<< HEAD
-# Repo-root shared Gradle cache. Per-sandbox GRADLE_USER_HOME forced a full
-# Gradle distribution download on every run; one cache serves all sandboxes.
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_SHARED_GRADLE_USER_HOME = _PROJECT_ROOT / ".cache" / "gradle"
-=======
+# Matches the actual diagnostic lines that explain *why* a build failed:
+# clang/swift "<file>:<line>:<col>: error: ..." and Gradle's "FAILURE:" /
+# "e: <file>: ..." compiler-error lines / "* What went wrong" summary.
+_ERROR_LINE_RE = re.compile(r"error:|FAILURE:|^\* What went wrong", re.IGNORECASE)
+
 # Fixed, dedicated cache dir shared across all sandbox runs. Only the Gradle
 # distribution/dependency cache lives here — project source files stay inside
 # each sandbox, so run isolation is unaffected. Without this, every sandbox
 # re-downloaded the full Gradle distribution + deps from scratch.
 # Override with the GRADLE_USER_HOME env var (e.g. in .env) if needed.
-SHARED_GRADLE_USER_HOME = os.environ.get("GRADLE_USER_HOME") or r"C:\Shared_CI_Cache\.gradle-user-home"
->>>>>>> newMain
+#
+# The bare Windows path used to be the only fallback -- but on macOS/Linux,
+# pathlib has no concept of a "C:\" drive or backslash separators, so
+# `Path(r"C:\Shared_CI_Cache\.gradle-user-home")` isn't an absolute path at
+# all: it's a single relative path *segment* (literally containing colons
+# and backslashes as characters), created under whatever the process's cwd
+# happens to be. The cache dir "worked" in the sense that mkdir(parents=True)
+# never failed, but it silently defeated the whole point of this constant on
+# any non-Windows machine.
+_DEFAULT_GRADLE_USER_HOME = (
+    r"C:\Shared_CI_Cache\.gradle-user-home"
+    if os.name == "nt"
+    else str(Path.home() / ".shared_ci_cache" / "gradle-user-home")
+)
+SHARED_GRADLE_USER_HOME = os.environ.get("GRADLE_USER_HOME") or _DEFAULT_GRADLE_USER_HOME
 
 # State keys checked (in order) to find the project to compile. Kept
 # flexible on purpose: the pre-build pipeline state is a plain dict (not
@@ -83,6 +97,7 @@ class CompilationResult:
     detail: str = ""
     stdout_tail: str = ""
     stderr_tail: str = ""
+    error_excerpt: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -121,17 +136,18 @@ def _resolve_app_path(state: dict[str, Any]) -> str:
     return ""
 
 
-# "High signal": lines that are themselves a genuine compiler/linker
-# diagnostic. Deliberately does NOT include a bare "ld: " — that substring
-# also occurs inside completely unrelated lines such as
-# "xcodebuild: WARNING: ..." (the "...build:" tail + following space reads
-# as "ld: "), which was flooding the extracted snippet with the
-# multiple-destinations warning noise instead of the actual error.
 _HIGH_SIGNAL_PATTERN = re.compile(
     r"error:|fatal error:|ld: error:|linker command failed|"
     r"undefined symbols for architecture|duplicate symbol|no such module|"
     r"use of undeclared identifier|redefinition of|"
-    r"command \S+ failed with a nonzero exit code",
+    r"command \S+ failed with a nonzero exit code|"
+    # Gradle's own top-level failure summary line, e.g.
+    # "FAILURE: Build failed with an exception." -- doesn't contain the word
+    # "error" at all, so without this it fell through to the low-signal
+    # "** BUILD FAILED **"/"the following build commands failed" patterns
+    # (Xcode-only phrasing that Gradle never emits), leaving Gradle failures
+    # with no excerpt at all.
+    r"FAILURE:",
     re.IGNORECASE,
 )
 # "Low signal": only worth showing when nothing high-signal was found at
@@ -162,6 +178,22 @@ def _extract_error_snippet(
             return []
         return [i for i, line in enumerate(text.splitlines()) if pattern.search(line)]
 
+    # xcodebuild prints the full clang/ld invocation (every flag, every
+    # -isysroot path, etc.) as its own single line immediately before each
+    # diagnostic -- confirmed on a real failure: that one line alone was
+    # 3318 chars, bigger than the entire max_chars budget, while the actual
+    # "error: ..." line right after it was only 145 chars. Because
+    # context_lines pulls in the line(s) around a match and _snippet_for
+    # used to keep them at full length, that single command-invocation
+    # "context" line silently consumed the whole budget and the real error
+    # text never made it into the final [:max_chars] slice -- the agent
+    # receiving this saw a giant clang command and nothing that looked like
+    # an actual error, and correctly (but unhelpfully) refused to guess.
+    # Compiler diagnostics themselves are always short; only raw command
+    # lines run this long, so capping any single line this way never cuts
+    # into real error text.
+    _MAX_LINE_CHARS = 400
+
     def _snippet_for(text: str, indices: list[int]) -> str:
         if not indices:
             return ""
@@ -170,7 +202,20 @@ def _extract_error_snippet(
         for idx in indices:
             lo, hi = max(0, idx - context_lines), min(len(lines), idx + context_lines + 1)
             keep.update(range(lo, hi))
-        return "\n".join(lines[i] for i in sorted(keep))
+        # xcodebuild/gradle commonly repeat the exact same diagnostic line
+        # several times (once per architecture, or once per retry) -- keeping
+        # every literal duplicate wastes max_chars budget that a genuinely
+        # different error later in the log could otherwise fit into.
+        seen: set[str] = set()
+        deduped = []
+        for i in sorted(keep):
+            line = lines[i]
+            if len(line) > _MAX_LINE_CHARS:
+                line = line[:_MAX_LINE_CHARS] + " …(truncated)"
+            if line not in seen:
+                seen.add(line)
+                deduped.append(line)
+        return "\n".join(deduped)
 
     stdout_hits = _matches(stdout, _HIGH_SIGNAL_PATTERN)
     stderr_hits = _matches(stderr, _HIGH_SIGNAL_PATTERN)
@@ -264,6 +309,67 @@ def _find_android_sdk_root() -> Optional[str]:
     return candidate if os.path.isdir(candidate) else None
 
 
+def _find_java_home() -> Optional[str]:
+    """
+    Locate a real JDK's home directory (the folder containing `bin/java`):
+    1. JAVA_HOME, if already set and valid.
+    2. `/usr/libexec/java_home` (macOS's own JDK locator) — the correct
+       answer whenever a "properly installed" JDK (Oracle/Adoptium/etc, or
+       a Homebrew *cask*) registered itself with it.
+    3. Common install locations that `java_home` does NOT know about:
+       Homebrew's own `openjdk` *formula* (as opposed to a cask) is
+       keg-only by design and never symlinks itself into
+       `/Library/Java/JavaVirtualMachines` or onto PATH, so a plain
+       `openjdk`/`openjdk@<N>` install is invisible to both `java_home`
+       and a bare `java` on PATH — which then resolves to macOS's stub
+       `/usr/bin/java` that only prints "Unable to locate a Java Runtime"
+       instead of running anything.
+    Returns None if no valid JDK could be found either way — gradlew then
+    fails with its own clear error, same fallback pattern as
+    `_find_android_sdk_root`.
+    """
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home and os.path.isfile(os.path.join(java_home, "bin", "java")):
+        return java_home
+
+    if platform.system() == "Darwin":
+        try:
+            result = subprocess.run(
+                ["/usr/libexec/java_home"],
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            result = None
+        if result is not None and result.returncode == 0:
+            candidate = result.stdout.strip()
+            if candidate and os.path.isfile(os.path.join(candidate, "bin", "java")):
+                return candidate
+
+        for brew_prefix in ("/opt/homebrew", "/usr/local"):
+            opt_dir = Path(brew_prefix) / "opt"
+            if not opt_dir.is_dir():
+                continue
+            for candidate_dir in sorted(opt_dir.glob("openjdk*"), reverse=True):
+                home = candidate_dir / "libexec" / "openjdk.jdk" / "Contents" / "Home"
+                if (home / "bin" / "java").is_file():
+                    return str(home)
+
+        jvm_dir = Path("/Library/Java/JavaVirtualMachines")
+        if jvm_dir.is_dir():
+            for candidate_dir in sorted(jvm_dir.glob("*"), reverse=True):
+                home = candidate_dir / "Contents" / "Home"
+                if (home / "bin" / "java").is_file():
+                    return str(home)
+    elif platform.system() != "Windows":
+        jvm_dir = Path("/usr/lib/jvm")
+        if jvm_dir.is_dir():
+            for candidate_dir in sorted(jvm_dir.glob("*"), reverse=True):
+                if (candidate_dir / "bin" / "java").is_file():
+                    return str(candidate_dir)
+
+    return None
+
+
 def _find_built_apk(project_root: Path, task: str) -> Optional[str]:
     """
     Locate the APK produced by `task` under the standard Gradle output
@@ -329,20 +435,21 @@ def _run_gradle_command(
     """
     args = [str(gradlew), "--no-daemon", task, *extra_args]
 
-<<<<<<< HEAD
-    # Prefer an explicit GRADLE_USER_HOME from the environment; otherwise use
-    # the shared repo cache so wrapper dists / deps are downloaded once.
-    env = os.environ.copy()
-    gradle_user_home = Path(
-        env.get("GRADLE_USER_HOME") or _SHARED_GRADLE_USER_HOME
-    )
-    gradle_user_home.mkdir(parents=True, exist_ok=True)
-    env["GRADLE_USER_HOME"] = str(gradle_user_home)
-=======
     Path(SHARED_GRADLE_USER_HOME).mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["GRADLE_USER_HOME"] = SHARED_GRADLE_USER_HOME
->>>>>>> newMain
+
+    # gradlew shells out to a plain `java` on PATH. A GUI-launched process
+    # (e.g. the IDE's debugger) doesn't inherit JAVA_HOME/PATH tweaks from
+    # ~/.zshrc the way a login shell does, so even a perfectly good JDK
+    # install can be invisible here -- `java` then resolves to macOS's own
+    # stub at /usr/bin/java, which fails immediately with "Unable to locate
+    # a Java Runtime" instead of ever reaching Gradle.
+    if not (env.get("JAVA_HOME") and os.path.isfile(os.path.join(env["JAVA_HOME"], "bin", "java"))):
+        java_home = _find_java_home()
+        if java_home:
+            env["JAVA_HOME"] = java_home
+            env["PATH"] = os.path.join(java_home, "bin") + os.pathsep + env.get("PATH", "")
 
     if os.name == "nt":
         command: Any = " ".join(f'"{part}"' for part in args)
@@ -410,6 +517,7 @@ def run_gradle_build(
             detail=f"Gradle build exceeded the {timeout_seconds}s timeout.",
             stdout_tail=(exc.stdout or "")[-LOG_TAIL_CHARS:],
             stderr_tail=(exc.stderr or "")[-LOG_TAIL_CHARS:],
+            error_excerpt=_extract_error_snippet(exc.stdout or "", exc.stderr or ""),
         )
     except OSError as exc:
         return CompilationResult(
@@ -446,6 +554,7 @@ def run_gradle_build(
         detail=detail,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
+        error_excerpt="" if success else _extract_error_snippet(result.stdout or "", result.stderr or ""),
         extra=extra,
     )
 
@@ -545,6 +654,39 @@ def _find_built_app_bundle(derived_data_path: Path, configuration: str, sdk: str
     return str(candidates[0]) if candidates else None
 
 
+def _ensure_cocoapods_installed(project_root: Path) -> Optional[str]:
+    """Report missing CocoaPods dependencies without auto-fixing them.
+
+    The SDK agent (LLM) is responsible for running `pod install` as part of
+    its integration step. If it didn't, the build will fail and the error
+    should be reported clearly so the root cause is visible — not silently
+    papered over by the pipeline.
+    """
+    from infra.agents.sdkAgent.tools.sdk_project_tools import (
+        _PODFILE_POD_LINE_RE,
+        find_podfile_directory,
+    )
+
+    pod_dir = find_podfile_directory(project_root)
+    if pod_dir is None:
+        return None
+
+    podfile = pod_dir / "Podfile"
+    if not podfile.is_file():
+        return None
+
+    if not _PODFILE_POD_LINE_RE.search(podfile.read_text(encoding="utf-8")):
+        return None
+
+    if (pod_dir / "Pods" / "Manifest.lock").is_file():
+        return None
+
+    return (
+        "CocoaPods dependencies are declared in Podfile but 'pod install' was not run. "
+        "The SDK agent must run 'pod install' before compilation."
+    )
+
+
 def run_xcodebuild(
     app_path: str | Path,
     log_dir: str | Path,
@@ -563,6 +705,14 @@ def run_xcodebuild(
     """
     started = time.monotonic()
     root = Path(app_path)
+
+    pod_error = _ensure_cocoapods_installed(root)
+    if pod_error:
+        return CompilationResult(
+            status="FAILED",
+            platform="ios",
+            detail=f"CocoaPods install failed before build: {pod_error}",
+        )
 
     located = _find_ios_project(root)
     workspace, project = located["workspace"], located["project"]
@@ -613,6 +763,9 @@ def run_xcodebuild(
             status="TIMEOUT", platform="ios", scheme=resolved_scheme,
             duration_seconds=duration, log_path=log_path,
             detail=f"xcodebuild exceeded the {timeout_seconds}s timeout.",
+            stdout_tail=(exc.stdout or "")[-LOG_TAIL_CHARS:],
+            stderr_tail=(exc.stderr or "")[-LOG_TAIL_CHARS:],
+            error_excerpt=_extract_error_snippet(exc.stdout or "", exc.stderr or ""),
         )
     except OSError as exc:
         return CompilationResult(
@@ -638,6 +791,36 @@ def run_xcodebuild(
         error_snippet = _extract_error_snippet(result.stdout or "", result.stderr or "")
         if error_snippet:
             detail = f"{detail}\n\nRelevant output:\n{error_snippet}"
+        combined = (result.stdout or "") + (result.stderr or "")
+        if "AppsFlyerLib" in combined and "cannot find" in combined:
+            detail = (
+                f"{detail}\n\nRoot cause: AppsFlyer SDK symbols not found — "
+                "'pod install' was not run by the SDK agent before compilation."
+            )
+        # clang's own "did you mean 'X'" suggestion alongside an undeclared-identifier
+        # / missing-protocol error is a strong signal that the SDK agent wrote a
+        # plausible-looking but non-existent API name instead of the real one —
+        # i.e. it invented/hallucinated the identifier rather than verifying it
+        # against the installed SDK headers. Flagged here as its own distinct root
+        # cause (not silently fixed) so it's visible which class of error this is.
+        elif "did you mean" in combined and (
+            "undeclared identifier" in combined
+            or "cannot find protocol declaration" in combined
+        ):
+            detail = (
+                f"{detail}\n\nRoot cause: SDK Agent likely invented API identifiers "
+                "that don't exist in the installed SDK — the compiler's own 'did you "
+                "mean' suggestions point to what the real identifiers probably are. "
+                "The SDK agent should have verified these names against the actual "
+                "SDK headers before writing this code, instead of guessing."
+            )
+        elif "assignment to readonly property" in combined:
+            detail = (
+                f"{detail}\n\nRoot cause: SDK Agent assigned a value to a property "
+                "that the installed SDK version declares as read-only, instead of "
+                "using the SDK's initializer method — it should have verified the "
+                "actual API surface in the installed header before writing this code."
+            )
     extra: dict[str, Any] = {}
     if success:
         app_bundle_path = _find_built_app_bundle(derived_data_path, configuration, sdk)
@@ -654,6 +837,7 @@ def run_xcodebuild(
         detail=detail,
         stdout_tail=(result.stdout or "")[-LOG_TAIL_CHARS:],
         stderr_tail=(result.stderr or "")[-LOG_TAIL_CHARS:],
+        error_excerpt="" if success else _extract_error_snippet(result.stdout or "", result.stderr or ""),
         extra=extra,
     )
 
