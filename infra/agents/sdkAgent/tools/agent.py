@@ -290,8 +290,12 @@ async def create_sdk_integration_agent(
         manifest_json must be a JSON object: {"platform": ..., "appPackage"/"bundleId": ...,
         "mainActivity" (android): ..., "events": [{"eventName": "af_x", "triggerId": "af_trigger_af_x",
         "layoutFile": "<path to the UI file, relative to the project root, where triggerId was wired
-        as android:contentDescription / accessibilityIdentifier>"}]}. layoutFile is verified against
-        the real file on disk -- this call fails if triggerId isn't actually found in it."""
+        as android:contentDescription / accessibilityIdentifier>", "navigationPath": ["<optional list
+        of on-screen texts/labels to tap, in order, to get from the app's main/launch screen to the
+        screen containing triggerId -- REQUIRED whenever that screen is not the main screen, e.g.
+        ["PEACHES"] to reach a Peaches screen reached by tapping a 'PEACHES' card from the home
+        screen>"]}]}. layoutFile is verified against the real file on disk -- this call fails if
+        triggerId isn't actually found in it."""
         try:
             data = json.loads(manifest_json)
             events = data.get("events") or []

@@ -66,7 +66,7 @@
       },
       {
         "number": 14,
-        "text": "Do not blindly trust whatever version integrateSdk or mvnrepository suggests for the AppsFlyer SDK — a recently published version can have documentation, javadocs, or class/package layout that has not caught up yet, causing an import that looks syntactically correct to fail to compile. Before writing SDK initialization code, use find_in_project + read_project_file to confirm the exact class/import path actually exists in the SDK files installed in this project. If it does not, try a different version and verify again the same way before writing any import. "
+        "text": "Ignore whatever Android SDK version integrateSdk or mvnrepository suggests — always declare the dependency as `com.appsflyer:af-android-sdk:6.18.1` in build.gradle, a verified-working version. Initialize it in the Application class's onCreate with EXACTLY this pattern and nothing else: `AppsFlyerLib.getInstance().init(<DEV_KEY>, null, this);` immediately followed by `AppsFlyerLib.getInstance().start(this);`. The dev key goes ONLY into init — never pass a dev key or listener argument to start(); `start(Context, String)` does not exist and will fail to compile."
       },
       {
         "number": 15,
@@ -136,7 +136,7 @@
           "triggerId",
           "layout/view file (when known)"
         ],
-        "note": "Call write_events_manifest with eventName, triggerId, and layoutFile for each wired event."
+        "note": "Call write_events_manifest with eventName, triggerId, and layoutFile for each wired event. If the wired screen is not the app's main/launch screen, also pass navigationPath: an ordered list of the on-screen texts/labels to tap to get from the main screen to that screen (e.g. [\"PEACHES\"] to reach a Peaches screen reached by tapping a 'PEACHES' card on the home screen)."
       }
     ]
   },
@@ -146,6 +146,7 @@
     "rules": [
       "After wiring each event UI, call write_events_manifest.",
       "triggerId must be af_trigger_{eventName}.",
+      "If the wired screen isn't the app's main/launch screen, include navigationPath: the ordered list of on-screen texts/labels to tap to reach it from the main screen.",
       "Do not finish event_prompt until write_events_manifest returns OK."
     ]
   },

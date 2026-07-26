@@ -21,7 +21,23 @@ def load_config(config_path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def tap_trigger(driver: webdriver.Remote, trigger_id: str, wait_seconds: float) -> None:
+def navigate_to_screen(driver: webdriver.Remote, navigation_path: list[str], wait_seconds: float) -> None:
+    """Tap on-screen elements by visible text/label, in order, to reach the screen
+    that hosts a triggerId not present on the app's main/launch screen (see
+    navigationPath in events.wired.json / write_events_manifest)."""
+    for label in navigation_path:
+        driver.find_element(AppiumBy.XPATH, f'//*[@text="{label}" or @content-desc="{label}"]').click()
+        time.sleep(wait_seconds)
+
+
+def tap_trigger(
+    driver: webdriver.Remote,
+    trigger_id: str,
+    wait_seconds: float,
+    navigation_path: list[str] | None = None,
+) -> None:
+    if navigation_path:
+        navigate_to_screen(driver, navigation_path, wait_seconds)
     driver.find_element(AppiumBy.ACCESSIBILITY_ID, trigger_id).click()
     time.sleep(wait_seconds)
 
@@ -41,7 +57,7 @@ def run_discovered_events(
         if only_event and event_name != only_event:
             continue
 
-        tap_trigger(driver, trigger_id, wait_seconds)
+        tap_trigger(driver, trigger_id, wait_seconds, event.get("navigationPath"))
         results.append(
             {
                 "eventName": event_name,
