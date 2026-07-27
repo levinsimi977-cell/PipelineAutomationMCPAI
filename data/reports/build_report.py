@@ -494,7 +494,7 @@ class RunReportBuilder:
             "failed": "Failed",
             "warning": "Warning",
             "info": "Info",
-            "not_run": "Skipped",
+            "not_run": "Not Run",
         }
 
         if not log_entries:

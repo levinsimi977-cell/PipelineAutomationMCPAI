@@ -78,8 +78,17 @@ def _collect_ios_sdk_logs(
     persisted on disk (read_ios_appsflyer_uid) so verifyIosSdk has real
     evidence to find, without touching any code the SDK agent wrote.
 
-    Returns the absolute path to the written file, or None if collection
-    itself failed (best-effort -- must never fail the emulator node).
+    Also mirrors the same captured window into ios-inapp-event-logs.txt --
+    the dedicated file verifyIosInAppEvent's own `prepare` step creates and
+    expects, separate from ios-sdk-logs.txt. This is a plain copy, not a
+    second polling pass: any in-app-event log line (e.g. the SDK agent's
+    logEventWithEventName: completion handler, per rule 18) fires within
+    seconds of "start" and is already inside this function's 60s lookback
+    window by the time it returns, so there's no need to wait again for it.
+
+    Returns the absolute path to the written ios-sdk-logs.txt file, or None
+    if collection itself failed (best-effort -- must never fail the
+    emulator node).
     """
     try:
         output = wait_for_ios_log_marker(
@@ -129,6 +138,10 @@ def _collect_ios_sdk_logs(
 
         log_file = Path(sandbox_path) / "ios-sdk-logs.txt"
         log_file.write_text(output, encoding="utf-8")
+
+        inapp_event_log_file = Path(sandbox_path) / "ios-inapp-event-logs.txt"
+        inapp_event_log_file.write_text(output, encoding="utf-8")
+
         return str(log_file)
     except Exception:
         return None
@@ -452,16 +465,16 @@ def emulator_node(state: PipelineState) -> dict:
         "driver": driver_instance,
         "device_id": device_id,
     }
-
-    # If the emulator itself couldn't install/launch the app, there is no
-    # working device/session for event_prompt's follow-up compile+emulator
-    # round or for user_actions to use -- both are guaranteed to fail too,
-    # just several minutes later with a more confusing error. Fail fast here
-    # instead: route_from_emulator sends test_status=="FAIL" straight to
-    # test_runner.
-    if node_status == "Fail":
-        result["test_status"] = "FAIL"
-        result["fail_reason"] = f"Emulator failed to launch the app: {launch_result or install_result}"
+    if ios_sdk_log_file:
+        result["ios_sdk_log_file"] = ios_sdk_log_file
+        # _collect_ios_sdk_logs always mirrors the same captured window into
+        # ios-inapp-event-logs.txt alongside ios-sdk-logs.txt -- expose that
+        # path too so workflow_nodes.py can point verifyIosInAppEvent's
+        # verify call at the file it actually expects, instead of the SDK
+        # one that a different tool's `prepare` step created.
+        result["ios_inapp_event_log_file"] = str(
+            Path(ios_sdk_log_file).with_name("ios-inapp-event-logs.txt")
+        )
 
     # Step 7 — optional navigation smoke test. The sdk_agent has no tools to
     # build/launch/tap the app itself (see sdk-agent-main-rules.json rule
