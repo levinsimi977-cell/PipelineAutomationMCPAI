@@ -315,7 +315,17 @@ def emulator_node(state: PipelineState) -> dict:
         # boots the first installed AVD/simulator itself when nothing is
         # already up, and waits for it to come online.
         if configured_device_id:
-            steps.append(f"[device] {start_device(configured_device_id)}")
+            # Reuse whatever's already connected/booted (e.g. left running
+            # from a previous run) instead of unconditionally booting
+            # another instance of the configured AVD on top of it -- two
+            # `emulator` processes fighting over the same AVD disk image is
+            # a likely cause of the intermittent Appium/instrumentation
+            # failures seen when a device_id is configured.
+            already_connected = get_connected_device_id()
+            if already_connected:
+                steps.append(f"[device] Reusing already-running device: {already_connected}.")
+            else:
+                steps.append(f"[device] {start_device(configured_device_id)}")
         else:
             # ensure_device_running now returns (device_id, diagnostic) instead of a bare
             # device_id -- a bare None couldn't tell "no AVD/simulator installed at all" apart
@@ -443,6 +453,16 @@ def emulator_node(state: PipelineState) -> dict:
         "device_id": device_id,
     }
 
+    # If the emulator itself couldn't install/launch the app, there is no
+    # working device/session for event_prompt's follow-up compile+emulator
+    # round or for user_actions to use -- both are guaranteed to fail too,
+    # just several minutes later with a more confusing error. Fail fast here
+    # instead: route_from_emulator sends test_status=="FAIL" straight to
+    # test_runner.
+    if node_status == "Fail":
+        result["test_status"] = "FAIL"
+        result["fail_reason"] = f"Emulator failed to launch the app: {launch_result or install_result}"
+
     # Step 7 — optional navigation smoke test. The sdk_agent has no tools to
     # build/launch/tap the app itself (see sdk-agent-main-rules.json rule
     # 15), so any use case that actually wants "navigation" verified
@@ -461,6 +481,20 @@ def emulator_node(state: PipelineState) -> dict:
         })
         if smoke_result["status"] == "Fail":
             result["test_status"] = "FAIL"
+
+    # Android: this driver was only needed to confirm the app launched (and,
+    # above, for the optional navigation smoke test) -- user_actions/deep_link
+    # each open their OWN fresh Appium session against the same app package,
+    # and UiAutomator2 allows only one instrumentation session per app at a
+    # time. Leaving this one open made every later session fail with
+    # "instrumentation process cannot be initialized" (iOS keeps its driver:
+    # deep_link.py's dismiss_ios_open_in_app_alert still needs it).
+    if driver_instance is not None and (os_type or "").lower() == "android":
+        try:
+            driver_instance.quit()
+        except Exception:
+            pass
+        result["driver"] = None
 
     result["nodes_log"] = nodes_log
     return result

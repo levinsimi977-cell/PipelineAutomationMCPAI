@@ -85,13 +85,26 @@ def user_actions_node(state: PipelineState) -> PipelineState:
         state["test_status"] = "FAIL"
         return state
 
-    result = run_user_actions_pipeline(
-        manifest_path=manifest_path,
-        platform=platform,
-        appium_url=state.get("appium_url", "http://127.0.0.1:4723"),
-        wait_seconds=state.get("wait_seconds", 2.0),
-        only_event=state.get("only_event"),
-    )
+    try:
+        result = run_user_actions_pipeline(
+            manifest_path=manifest_path,
+            platform=platform,
+            appium_url=state.get("appium_url", "http://127.0.0.1:4723"),
+            wait_seconds=state.get("wait_seconds", 2.0),
+            only_event=state.get("only_event"),
+        )
+    except Exception as e:
+        # A raw Appium/Selenium error (e.g. NoSuchElementException) used to
+        # propagate out of this node and crash the whole graph run before
+        # test_runner/visual_report could produce a report. Converting it to
+        # a normal Fail result keeps the run going so a report always exists.
+        result = {
+            "status": "Fail",
+            "phase": "tap_execution",
+            "discovery_validation": None,
+            "tap_validation": None,
+            "error": str(e),
+        }
 
     state["visited_user_actions"] = True
     state["next_node"] = NEXT_NODE if result["status"] == "Success" else NODE_NAME
@@ -109,6 +122,7 @@ def user_actions_node(state: PipelineState) -> PipelineState:
             "tap_validation": result.get("tap_validation"),
             "event_count": result.get("event_count", 0),
             "tap_count": result.get("tap_count", 0),
+            "error": result.get("error"),
         },
     })
     return state
