@@ -164,7 +164,6 @@ class PipelineState(TypedDict, total=False):
     original_app_path: NotRequired[str]
 
     sandbox_path: NotRequired[str]
-    cleanup_status: NotRequired[str]
 
 
     dev_key_configured: NotRequired[bool]
@@ -265,10 +264,6 @@ class PipelineState(TypedDict, total=False):
     compilation_result: NotRequired[Any]
 
     audit_events: NotRequired[list]
-
-    files_modified: NotRequired[bool]
-
-    applied_files: NotRequired[list[str]]
 
     # Real compiler stderr/stdout excerpt from the failing build, handed back
     # to sdk_agent_node for exactly one self-correction retry per prompt
@@ -557,8 +552,6 @@ def _reset_runtime_fields_for_next_use_case(state: PipelineState) -> None:
         "is_tool_order_valid",
         "is_tool_order_valid_message",
         "is_tool_order_valid_massage",
-        "files_modified",
-        "applied_files",
         # Per-UC timing / misc report fields
         "started_at",
         "ended_at",
@@ -1191,6 +1184,26 @@ async  def sdk_agent_node(
         user_prompt=user_prompt,
         audit_recorder=audit_recorder,
     )
+
+    # event_prompt commonly finishes "successfully" having written a
+    # logEvent call but never called write_events_manifest -- silently
+    # proceeding to compilation then leaves user_actions/deep_link with
+    # nothing to discover later. Give the agent one corrective round,
+    # in the same session, with an explicit error instead.
+    if current_prompt_type == "event_prompt" and result.get("status") != "FAIL":
+        if _event_logged_without_manifest(sandbox_path):
+            result = await run_sdk_integration_agent(
+                state=state,
+                project_root_str=sandbox_path,
+                platform=platform,
+                user_prompt=(
+                    "Your code calls AppsFlyer's logEvent, but events.wired.json was never "
+                    "written. Call write_events_manifest now with the correct eventName, "
+                    "triggerId (af_trigger_{eventName}) and layoutFile for every wired event "
+                    "before finishing."
+                ),
+                audit_recorder=audit_recorder,
+            )
 
     # Validate MCP tool execution order after SDK agent finishes
     if audit_recorder:
