@@ -1116,6 +1116,24 @@ async  def sdk_agent_node(
         candidate = Path(str(state.get("sandbox_path") or "")) / "ios-sdk-logs.txt"
         if candidate.is_file() and candidate.stat().st_size > 0:
             ios_sdk_log_file = str(candidate)
+
+    # verifyIosInAppEvent uses its OWN dedicated log file (created by its own
+    # `prepare` step), separate from ios-sdk-logs.txt -- it is NOT "the same
+    # log file" verifyIosSdk uses, even though nodeEmulator.py's
+    # _collect_ios_sdk_logs happens to populate both with the same captured
+    # window (see that function's docstring) since an in-app-event log line
+    # fires within seconds of "start" and both need the same one to be
+    # collected. Resolving it separately here -- same state-then-disk-
+    # fallback pattern as ios_sdk_log_file above -- means the agent gets a
+    # real, tool-appropriate path instead of one borrowed from a different
+    # tool's prepare step, which is what verifyIosInAppEvent's own
+    # documentation actually calls for.
+    ios_inapp_event_log_file = state.get("ios_inapp_event_log_file")
+    if not ios_inapp_event_log_file and str(platform).lower() == "ios":
+        candidate = Path(str(state.get("sandbox_path") or "")) / "ios-inapp-event-logs.txt"
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            ios_inapp_event_log_file = str(candidate)
+
     if (
         current_prompt_type == "verify_prompt"
         and str(platform).lower() == "ios"
@@ -1147,14 +1165,25 @@ async  def sdk_agent_node(
             "tool sequence even if the SDK actually verified successfully. Then call "
             "verifyIosSdk again with action=\"verify\", "
             f"logFilePath=\"{ios_sdk_log_file}\", and confirmLogFileReady=true. "
-            "The same two-step prepare-then-verify sequence applies to "
-            "verifyIosInAppEvent, which reads this same log file: call it with "
-            f"action=\"prepare\" and projectPath=\"{sandbox_path}\" first, then with "
-            "action=\"verify\" and confirmLogFileReady=true. "
             "Do not ask the user to paste logs manually -- this file was already "
             "populated automatically from the simulator's system log right after the "
             "app was launched."
         )
+        if ios_inapp_event_log_file:
+            user_prompt = (
+                f"{user_prompt}\n\n"
+                "iOS in-app-event verification data (already collected by the "
+                "pipeline, in its OWN dedicated file -- do not reuse the SDK log "
+                "file path above for this tool):\n"
+                f"- Log file path: {ios_inapp_event_log_file}\n"
+                "The same two-step prepare-then-verify sequence applies to "
+                "verifyIosInAppEvent: call it with action=\"prepare\" and "
+                f"projectPath=\"{sandbox_path}\" first, then with action=\"verify\", "
+                f"logFilePath=\"{ios_inapp_event_log_file}\", and "
+                "confirmLogFileReady=true. Do not ask the user to paste logs "
+                "manually -- this file was already populated automatically from "
+                "the simulator's system log right after the app was launched."
+            )
 
 
     # Snapshot how many audit events exist before this turn so we can tell,

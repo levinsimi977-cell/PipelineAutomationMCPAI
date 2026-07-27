@@ -79,6 +79,10 @@
       {
         "number": 17,
         "text": "Before writing SDK initialization code, use the `find_in_project` tool (e.g. pattern `**/AppsFlyerLib.h`) to locate the installed SDK header, then read it with `read_project_file` to confirm the actual method/property signatures — do not assume a signature is correct without checking the installed header first."
+      },
+      {
+        "number": 18,
+        "text": "When calling the AppsFlyer log-event API (e.g. `logEventWithEventName:eventValues:completionHandler:` on iOS, or `logEvent(...)` with an `AppsFlyerRequestListener` on Android), you must NOT pass a nil/no-op completion handler or omit the listener. Provide a real callback that logs the event's outcome including the literal event name and its parameter values in a machine-parseable format, e.g. on iOS: `NSLog(@\"[AFSDK] {\\\"eventName\\\": \\\"%@\\\", \\\"eventvalue\\\": %@}\", eventName, eventValues);`. Without this, there is no evidence in the device log that the event fired with the right payload, even when it actually did — a nil/silent callback makes later verification fail regardless of whether the event genuinely succeeded."
       }
     ]
   },
