@@ -32,7 +32,7 @@ from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
     delete_run_selection,
 )
-
+from infra.reports.report import McpToolOrderValidator
 
 PromptType = Literal[
     "integrate_prompt",
@@ -187,6 +187,15 @@ class PipelineState(TypedDict, total=False):
 
     mcp_integration_text: NotRequired[str]
 
+    # MCP validation results
+
+    is_tool_order_valid: NotRequired[bool]
+
+    is_tool_order_valid_message: NotRequired[str]
+
+    expected_tool_order: NotRequired[list[str]]
+
+    actual_tool_order: NotRequired[list[str]]
 
     # ==================================================
     # Agent management
@@ -543,8 +552,6 @@ def _reset_runtime_fields_for_next_use_case(state: PipelineState) -> None:
         "is_tool_order_valid",
         "is_tool_order_valid_message",
         "is_tool_order_valid_massage",
-        "files_modified",
-        "applied_files",
         # Per-UC timing / misc report fields
         "started_at",
         "ended_at",
@@ -1197,6 +1204,18 @@ async  def sdk_agent_node(
                 ),
                 audit_recorder=audit_recorder,
             )
+
+    # Validate MCP tool execution order after SDK agent finishes
+    if audit_recorder:
+        validator = McpToolOrderValidator()
+
+        is_valid, message = validator.validate_sequence(
+            recorder=audit_recorder,
+            state=state,
+        )
+
+        state["is_tool_order_valid"] = is_valid
+        state["is_tool_order_valid_message"] = message
 
     deep_link_url = extract_deep_link_url_from_audit(audit_recorder)
     if deep_link_url:
