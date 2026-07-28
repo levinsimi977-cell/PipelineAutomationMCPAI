@@ -17,9 +17,9 @@ from infra.use_case_service.repositories.run_repository import (
 
 # הגדרת המודל - שימוש במשתני סביבה לאבטחה
 llm = ChatOpenAI(
-    model=os.getenv("OPENAI_MODEL", "gpt-5.1"),
+    model=os.getenv("MODEL_NAME"),
     temperature=0.1,
-    api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"),
+    api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 BASE_PROMPT_TEMPLATE = PromptTemplate.from_template(

@@ -116,7 +116,7 @@ async def create_sdk_integration_agent(
     if not openai_api_key or not resolved_dev_key:
         raise RuntimeError("Missing OPENAI_API_KEY or APPSFLYER_DEV_KEY in .env")
     model = ChatOpenAI(
-        model="gpt-5.1",
+        model=os.getenv("MODEL_NAME"),
         api_key=openai_api_key,
         temperature=1.5,
     )
