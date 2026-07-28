@@ -31,7 +31,7 @@ load_project_env()
 APP_ID = os.getenv("APP_ID", "")
 DEV_KEY = os.getenv("DEV_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4")
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
