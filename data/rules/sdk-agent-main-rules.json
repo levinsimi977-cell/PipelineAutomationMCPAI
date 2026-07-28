@@ -38,7 +38,7 @@
       },
       {
         "number": 6,
-        "text": "If you create or edit a dependency-management file (e.g. Podfile for iOS), you must call run_pod_install yourself immediately afterward. Do NOT just instruct the user to run `pod install` manually — you are the only one with shell access to do this, and skipping it leaves the dependency unresolved, which makes the later compilation check fail."
+        "text": "If you create or edit a dependency-management file (e.g. Podfile for iOS), first add the actual dependency line (e.g. `pod '...'`) with write_to_project_file, then call run_pod_install yourself immediately afterward — calling run_pod_install before the Podfile has a pod dependency line will silently return SKIPPED and install nothing. Do NOT just instruct the user to run `pod install` manually — you are the only one with shell access to do this, and skipping it leaves the dependency unresolved, which makes the later compilation check fail."
       },
       {
         "number": 7,
@@ -58,7 +58,7 @@
       },
       {
         "number": 11,
-        "text": "After calling integrateSdk, state that the integration finished successfully and instruct the user to prepare for emulator launch; do this before running any verification tool. Only later, once a verification tool actually confirms success, declare the process complete and instruct the user to launch the emulator."
+        "text": "After calling integrateSdk, state that the integration finished successfully "
       },
       {
         "number": 12,
@@ -66,7 +66,7 @@
       },
       {
         "number": 14,
-        "text": "Pin the Gradle dependency to `implementation 'com.appsflyer:af-android-sdk:6.18.1'` for the AppsFlyer Android SDK — do NOT use `7.0.0` or any other version integrateSdk/mvnrepository calls 'latest'. `7.0.0` is a same-day/newer release whose public docs and package layout are not yet published (its own reference pages are still being written), so imports that look correct (including `com.appsflyer.attribution.AppsFlyerRequestListener` AND `com.appsflyer.AppsFlyerRequestListener`) have both failed to compile against it. `6.18.1` is the latest version with complete, verified reference docs: with it, `AppsFlyerRequestListener` is imported from `com.appsflyer.attribution.AppsFlyerRequestListener` exactly as shown in https://dev.appsflyer.com/hc/docs/android-sdk-reference-appsflyerrequestlistener and https://dev.appsflyer.com/hc/docs/integrate-android-sdk."
+        "text": "Ignore whatever Android SDK version integrateSdk or mvnrepository suggests — always declare the dependency as `com.appsflyer:af-android-sdk:6.18.1` in build.gradle, a verified-working version. Initialize it in the Application class's onCreate with EXACTLY this pattern and nothing else: `AppsFlyerLib.getInstance().init(<DEV_KEY>, null, this);` immediately followed by `AppsFlyerLib.getInstance().start(this);`. The dev key goes ONLY into init — never pass a dev key or listener argument to start(); `start(Context, String)` does not exist and will fail to compile."
       },
       {
         "number": 15,
@@ -74,11 +74,19 @@
       },
       {
         "number": 16,
-        "text": "createDeepLink/createIosDeepLink's response is not just a manifest/Info.plist change — it also specifies the runtime deep-link handling code (e.g. calling `AppsFlyerLib.getInstance().subscribeForDeepLink(...)` inside `onCreate` of your Application/Activity class on Android, or resolving the universal link/URL scheme in the app delegate or scene delegate on iOS). Adding only the intent-filter/`CFBundleURLTypes`/associated-domains entries is NOT sufficient and will fail verification. You must use write_to_project_file to add ALL of that runtime code to the appropriate source file(s), then use read_project_file to confirm the code you wrote is actually present, before you consider deep-link setup finished or move on to verification."
+        "text": "createDeepLink/createIosDeepLink's response is not just a manifest/Info.plist change — it also specifies the runtime deep-link handling code (e.g. calling `AppsFlyerLib.getInstance().subscribeForDeepLink(...)` inside `onCreate` of your Application/Activity class on Android, or resolving the universal link/URL scheme in the app delegate or scene delegate on iOS). Adding only the intent-filter/`CFBundleURLTypes`/associated-domains entries is NOT sufficient and will fail verification. You must use write_to_project_file to add ALL of that runtime code to the appropriate source file(s), then use read_project_file to confirm the code you wrote is actually present, before you consider deep-link setup finished or move on to verification.Before adding this runtime code, confirm the file you are editing is actually the app's entry point that runs at launch — e.g. the class declared in `android:name` on the `<application>` tag in AndroidManifest.xml (Android), or the App/Scene Delegate actually wired into the project (iOS) — not just any file with a similar name. Place the code inside the correct lifecycle method itself (e.g. inside the body of `onCreate`/`application(_:didFinishLaunchingWithOptions:)`), not merely appended elsewhere in the file."
       },
       {
         "number": 17,
+        "text": "Call the relevant MCP creation tool (createInAppEvent/createDeepLink, etc.) BEFORE writing any code it informs, never after. Before writing Android code that references a UI element by ID (`findViewById(R.id.foo)`/`R.id.foo`), first add that exact ID to the corresponding XML layout file if it does not already exist, and confirm with read_project_file that it is present — in the same turn, before the code that references it is written."
+      },
+      {
+        "number": 18,
         "text": "Before writing SDK initialization code, use the `find_in_project` tool (e.g. pattern `**/AppsFlyerLib.h`) to locate the installed SDK header, then read it with `read_project_file` to confirm the actual method/property signatures — do not assume a signature is correct without checking the installed header first."
+      },
+      {
+        "number": 18,
+        "text": "When calling the AppsFlyer log-event API (e.g. `logEventWithEventName:eventValues:completionHandler:` on iOS, or `logEvent(...)` with an `AppsFlyerRequestListener` on Android), you must NOT pass a nil/no-op completion handler or omit the listener. Provide a real callback that logs the event's outcome including the literal event name and its parameter values in a machine-parseable format, e.g. on iOS: `NSLog(@\"[AFSDK] {\\\"eventName\\\": \\\"%@\\\", \\\"eventvalue\\\": %@}\", eventName, eventValues);`. Without this, there is no evidence in the device log that the event fired with the right payload, even when it actually did — a nil/silent callback makes later verification fail regardless of whether the event genuinely succeeded."
       }
     ]
   },
@@ -114,8 +122,8 @@
       {
         "id": "android_xml",
         "heading": "Android XML",
-        "description": "Every wired control must include this attribute on the button/view:",
-        "example": "android:contentDescription=\"af_trigger_{eventName}\""
+        "description": "Every wired control must have BOTH an `android:id` (added first, before any code references it via findViewById/R.id) and this attribute:",
+        "example": "android:id=\"@+id/<button_id>\" android:contentDescription=\"af_trigger_{eventName}\""
       },
       {
         "id": "ios_ui",
@@ -132,7 +140,7 @@
           "triggerId",
           "layout/view file (when known)"
         ],
-        "note": "Call write_events_manifest with eventName, triggerId, and layoutFile for each wired event."
+        "note": "Call write_events_manifest with eventName, triggerId, and layoutFile for each wired event. If the wired screen is not the app's main/launch screen, also pass navigationPath: an ordered list of the on-screen texts/labels to tap to get from the main screen to that screen (e.g. [\"PEACHES\"] to reach a Peaches screen reached by tapping a 'PEACHES' card on the home screen)."
       }
     ]
   },
@@ -142,6 +150,7 @@
     "rules": [
       "After wiring each event UI, call write_events_manifest.",
       "triggerId must be af_trigger_{eventName}.",
+      "If the wired screen isn't the app's main/launch screen, include navigationPath: the ordered list of on-screen texts/labels to tap to reach it from the main screen.",
       "Do not finish event_prompt until write_events_manifest returns OK."
     ]
   },

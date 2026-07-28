@@ -32,7 +32,7 @@ from infra.use_case_service.repositories.run_repository import (
     RUNS_DIR,
     delete_run_selection,
 )
-
+from infra.reports.report import McpToolOrderValidator
 
 PromptType = Literal[
     "integrate_prompt",
@@ -187,6 +187,15 @@ class PipelineState(TypedDict, total=False):
 
     mcp_integration_text: NotRequired[str]
 
+    # MCP validation results
+
+    is_tool_order_valid: NotRequired[bool]
+
+    is_tool_order_valid_message: NotRequired[str]
+
+    expected_tool_order: NotRequired[list[str]]
+
+    actual_tool_order: NotRequired[list[str]]
 
     # ==================================================
     # Agent management
@@ -543,8 +552,6 @@ def _reset_runtime_fields_for_next_use_case(state: PipelineState) -> None:
         "is_tool_order_valid",
         "is_tool_order_valid_message",
         "is_tool_order_valid_massage",
-        "files_modified",
-        "applied_files",
         # Per-UC timing / misc report fields
         "started_at",
         "ended_at",
@@ -976,6 +983,23 @@ def prompt_agent_node(
 
     return state
 
+def _event_logged_without_manifest(project_root: str) -> bool:
+    """True if source code calls AppsFlyer's logEvent but events.wired.json was
+    never written -- signals the agent skipped write_events_manifest despite
+    wiring an event in code."""
+    root = Path(project_root)
+    if (root / "events.wired.json").exists():
+        return False
+    for ext in ("*.java", "*.kt", "*.swift"):
+        for path in root.rglob(ext):
+            try:
+                if ".logEvent(" in path.read_text(encoding="utf-8", errors="ignore"):
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 async  def sdk_agent_node(
     state: PipelineState,
 ) -> PipelineState:
@@ -1083,10 +1107,14 @@ async  def sdk_agent_node(
             "---\n"
             "iOS deep-link verification data (already collected by the pipeline):\n"
             f"- Log file path: {ios_deeplink_log_file}\n"
-            "Call verifyIosDeepLink directly with action=\"verify\", "
+            "First call verifyIosDeepLink with action=\"prepare\" and "
+            f"projectPath=\"{sandbox_path}\" -- the log file already exists at the path "
+            "above, so this call will just confirm it will be reused (it does not "
+            "overwrite an existing file). This step is required by the tool itself and "
+            "by the pipeline's MCP tool-order validation; skipping it will mark the run "
+            "as having an invalid tool sequence even if the deep link actually worked. "
+            "Then call verifyIosDeepLink again with action=\"verify\", "
             f"logFilePath=\"{ios_deeplink_log_file}\", and confirmLogFileReady=true. "
-            "You do not need to call action=\"prepare\" first -- the log file "
-            "already exists and is populated with the real data described above. "
             "Do not ask the user to paste logs manually -- this file was already "
             "populated automatically from the simulator's system log right after the "
             "deep link was triggered."
@@ -1112,6 +1140,24 @@ async  def sdk_agent_node(
         candidate = Path(str(state.get("sandbox_path") or "")) / "ios-sdk-logs.txt"
         if candidate.is_file() and candidate.stat().st_size > 0:
             ios_sdk_log_file = str(candidate)
+
+    # verifyIosInAppEvent uses its OWN dedicated log file (created by its own
+    # `prepare` step), separate from ios-sdk-logs.txt -- it is NOT "the same
+    # log file" verifyIosSdk uses, even though nodeEmulator.py's
+    # _collect_ios_sdk_logs happens to populate both with the same captured
+    # window (see that function's docstring) since an in-app-event log line
+    # fires within seconds of "start" and both need the same one to be
+    # collected. Resolving it separately here -- same state-then-disk-
+    # fallback pattern as ios_sdk_log_file above -- means the agent gets a
+    # real, tool-appropriate path instead of one borrowed from a different
+    # tool's prepare step, which is what verifyIosInAppEvent's own
+    # documentation actually calls for.
+    ios_inapp_event_log_file = state.get("ios_inapp_event_log_file")
+    if not ios_inapp_event_log_file and str(platform).lower() == "ios":
+        candidate = Path(str(state.get("sandbox_path") or "")) / "ios-inapp-event-logs.txt"
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            ios_inapp_event_log_file = str(candidate)
+
     if (
         current_prompt_type == "verify_prompt"
         and str(platform).lower() == "ios"
@@ -1135,16 +1181,33 @@ async  def sdk_agent_node(
             "---\n"
             "iOS SDK verification data (already collected by the pipeline):\n"
             f"- Log file path: {ios_sdk_log_file}\n"
-            f"{directive} directly with action=\"verify\", "
+            f"{directive} with action=\"prepare\" and projectPath=\"{sandbox_path}\" "
+            "first -- the log file already exists at the path above, so this call will "
+            "just confirm it will be reused (it does not overwrite an existing file). "
+            "This step is required by the tool itself and by the pipeline's MCP "
+            "tool-order validation; skipping it will mark the run as having an invalid "
+            "tool sequence even if the SDK actually verified successfully. Then call "
+            "verifyIosSdk again with action=\"verify\", "
             f"logFilePath=\"{ios_sdk_log_file}\", and confirmLogFileReady=true. "
-            "You do not need to call action=\"prepare\" first -- the log file "
-            "already exists and is populated with the real data described above. "
-            "The same applies to verifyIosInAppEvent, which reads this same log file: "
-            "call it directly with action=\"verify\" too. "
             "Do not ask the user to paste logs manually -- this file was already "
             "populated automatically from the simulator's system log right after the "
             "app was launched."
         )
+        if ios_inapp_event_log_file:
+            user_prompt = (
+                f"{user_prompt}\n\n"
+                "iOS in-app-event verification data (already collected by the "
+                "pipeline, in its OWN dedicated file -- do not reuse the SDK log "
+                "file path above for this tool):\n"
+                f"- Log file path: {ios_inapp_event_log_file}\n"
+                "The same two-step prepare-then-verify sequence applies to "
+                "verifyIosInAppEvent: call it with action=\"prepare\" and "
+                f"projectPath=\"{sandbox_path}\" first, then with action=\"verify\", "
+                f"logFilePath=\"{ios_inapp_event_log_file}\", and "
+                "confirmLogFileReady=true. Do not ask the user to paste logs "
+                "manually -- this file was already populated automatically from "
+                "the simulator's system log right after the app was launched."
+            )
 
 
     # Snapshot how many audit events exist before this turn so we can tell,
@@ -1160,6 +1223,38 @@ async  def sdk_agent_node(
         user_prompt=user_prompt,
         audit_recorder=audit_recorder,
     )
+
+    # event_prompt commonly finishes "successfully" having written a
+    # logEvent call but never called write_events_manifest -- silently
+    # proceeding to compilation then leaves user_actions/deep_link with
+    # nothing to discover later. Give the agent one corrective round,
+    # in the same session, with an explicit error instead.
+    if current_prompt_type == "event_prompt" and result.get("status") != "FAIL":
+        if _event_logged_without_manifest(sandbox_path):
+            result = await run_sdk_integration_agent(
+                state=state,
+                project_root_str=sandbox_path,
+                platform=platform,
+                user_prompt=(
+                    "Your code calls AppsFlyer's logEvent, but events.wired.json was never "
+                    "written. Call write_events_manifest now with the correct eventName, "
+                    "triggerId (af_trigger_{eventName}) and layoutFile for every wired event "
+                    "before finishing."
+                ),
+                audit_recorder=audit_recorder,
+            )
+
+    # Validate MCP tool execution order after SDK agent finishes
+    if audit_recorder:
+        validator = McpToolOrderValidator()
+
+        is_valid, message = validator.validate_sequence(
+            recorder=audit_recorder,
+            state=state,
+        )
+
+        state["is_tool_order_valid"] = is_valid
+        state["is_tool_order_valid_message"] = message
 
     deep_link_url = extract_deep_link_url_from_audit(audit_recorder)
     if deep_link_url:
@@ -1460,6 +1555,15 @@ def test_runner_node(
 
         if sdk_agent_failed:
             state["test_status"] = "FAIL"
+
+    # This node never marked itself visited or logged anything, so
+    # build_report.py always showed it as "Skipped"/"Not executed" even on
+    # runs where it clearly ran (e.g. right after an emulator failure).
+    state["test_runner_is_visited"] = True
+    state["nodes_log"] = [
+        *(state.get("nodes_log") or []),
+        {"node": "test_runner", "status": "Success", "message": "Test Runner ran."},
+    ]
 
     return state
 

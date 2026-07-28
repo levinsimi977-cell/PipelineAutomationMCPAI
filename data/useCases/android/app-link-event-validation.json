@@ -1,7 +1,7 @@
 {
   "app_path": "data/application/banana.apk",
   "platform": "android",
-  "prompt_goal": "Validate Android app link intent resolution and destination routing.",
+  "prompt_goal": "Validate Android app link intent resolution and destination routing, together with an in-app purchase event created and wired for Appium.",
   "rules_policy": {
   "default_profiles": ["common", "android"],
   "allow_user_override": true,
@@ -11,15 +11,18 @@
     "ios_minimal": null,
     "deeplink": {
       "use_deep_linking": true,
-      "onelink_url": "https://example.onelink.me/abc1/androidLink",
-      "url_identifier": "android-offers",
+      "onelink_url": "https://example.onelink.me/abc1/androidLinkEvent",
+      "url_identifier": "android-offers-event",
       "uri_scheme": "myapp",
       "use_custom_uri_scheme": true
     },
     "in_app_event": {
-      "inapp_event_method": "none",
-      "event_name": null,
-      "event_params": {}
+      "inapp_event_method": "log_event",
+      "event_name": "af_purchase",
+      "event_params": {
+        "af_currency": "USD",
+        "af_revenue": 9.99
+      }
     },
     "verify_sdk": {
       "verify_logs_ready": true,
@@ -34,8 +37,8 @@
   "installation_answers": [],
   "agent_messages": [
     "App link invoked",
-    "Android target screen validated"
+    "Android target screen validated",
+    "af_purchase in-app event logged and verified"
   ],
-  "installation_agent_summary": "Android app link validation passed."
+  "installation_agent_summary": "Android app link and in-app event validation passed."
 }
-

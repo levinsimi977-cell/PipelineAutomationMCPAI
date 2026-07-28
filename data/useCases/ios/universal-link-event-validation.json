@@ -1,0 +1,45 @@
+{
+  "app_path": "data/application/banana.app",
+  "platform": "ios",
+  "prompt_goal": "Validate iOS universal link routing and app open behavior, together with an in-app purchase event created and wired for Appium.",
+  "rules_policy": {
+  "default_profiles": ["common", "ios"],
+  "allow_user_override": true,
+  "allowed_profiles": ["common", "ios", "strict"]
+  },
+  "answer_policy": {
+    "ios_minimal": {
+      "use_att": true,
+      "use_cuid": false,
+      "use_scene_delegate": true,
+      "use_response_listener": true
+    },
+    "deeplink": {
+      "use_deep_linking": true,
+      "onelink_url": "https://example.onelink.me/abc1/iosLinkEvent",
+      "url_identifier": "ios-offers-event",
+      "uri_scheme": "myapp",
+      "use_custom_uri_scheme": true
+    },
+    "in_app_event": {
+      "inapp_event_method": "log_event",
+      "event_name": "af_purchase",
+      "event_params": {
+        "af_currency": "USD",
+        "af_revenue": 9.99
+      }
+    },
+    "verify_sdk": {
+      "verify_logs_ready": true,
+      "app_launched": true
+    },
+    "android": null
+  },
+  "installation_answers": [],
+  "agent_messages": [
+    "Universal link invoked",
+    "iOS target screen validated",
+    "af_purchase in-app event logged and verified"
+  ],
+  "installation_agent_summary": "iOS universal link and in-app event validation passed."
+}

@@ -116,7 +116,8 @@ async def create_sdk_integration_agent(
     if not openai_api_key or not resolved_dev_key:
         raise RuntimeError("Missing OPENAI_API_KEY or APPSFLYER_DEV_KEY in .env")
     model = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-5.4"),
+
+        model=os.getenv("MODEL_NAME"),
         api_key=openai_api_key,
         temperature=1.5,
     )
@@ -283,9 +284,38 @@ async def create_sdk_integration_agent(
             "stderr_tail": (result.stderr or "")[-2000:],
         }, indent=2)
 
+    def _label_in_project(label: str) -> bool:
+        """Case-insensitive search for `label` across the project's XML files
+        (layouts, strings.xml, ...). On-screen text always originates from one
+        of these, so a navigationPath label that isn't found in any of them
+        (e.g. "APPLES" when the real string resource is "Apples") almost
+        certainly won't match anything on screen either -- exactly the class
+        of mismatch that made Appium's tap-by-text step fail with
+        NoSuchElementException even though the event itself wired correctly."""
+        needle = label.lower()
+        for xml_file in project_root.rglob("*.xml"):
+            if "build" in xml_file.parts:
+                continue
+            try:
+                if needle in xml_file.read_text(encoding="utf-8", errors="ignore").lower():
+                    return True
+            except OSError:
+                continue
+        return False
+
     @tool
     def write_events_manifest(manifest_json: str) -> str:
-        """After wiring in-app event UI, write events.wired.json in the project for Appium."""
+        """After wiring in-app event UI, write events.wired.json in the project for Appium.
+
+        manifest_json must be a JSON object: {"platform": ..., "appPackage"/"bundleId": ...,
+        "mainActivity" (android): ..., "events": [{"eventName": "af_x", "triggerId": "af_trigger_af_x",
+        "layoutFile": "<path to the UI file, relative to the project root, where triggerId was wired
+        as android:contentDescription / accessibilityIdentifier>", "navigationPath": ["<optional list
+        of on-screen texts/labels to tap, in order, to get from the app's main/launch screen to the
+        screen containing triggerId -- REQUIRED whenever that screen is not the main screen, e.g.
+        ["PEACHES"] to reach a Peaches screen reached by tapping a 'PEACHES' card from the home
+        screen>"]}]}. layoutFile is verified against the real file on disk -- this call fails if
+        triggerId isn't actually found in it."""
         try:
             data = json.loads(manifest_json)
             events = data.get("events") or []
@@ -294,8 +324,32 @@ async def create_sdk_integration_agent(
             for event in events:
                 name = event.get("eventName", "")
                 trigger_id = event.get("triggerId", "")
+                layout_file = event.get("layoutFile", "")
                 if not name.startswith("af_") or trigger_id != f"af_trigger_{name}":
                     raise ValueError(f"invalid event wiring for {name}")
+                # Don't just trust the agent's claim -- confirm triggerId was
+                # actually written into the UI file (android:contentDescription /
+                # accessibilityIdentifier), the way "invalid event wiring" above
+                # already refuses to trust a made-up triggerId string.
+                if not layout_file:
+                    raise ValueError(f"layoutFile is required for {name}")
+                layout_path = safe_project_path(project_root, layout_file)
+                if not layout_path.exists() or trigger_id not in layout_path.read_text(encoding="utf-8", errors="ignore"):
+                    raise ValueError(
+                        f"triggerId {trigger_id!r} not found in {layout_file} -- wire it into the "
+                        f"UI (android:contentDescription / accessibilityIdentifier) before calling this tool"
+                    )
+                # Same idea as the triggerId check above, applied to
+                # navigationPath: don't trust a made-up on-screen label
+                # either -- confirm it actually appears (case-insensitively)
+                # somewhere in the project before writing the manifest.
+                for label in event.get("navigationPath") or []:
+                    if not _label_in_project(label):
+                        raise ValueError(
+                            f"navigationPath label {label!r} for {name} was not found "
+                            f"(case-insensitively) anywhere in the project's XML files -- "
+                            f"use the exact on-screen text/label."
+                        )
             if platform_lower == "android" and not (data.get("appPackage") and data.get("mainActivity")):
                 raise ValueError("android requires appPackage and mainActivity")
             if platform_lower == "ios" and not data.get("bundleId"):

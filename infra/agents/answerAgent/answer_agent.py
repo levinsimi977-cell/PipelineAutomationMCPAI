@@ -31,7 +31,8 @@ load_project_env()
 APP_ID = os.getenv("APP_ID", "")
 DEV_KEY = os.getenv("DEV_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4")
+
+OPENAI_MODEL = os.getenv("MODEL_NAME")
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
@@ -258,9 +259,9 @@ def _llm():
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
-        model=OPENAI_MODEL,
+         model=os.getenv("MODEL_NAME"),
         temperature=0.1,
-        api_key=OPENAI_API_KEY,
+        api_key=os.getenv("OPENAI_API_KEY"),
     )
 
 

@@ -3,7 +3,7 @@ Generate a failed-run demo report for previewing failure states in the HTML repo
 
 Starts from demo_full_report.STATE (the passing-run fixture) and mutates a
 copy of it to look like a run that failed at compilation_check — deep_link,
-test_runner, and visual_report never ran, so those nodes show as "Skipped"
+test_runner, and visual_report never ran, so those nodes show as "Not Run"
 ("not_run") in the report rather than "Failed", matching how a real
 mid-pipeline failure would leave later nodes untouched.
 
@@ -88,7 +88,7 @@ def build_failed_state() -> dict:
     # Then re-mark only the nodes that are keys in FAILED_NODE_LOGS as
     # visited — deep_link/test_runner/visual_report stay unmarked, so
     # RunReportBuilder._resolve_node_is_visited() reports them as "not_run"
-    # ("Skipped") in the report, exactly like a real run that stopped early.
+    # ("Not Run") in the report, exactly like a real run that stopped early.
     visited_nodes = set(FAILED_NODE_LOGS.keys())
     for node in PIPELINE_NODES:
         state[f"{node}_is_visited"] = node in visited_nodes

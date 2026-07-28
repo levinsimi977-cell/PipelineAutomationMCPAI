@@ -118,5 +118,6 @@ class UseCaseBuilder:
             installation_agent_summary=self._installation_agent_summary or "",
             app_id=self._app_id,
             dev_key=self._dev_key,
-            llm_model=self._llm_model or "gpt-5.4",
+
+            llm_model=self._llm_model,
         )

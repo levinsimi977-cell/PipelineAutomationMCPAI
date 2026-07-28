@@ -17,9 +17,10 @@ from infra.use_case_service.repositories.run_repository import (
 
 # הגדרת המודל - שימוש במשתני סביבה לאבטחה
 llm = ChatOpenAI(
-    model=os.getenv("OPENAI_MODEL", "gpt-5.4"),
+
+    model=os.getenv("MODEL_NAME"),
     temperature=0.1,
-    api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY"),
+    api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 BASE_PROMPT_TEMPLATE = PromptTemplate.from_template(
@@ -72,7 +73,6 @@ STAGE_CONFIG = {
             "- If the event already exists, guide the agent to validate that it is emitted with the expected name and parameters.\n"
             "- If no in-app event is defined, tell the agent not to invent one.\n"
             "- If deep linking is enabled, guide the agent to prepare or validate the required deep-link behavior.\n"
-            "- Do not repeat SDK installation unless the previous integration is missing or broken."
         ),
     },
     "verify_prompt": {
