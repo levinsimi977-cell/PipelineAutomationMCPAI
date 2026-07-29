@@ -30,9 +30,16 @@ load_project_env()
 
 APP_ID = os.getenv("APP_ID", "")
 DEV_KEY = os.getenv("DEV_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-5.4"
+
+def _get_openai_api_key() -> str:
+    """Read API key at call time so runtime env changes are respected."""
+    return os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
+
+
+def _get_openai_model() -> str:
+    """Read model name at call time: OPENAI_MODEL -> MODEL_NAME -> gpt-5.4"""
+    return os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-5.4"
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
@@ -165,19 +172,26 @@ def _format_environment_facts(state: dict[str, Any]) -> str:
 
 def _format_test_decisions(state: dict[str, Any]) -> str:
     """
-    answer_policy as raw JSON — the rules populate different, nested
-    sub-blocks per run (ios_minimal vs android, whichever features are
-    turned on), so we hand the LLM the whole thing as-is instead of
-    hardcoding a fixed field list that goes stale whenever the schema gets
-    a new field. dev_key/app_id are run-level config, not part of the
-    test's rules, so they're listed separately.
+    answer_policy as raw JSON — safe, defensive access.
+
+    This used to require state["run_id"] which raises when run_id is not
+    present. Use state.get("run_id") and handle missing policy gracefully.
     """
-    # TODO: `run_id` is not yet populated anywhere in the pipeline state —
-    # no node currently sets it. Do not invent a fallback; this call will
-    # raise until an upstream node adds run_id to state.
     repo = get_answer_policy_repository()
-    run_id = state["run_id"]
-    policy = repo.get(run_id)
+    run_id = state.get("run_id")
+    if not run_id:
+        return (
+            f"app_id: {APP_ID or 'not set'}\n"
+            f"dev_key: {DEV_KEY or 'not set'}\n"
+            "answer_policy:\nNo run_id set; no answer_policy available."
+        )
+
+    try:
+        policy = repo.get(run_id)
+    except Exception as exc:
+        logger.exception("Failed to load answer_policy for run_id=%s: %s", run_id, type(exc).__name__)
+        policy = None
+
     policy_text = (
         json.dumps(policy, indent=2, ensure_ascii=False, default=str)
         if policy
@@ -258,10 +272,13 @@ def _format_agent_context(state: dict[str, Any]) -> str:
 def _llm():
     from langchain_openai import ChatOpenAI
 
+    model = _get_openai_model()
+    api_key = _get_openai_api_key()
+
     return ChatOpenAI(
-        model=OPENAI_MODEL,
+        model=model,
         temperature=0.1,
-        api_key=OPENAI_API_KEY,
+        api_key=api_key,
     )
 
 
@@ -275,9 +292,11 @@ def _llm_answer(state: dict[str, Any], question: str) -> str | None:
 
     Adds lightweight debug logging (no secrets) so runtime can show whether the
     LLM path was invoked and whether it short-circuited due to missing API key.
+    Implements a small retry loop to handle transient API errors.
     """
     logger.debug("_llm_answer called; question_preview=%s", (question or "")[:200])
-    if not OPENAI_API_KEY:
+    api_key = _get_openai_api_key()
+    if not api_key:
         logger.info("_llm_answer short-circuited: OPENAI_API_KEY not set")
         return None
 
@@ -289,17 +308,31 @@ def _llm_answer(state: dict[str, Any], question: str) -> str | None:
         prior_answers=_format_prior_answers(state),
         question=(question or "").strip(),
     )
-    try:
-        response = _llm().invoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
-        if isinstance(content, list):
-            content = " ".join(str(getattr(part, "text", part)) for part in content)
-        answer = str(content or "").strip()
-        logger.debug("_llm_answer received answer_preview=%s", (answer or "")[:200])
-    except Exception as exc:
-        logger.exception("_llm_answer invoke failed: %s", type(exc).__name__)
-        return None
-    return answer or None
+
+    max_attempts = 3
+    backoff = 1.0
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = _llm().invoke(prompt)
+            content = response.content if hasattr(response, "content") else str(response)
+            if isinstance(content, list):
+                content = " ".join(str(getattr(part, "text", part)) for part in content)
+            answer = str(content or "").strip()
+            logger.debug("_llm_answer received answer_preview=%s (attempt %d)", (answer or "")[:200], attempt)
+            return answer or None
+        except Exception as exc:
+            logger.warning("_llm_answer attempt %d/%d failed: %s", attempt, max_attempts, type(exc).__name__)
+            if attempt == max_attempts:
+                logger.exception("_llm_answer final failure: %s", type(exc).__name__)
+                return None
+            try:
+                import time
+
+                time.sleep(backoff)
+                backoff *= 2
+            except Exception:
+                pass
+    return None
 
 
 def answer_question(state: dict[str, Any], question: str) -> str:
