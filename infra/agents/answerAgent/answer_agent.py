@@ -33,12 +33,25 @@ DEV_KEY = os.getenv("DEV_KEY", "")
 
 
 def _get_openai_api_key() -> str:
-    """Read API key at call time so runtime env changes are respected."""
+    """Read API key at call time.
+
+    Resolution order:
+    1. module-level OPENAI_API_KEY (if tests or callers monkeypatch it)
+    2. environment OPENAI_API_KEY
+    3. environment GPT_API_KEY
+    4. empty string
+    """
+    key = globals().get("OPENAI_API_KEY")
+    if key:
+        return str(key)
     return os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
 
 
 def _get_openai_model() -> str:
-    """Read model name at call time: OPENAI_MODEL -> MODEL_NAME -> gpt-5.4"""
+    """Read model name at call time: module OPENAI_MODEL -> OPENAI_MODEL env -> MODEL_NAME env -> gpt-5.4"""
+    model = globals().get("OPENAI_MODEL")
+    if model:
+        return str(model)
     return os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-5.4"
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
