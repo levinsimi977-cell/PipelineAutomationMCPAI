@@ -265,10 +265,20 @@ def _llm():
     )
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def _llm_answer(state: dict[str, Any], question: str) -> str | None:
     """Send one ANSWER_PROMPT call to the LLM. None on any failure (no API
-    key, network/API error, empty reply) — caller raises UnansweredQuestionError."""
+    key, network/API error, empty reply) — caller raises UnansweredQuestionError.
+
+    Adds lightweight debug logging (no secrets) so runtime can show whether the
+    LLM path was invoked and whether it short-circuited due to missing API key.
+    """
+    logger.debug("_llm_answer called; question_preview=%s", (question or "")[:200])
     if not OPENAI_API_KEY:
+        logger.info("_llm_answer short-circuited: OPENAI_API_KEY not set")
         return None
 
     prompt = ANSWER_PROMPT.format(
@@ -285,7 +295,9 @@ def _llm_answer(state: dict[str, Any], question: str) -> str | None:
         if isinstance(content, list):
             content = " ".join(str(getattr(part, "text", part)) for part in content)
         answer = str(content or "").strip()
-    except Exception:
+        logger.debug("_llm_answer received answer_preview=%s", (answer or "")[:200])
+    except Exception as exc:
+        logger.exception("_llm_answer invoke failed: %s", type(exc).__name__)
         return None
     return answer or None
 
