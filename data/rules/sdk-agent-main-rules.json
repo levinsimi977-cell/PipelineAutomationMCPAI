@@ -79,7 +79,12 @@
       {
         "number": 17,
         "text": "Before writing SDK initialization code, use the `find_in_project` tool (e.g. pattern `**/AppsFlyerLib.h`) to locate the installed SDK header, then read it with `read_project_file` to confirm the actual method/property signatures — do not assume a signature is correct without checking the installed header first."
-      }
+      },
+      {
+
+  "number": 18,
+  "text": "CRITICAL: You are strictly forbidden from guessing or making assumptions when faced with ambiguous code structures, conflicting SDK versions, or missing implementation details. If any ambiguity or missing detail arises, you MUST stop immediately, ask the user for clarification, and output `STATUS: QUESTION`."
+}
     ]
   },
 
