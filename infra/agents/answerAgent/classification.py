@@ -40,23 +40,13 @@ def _extract_text(state: Any) -> str:
 
 
 def classify_llm_output(state: Any) -> Classification:
-    """Read the last word of the LLM's message in `state` and map it to a Classification.
-
-    Falls back to a small heuristic when the message contains explicit clarification
-    language (e.g. questions, need more info, ambiguous target) even if the last
-    word is not a recognized status token.
-    """
+    """Read the last word of the LLM's message in `state` and map it to a Classification."""
     text = _extract_text(state).strip()
     if not text:
         raise ValueError("Empty message — no status word found.")
 
     last_word = _WORD_WRAP_RE.sub("", text.split()[-1]).lower()
     status = _STATUS_WORDS.get(last_word)
-    if status is not None:
-        return status
-
-    if re.search(r"\b(question|ask|clarify|need more info|need more details|which|what is|should i|cannot proceed|blocked|unclear|ambiguous)\b", text, re.IGNORECASE):
-        return Classification.QUESTION
-    if re.search(r"\b(failure|fail|error|blocked|cannot|unable|stuck)\b", text, re.IGNORECASE):
-        return Classification.FAILURE
-    raise ValueError(f"Last word {last_word!r} is not a recognized status.")
+    if status is None:
+        raise ValueError(f"Last word {last_word!r} is not a recognized status.")
+    return status

@@ -332,27 +332,15 @@ async def create_sdk_integration_agent(
     final_execution_prompt = (
         f"User Request:\n"
         f"\"\"\"{user_prompt}\"\"\"\n\n"
-
         f"Project path: {project_root}\n"
         f"Platform: {platform.upper()}\n"
         f"Make sure to use the correct MCP tools and edit the correct files for {platform.upper()}.\n\n"
-
         f"You are connected directly to the AppsFlyer MCP tools, and you have generic file tools"
         f"{'' if platform_lower != 'ios' else ' (including runPodInstall for CocoaPods dependency resolution)'}.\n\n"
-
         f"Important rules:\n"
-        f"{_load_agent_rules_text()}\n\n"
-        f"Clarification policy (mandatory):\n"
-        f"- Every final reply MUST end with exactly one status line: STATUS: SUCCESS, STATUS: FAILURE, or STATUS: QUESTION.\n"
-        f"- Return STATUS: QUESTION whenever you are missing a required fact, you need a human decision, the target file/scheme/device is ambiguous, or the next step would require a risky or non-obvious change.\n"
-        f"- If you return STATUS: QUESTION, write one short clarifying question immediately below the status line. Do not write a long explanation.\n"
-        f"- Do not default to SUCCESS just because the task is partially complete. If anything essential is still unclear, ask a question instead of pretending certainty.\n\n"
-        f"Examples:\n"
-        f"STATUS: QUESTION\n"
-        f"Which target should I modify for the SDK initialization?\n\n"
-        f"STATUS: QUESTION\n"
-        f"What is the AppsFlyer dev key to use for this app?\n"
-    )    audit_recorder.write("AGENT_PROMPT_GENERATED", {"prompt": final_execution_prompt})
+        f"{_load_agent_rules_text()}\n"
+    )
+    audit_recorder.write("AGENT_PROMPT_GENERATED", {"prompt": final_execution_prompt})
     # The checkpointer is the agent's memory: it lets repeated .ainvoke()
     # calls with the same thread_id continue one conversation instead of
     # each call starting fresh. Kept alive across calls via _AGENT_SESSIONS.
