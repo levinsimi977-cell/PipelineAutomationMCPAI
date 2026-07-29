@@ -4,9 +4,6 @@ import plistlib
 import subprocess
 import time
 from pathlib import Path
-import time
-import xml.etree.ElementTree as ET
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from infra.agents.sdkAgent.tools.emulator import (
@@ -17,7 +14,6 @@ from infra.agents.sdkAgent.tools.emulator import (
     install_app_on_device,
     launch_app_on_device,
     ensure_device_running,
-    get_connected_device_id,
     run_basic_navigation_smoke,
     wait_for_ios_log_marker,
     read_ios_appsflyer_uid,
@@ -37,12 +33,13 @@ def _read_bundle_id_from_app(app_path: str) -> str | None:
     plist = Path(app_path) / "Info.plist"
     if not plist.exists():
         return None
-    result = subprocess.run(
-        ["plutil", "-extract", "CFBundleIdentifier", "raw", str(plist)],
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() or None
+    try:
+        with plist.open("rb") as f:
+            data = plistlib.load(f)
+        bundle_id = data.get("CFBundleIdentifier")
+        return bundle_id if isinstance(bundle_id, str) else None
+    except Exception:
+        return None
 
 
 def _collect_ios_sdk_logs(
@@ -78,17 +75,8 @@ def _collect_ios_sdk_logs(
     persisted on disk (read_ios_appsflyer_uid) so verifyIosSdk has real
     evidence to find, without touching any code the SDK agent wrote.
 
-    Also mirrors the same captured window into ios-inapp-event-logs.txt --
-    the dedicated file verifyIosInAppEvent's own `prepare` step creates and
-    expects, separate from ios-sdk-logs.txt. This is a plain copy, not a
-    second polling pass: any in-app-event log line (e.g. the SDK agent's
-    logEventWithEventName: completion handler, per rule 18) fires within
-    seconds of "start" and is already inside this function's 60s lookback
-    window by the time it returns, so there's no need to wait again for it.
-
-    Returns the absolute path to the written ios-sdk-logs.txt file, or None
-    if collection itself failed (best-effort -- must never fail the
-    emulator node).
+    Returns the absolute path to the written file, or None if collection
+    itself failed (best-effort -- must never fail the emulator node).
     """
     try:
         output = wait_for_ios_log_marker(
@@ -138,10 +126,6 @@ def _collect_ios_sdk_logs(
 
         log_file = Path(sandbox_path) / "ios-sdk-logs.txt"
         log_file.write_text(output, encoding="utf-8")
-
-        inapp_event_log_file = Path(sandbox_path) / "ios-inapp-event-logs.txt"
-        inapp_event_log_file.write_text(output, encoding="utf-8")
-
         return str(log_file)
     except Exception:
         return None
@@ -211,36 +195,6 @@ def _resolve_built_artifact_path(state: "PipelineState") -> str | None:
     if not isinstance(extra, dict):
         return None
     return extra.get("apk_path") or extra.get("app_bundle_path")
-
-
-_ANDROID_NS = "http://schemas.android.com/apk/res/android"
-
-
-def _find_launcher_activity(apk_path: str) -> str | None:
-    """Reads the app's AndroidManifest.xml (next to the built APK, at
-    <project_root>/app/src/main/AndroidManifest.xml) and returns the
-    activity carrying the MAIN/LAUNCHER intent-filter.
-
-    Passed as `appActivity` so Appium doesn't have to resolve it itself via
-    ADB right after install -- that lookup is flaky (can fail with "Unable
-    to resolve the launchable activity") on a freshly installed package.
-    Best-effort: returns None on any error, and launch_app_on_device falls
-    back to Appium's own resolution in that case.
-    """
-    try:
-        # apk_path: <project_root>/app/build/outputs/apk/debug/app-debug.apk
-        project_root = Path(apk_path).parents[5]
-        manifest_path = project_root / "app" / "src" / "main" / "AndroidManifest.xml"
-        root = ET.parse(manifest_path).getroot()
-        for activity in root.iter("activity"):
-            for intent_filter in activity.findall("intent-filter"):
-                actions = {a.get(f"{{{_ANDROID_NS}}}name") for a in intent_filter.findall("action")}
-                categories = {c.get(f"{{{_ANDROID_NS}}}name") for c in intent_filter.findall("category")}
-                if "android.intent.action.MAIN" in actions and "android.intent.category.LAUNCHER" in categories:
-                    return activity.get(f"{{{_ANDROID_NS}}}name")
-    except Exception:
-        pass
-    return None
 
 
 def emulator_node(state: PipelineState) -> dict:
@@ -328,17 +282,7 @@ def emulator_node(state: PipelineState) -> dict:
         # boots the first installed AVD/simulator itself when nothing is
         # already up, and waits for it to come online.
         if configured_device_id:
-            # Reuse whatever's already connected/booted (e.g. left running
-            # from a previous run) instead of unconditionally booting
-            # another instance of the configured AVD on top of it -- two
-            # `emulator` processes fighting over the same AVD disk image is
-            # a likely cause of the intermittent Appium/instrumentation
-            # failures seen when a device_id is configured.
-            already_connected = get_connected_device_id()
-            if already_connected:
-                steps.append(f"[device] Reusing already-running device: {already_connected}.")
-            else:
-                steps.append(f"[device] {start_device(configured_device_id)}")
+            steps.append(f"[device] {start_device(configured_device_id)}")
         else:
             # ensure_device_running now returns (device_id, diagnostic) instead of a bare
             # device_id -- a bare None couldn't tell "no AVD/simulator installed at all" apart
@@ -346,33 +290,12 @@ def emulator_node(state: PipelineState) -> dict:
             # used to claim "no AVD/simulator is installed" even when list_devices() (above) had
             # just listed several. boot_result carries the real reason through to nodes_log.
             device_id, boot_result = ensure_device_running(
-                # 180s wasn't always enough for a genuine cold boot (no
-                # Quick Boot snapshot, no hardware acceleration) -- 300s
-                # gives it real room before giving up.
-                timeout_seconds=state.get("device_boot_timeout_seconds", 300)
+                timeout_seconds=state.get("device_boot_timeout_seconds", 180)
             )
             if device_id:
                 steps.append(f"[device] No device_id configured; using device/simulator: {device_id}")
             else:
                 steps.append(f"[device] Skipped: no device_id configured. {boot_result}")
-
-        # Step 4b — resolve the *real* adb serial for Android. A configured
-        # device_id is often an AVD name (e.g. "Pixel_8a") or a guessed
-        # serial, and start_android_emulator() returns immediately after a
-        # fixed sleep without confirming boot actually finished -- `adb -s`
-        # only works with the true serial (e.g. "emulator-5554"), never an
-        # AVD name. Poll for it instead of trusting device_id as-is.
-        if device_id and (os_type or "").lower() == "android":
-            resolved = get_connected_device_id()
-            deadline = time.time() + state.get("device_boot_timeout_seconds", 300)
-            while not resolved and time.time() < deadline:
-                time.sleep(3)
-                resolved = get_connected_device_id()
-            if resolved and resolved != device_id:
-                steps.append(f"[device] Resolved real adb serial: {resolved} (was {device_id!r}).")
-                device_id = resolved
-            elif not resolved:
-                steps.append(f"[device] '{device_id}' never became visible to adb.")
 
         # Step 5 — install the freshly built APK/.app (if any) onto the
         # device before trying to activate it. Without this, a device that
@@ -398,7 +321,14 @@ def emulator_node(state: PipelineState) -> dict:
         elif not all([os_type, app_identifier]):
             steps.append("[launch] Skipped: os_type or app_identifier is missing from state.")
         else:
-            driver_result = launch_app_on_device(os_type, device_id, app_identifier, remote_url)
+            # iOS: Appium needs the Bundle ID (e.g. com.AppsFlyer.KamperDemo),
+            # not the App Store numeric ID (e.g. 1512793879) that AppsFlyer uses.
+            # Read it from the built .app so it's always correct.
+            if os_type == "ios" and artifact_path:
+                bundle_id = _read_bundle_id_from_app(artifact_path) or app_identifier
+            else:
+                bundle_id = app_identifier
+            driver_result = launch_app_on_device(os_type, device_id, bundle_id, remote_url)
             if isinstance(driver_result, str):
                 launch_result = driver_result
                 steps.append(f"[launch] {driver_result}")
@@ -467,14 +397,6 @@ def emulator_node(state: PipelineState) -> dict:
     }
     if ios_sdk_log_file:
         result["ios_sdk_log_file"] = ios_sdk_log_file
-        # _collect_ios_sdk_logs always mirrors the same captured window into
-        # ios-inapp-event-logs.txt alongside ios-sdk-logs.txt -- expose that
-        # path too so workflow_nodes.py can point verifyIosInAppEvent's
-        # verify call at the file it actually expects, instead of the SDK
-        # one that a different tool's `prepare` step created.
-        result["ios_inapp_event_log_file"] = str(
-            Path(ios_sdk_log_file).with_name("ios-inapp-event-logs.txt")
-        )
 
     # Step 7 — optional navigation smoke test. The sdk_agent has no tools to
     # build/launch/tap the app itself (see sdk-agent-main-rules.json rule
@@ -495,20 +417,6 @@ def emulator_node(state: PipelineState) -> dict:
         if smoke_result["status"] == "Fail":
             result["test_status"] = "FAIL"
 
-    # Android: this driver was only needed to confirm the app launched (and,
-    # above, for the optional navigation smoke test) -- user_actions/deep_link
-    # each open their OWN fresh Appium session against the same app package,
-    # and UiAutomator2 allows only one instrumentation session per app at a
-    # time. Leaving this one open made every later session fail with
-    # "instrumentation process cannot be initialized" (iOS keeps its driver:
-    # deep_link.py's dismiss_ios_open_in_app_alert still needs it).
-    if driver_instance is not None and (os_type or "").lower() == "android":
-        try:
-            driver_instance.quit()
-        except Exception:
-            pass
-        result["driver"] = None
-
     result["nodes_log"] = nodes_log
     return result
 
@@ -516,7 +424,6 @@ def emulator_node(state: PipelineState) -> dict:
 def route_from_emulator(state: PipelineState) -> str:
     """Conditional edge out of `emulator`.
 
-    - test_status == "FAIL" (emulator itself failed to launch the app)   -> test_runner
     - prompt_just_run == "integrate_prompt"                       -> sdk_agent
     - prompt_just_run == "event_prompt" and visited_user_actions  -> sdk_agent
     - prompt_just_run == "event_prompt" and not visited_user_actions -> user_actions
@@ -531,8 +438,6 @@ def route_from_emulator(state: PipelineState) -> str:
     write_events_manifest — has run at all), sending the pipeline to
     user_actions before there's anything for it to discover/tap.
     """
-    if state.get("test_status") == "FAIL":
-        return "test_runner"
     if (
         state.get("prompt_just_run") == "event_prompt"
         and not state.get("visited_user_actions", False)

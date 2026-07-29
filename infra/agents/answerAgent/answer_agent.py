@@ -32,7 +32,7 @@ APP_ID = os.getenv("APP_ID", "")
 DEV_KEY = os.getenv("DEV_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GPT_API_KEY") or ""
 
-OPENAI_MODEL = os.getenv("MODEL_NAME")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-5.4"
 
 _FORBIDDEN_SDK_MARKERS = ("appsflyer", "com.appsflyer", "appsflyerlib")
 
@@ -259,9 +259,9 @@ def _llm():
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
-         model=os.getenv("MODEL_NAME"),
+        model=OPENAI_MODEL,
         temperature=0.1,
-        api_key=os.getenv("OPENAI_API_KEY"),
+        api_key=OPENAI_API_KEY,
     )
 
 
@@ -339,7 +339,21 @@ def answer_question_node(state: dict[str, Any]) -> dict[str, Any]:
             ],
         }
 
-    answer = answer_question(state, question)
+ 
+    try:
+         answer = answer_question(state, question)
+    except Exception as e:
+        return {
+        "question_rounds": question_rounds,
+        "nodes_log": [
+            *(state.get("nodes_log") or []),
+            {
+                "node": "answer_question",
+                "status": "ERROR",
+                "message": str(e),
+            },
+        ],
+    }
 
     qa_entry = {
         "question": question,

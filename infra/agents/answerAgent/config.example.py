@@ -24,5 +24,5 @@ DEV_KEY = ""
 # Prefer setting OPENAI_API_KEY or GPT_API_KEY in the project .env —
 # answer_agent reads those via os.getenv (load_project_env).
 # Leave empty to disable the LLM path (UnansweredQuestionError).
-OPENAI_MODEL = "gpt-5.1"
+OPENAI_MODEL = "gpt-5.4"
 OPENAI_API_KEY = ""
