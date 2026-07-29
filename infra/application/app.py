@@ -123,16 +123,26 @@ def extract_platform_from_json(state: dict) -> str:
 # FUNCTION 2: Directory Mapping and Sandbox Routing
 # =============================================
 # ========================
+def _preserve_run_artifacts() -> bool:
+    """Whether run artifacts (sandbox, audit, reports) should be preserved.
+
+    Controlled by env var PRESERVE_RUN_ARTIFACTS. Default is 'true' to
+    respect the user's request to keep run outputs for debugging.
+    """
+    val = os.getenv("PRESERVE_RUN_ARTIFACTS", "true") or "true"
+    return str(val).strip().lower() in ("1", "true", "yes")
+
+
 def cleanup_stale_sandboxes() -> None:
     """
-    Delete every leftover sandbox directory from previous runs.
-
-    Sandboxes are intentionally kept on disk after a run finishes (see
-    release_run_resources() in infra/workflow/run_resource_registry.py) so
-    the built app can still be inspected in between runs. They're only
-    removed here, right before the next run creates its own sandbox, so at
-    most one leftover sandbox ever sits on disk at a time.
+    Delete leftover sandbox directories from previous runs unless preservation
+    is requested via PRESERVE_RUN_ARTIFACTS. When preservation is on, do nothing
+    to avoid losing artifacts the user needs for debugging.
     """
+    if _preserve_run_artifacts():
+        print("🧾 PRESERVE_RUN_ARTIFACTS=true: skipping stale sandbox cleanup")
+        return
+
     sandboxes_root = _PROJECT_ROOT / "sandboxes"
     if not sandboxes_root.exists():
         return
@@ -212,6 +222,11 @@ def cleanup_environment(sandbox_path: str) -> dict:
         # The actual container to delete is the unique run folder (the parent of the app directory)
         run_folder = app_path.parent
         
+        # If preservation is requested, skip deletion and keep artifacts intact.
+        if _preserve_run_artifacts():
+            print(f"🧾 PRESERVE_RUN_ARTIFACTS=true: keeping run artifacts at {run_folder}")
+            return {"cleanup_status": "SKIPPED", "reason": "Preserve run artifacts enabled"}
+
         # Safety Check: Ensure the target exists, is a directory, and contains our dynamic "run_" prefix.
         if run_folder.exists() and run_folder.is_dir() and "run_" in run_folder.name:
             shutil.rmtree(run_folder)
@@ -221,6 +236,9 @@ def cleanup_environment(sandbox_path: str) -> dict:
             
         # Fallback: Safely delete the specific app path instead if the parent layout differs
         elif app_path.exists():
+            if _preserve_run_artifacts():
+                print(f"🧾 PRESERVE_RUN_ARTIFACTS=true: keeping app path {app_path}")
+                return {"cleanup_status": "SKIPPED", "reason": "Preserve run artifacts enabled"}
             if app_path.is_dir():
                 shutil.rmtree(app_path)
             else:
