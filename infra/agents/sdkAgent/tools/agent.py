@@ -74,6 +74,35 @@ def _bind_live_device_id(mcp_tools: list, device_id_holder: Dict[str, Any]) -> N
         mcp_tool.coroutine = _coroutine_with_live_device_id
 
 
+def _bind_one_link_url(mcp_tools: list) -> None:
+    """If APPSFLYER_ONELINK_URL env var is set, ensure createDeepLink/createIosDeepLink
+    calls receive it as the `oneLinkUrl` kwarg when they do not provide one.
+
+    This wrapper is minimal and non-invasive: it does not modify any MCP schema
+    or server behaviour — it merely provides a convenience default from the
+    process environment so the MCP tool receives the expected URL if none was
+    supplied by the agent."""
+    env_val = os.getenv("APPSFLYER_ONELINK_URL")
+    if not env_val:
+        return
+
+    for mcp_tool in mcp_tools:
+        name = getattr(mcp_tool, "name", "")
+        if name not in ("createDeepLink", "createIosDeepLink"):
+            continue
+        original = getattr(mcp_tool, "coroutine", None)
+        if original is None:
+            continue
+
+        async def _coroutine_with_onelink(_original=original, _env_val=env_val, **kwargs: Any) -> Any:
+            # Do not overwrite an explicit oneLinkUrl provided by the caller/agent
+            if not kwargs.get("oneLinkUrl"):
+                kwargs["oneLinkUrl"] = _env_val
+            return await _original(**kwargs)
+
+        mcp_tool.coroutine = _coroutine_with_onelink
+
+
 # ============================================================================
 # Session registry: agent_id -> {agent, tools, turn_offset}.
 # Keeps the built agent (and its in-memory checkpointer) alive across
@@ -148,6 +177,11 @@ async def create_sdk_integration_agent(
     if device_id_holder is not None:
         _bind_live_device_id(mcp_tools, device_id_holder)
     wrap_integrate_sdk_with_ios_hint(mcp_tools)
+    # If the environment exposes a OneLink URL, bind it as a default to
+    # the createDeepLink/createIosDeepLink MCP tools so callers need not
+    # supply it each time. This keeps behaviour identical when the env
+    # var is absent (no-op).
+    _bind_one_link_url(mcp_tools)
     audit_recorder.write("TOOLS_DISCOVERED", {
         "tools": [getattr(t, "name", str(t)) for t in mcp_tools]
     })
