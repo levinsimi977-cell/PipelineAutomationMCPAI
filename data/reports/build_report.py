@@ -21,12 +21,6 @@ from typing import Any, TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from infra.reports.Confusion_matrix import (
-    evaluate_state_results,
-    is_sdk_agent_successful,
-    is_valid_order,
-)
-
 if TYPE_CHECKING:
     from infra.agents.AuditRecorder import AuditRecorder
 
@@ -208,12 +202,10 @@ class RunReportBuilder:
         normalized = self._normalize_events(audit_events)
         summary = self._build_summary(state, normalized)
         workflow_detail = self._build_workflow_detail(state)
-        confusion = self._build_confusion(state)
         html = self.env.get_template("run_report.html.j2").render(
             generated_at=self._format_display_datetime(),
             summary=summary,
             validation=self._build_validation(state, workflow_detail),
-            confusion=confusion,
             state_sections=self._build_state_sections(state),
             events=normalized,
             workflow_detail=workflow_detail,
@@ -237,16 +229,6 @@ class RunReportBuilder:
         the run's index page with the same status the detail report agrees on.
         """
         return self._build_validation(state, self._build_workflow_detail(state))
-
-    def _build_confusion(self, state: dict[str, Any]) -> dict[str, Any]:
-        """Classify the run as TP / FP / TN / FN for the report box."""
-        label = evaluate_state_results(state) or "Unknown"
-        return {
-            "label": label,
-            "css_class": label.lower().replace(" ", "-"),
-            "sdk_ok": is_sdk_agent_successful(state),
-            "tool_order_ok": is_valid_order(state),
-        }
 
     def _normalize_events(self, audit_events: list[dict[str, Any]]) -> list[NormalizedAuditEvent]:
         normalized: list[NormalizedAuditEvent] = []
