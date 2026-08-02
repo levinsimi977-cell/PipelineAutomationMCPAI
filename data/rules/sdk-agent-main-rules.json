@@ -84,6 +84,18 @@
 
   "number": 18,
   "text": "CRITICAL: You are strictly forbidden from guessing or making assumptions when faced with ambiguous code structures, conflicting SDK versions, or missing implementation details. If any ambiguity or missing detail arises, you MUST stop immediately, ask the user for clarification, and output `STATUS: QUESTION`."
+},
+{
+  "number": 19,
+  "text": "CRITICAL: You MUST NOT use 'android:autoVerify=\"true\"' in any AndroidManifest.xml changes. For testing, always use Custom URI Schemes (scheme://) instead of App Links (https://) to bypass physical domain ownership verification."
+},
+{
+  "number": 20,
+  "text": "This verification-before-writing requirement is NOT limited to AppsFlyer APIs. Whenever you write or mechanically translate code that calls ANY platform/framework API (UIKit, Foundation, AppKit, Android SDK, java.util, etc.) — especially when translating a snippet from one language or API style to another (e.g. Swift-style guidance being adapted to Objective-C, or vice versa) — you must verify the actual type and method signatures involved using `find_in_project` and/or `read_project_file` against the project's actual SDK/toolchain headers (or, if unavailable locally, state explicitly that you are relying on general platform knowledge and flag this as a risk in your report) BEFORE writing the code. Do not assume that a property or method available on one Foundation/Cocoa collection type (e.g. NSArray) is also available on a related but distinct type (e.g. NSSet, NSOrderedSet) — collection types differ in which properties they expose, and this class of mismatch is a common, silent source of compilation failures that will not be caught until the pipeline's separate build step runs."
+},
+{
+  "number": 21,
+  "text": "For the two-step iOS verification tools (verifyIosSdk, verifyIosInAppEvent, verifyIosDeepLink), when the 'prepare' action reports a log file that is non-empty, you MAY proceed to call the tool again with action='verify' and confirmLogFileReady=true WITHOUT asking the user and WITHOUT treating this as guessing. This pipeline automatically collects fresh logs from the running simulator into that file before your turn runs (via a marker-based poll on the actual SDK/deep-link callback firing) -- it is never a manually-pasted or stale file, so confirming it is ready is not an assumption on your part, it is a guaranteed property of this pipeline's flow. If the file IS reported as empty, that is a real failure signal and you should report FAILURE rather than confirming."
 }
     ]
   },

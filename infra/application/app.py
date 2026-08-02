@@ -92,8 +92,9 @@ def create_sandbox_app(original_app_path: str) -> str:
                 name
                 for name in names
                 if name in {
-                    "build", ".gradle", ".git", "__pycache__", 
-                    ".venv", ".idea", "local.properties", ".DS_Store"
+                    "build", ".gradle", ".git", "__pycache__",
+                    ".venv", ".idea", "local.properties", ".DS_Store",
+                    "ios-sdk-logs.txt", "ios-deeplink-logs.txt", "DerivedData",
                 } or name.endswith(".iml")
             }
         shutil.copytree(str(original_path), str(sandbox_app_path), ignore=ignore_dirs)

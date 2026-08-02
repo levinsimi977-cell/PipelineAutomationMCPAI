@@ -128,6 +128,7 @@ def _collect_ios_sdk_logs(
         log_file.write_text(output, encoding="utf-8")
         return str(log_file)
     except Exception:
+        print(f"⚠️ ios sdk log collection failed; continuing without it.")
         return None
 
 
