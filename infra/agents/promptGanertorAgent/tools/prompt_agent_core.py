@@ -71,7 +71,11 @@ STAGE_CONFIG = {
             "- If an in-app event is defined, guide the agent to create or connect that event in the app flow.\n"
             "- If the event already exists, guide the agent to validate that it is emitted with the expected name and parameters.\n"
             "- If no in-app event is defined, tell the agent not to invent one.\n"
-            "- If deep linking is enabled, guide the agent to prepare or validate the required deep-link behavior.\n"
+            "- If deep linking is enabled, the agent MUST immediately use the AppsFlyer MCP deep-link tools instead of describing the step conceptually.\n"
+            "- For iOS, when deeplink.use_deep_linking is true, the agent MUST call `createIosDeepLink` and then `guideDeepLinkTesting` before any verification.\n"
+            "- For iOS, if `deeplink.use_custom_uri_scheme` is true, the agent MUST ensure the app is configured to handle the custom URI scheme (for example, `myapp://` or the configured uri_scheme) and mention that this is required for the simulator flow.\n"
+            "- For Android, if deep linking is enabled, the agent MUST call `createDeepLink` and then `guideDeepLinkTesting` before verification.\n"
+            "- The agent MUST NOT skip deep-link setup when the use case mentions deep-linking, one-link, or URI scheme behavior."
         ),
     },
     "verify_prompt": {
@@ -82,6 +86,7 @@ STAGE_CONFIG = {
             "- Verify SDK logs or readiness signals when requested by the use case.\n"
             "- Verify the in-app event only if one is defined.\n"
             "- Verify deep-link behavior only if deep linking is enabled.\n"
+            "- If deep linking is enabled, the agent MUST call `verifyIosDeepLink` on iOS or `verifyDeepLink` on Android using the generated or collected log data, and must not ask the user to paste logs manually.\n"
             "- Report clear success or failure evidence. Do not guess."
         ),
     },

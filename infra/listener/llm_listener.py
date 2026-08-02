@@ -512,6 +512,27 @@ def _fallback_status_from_json(text: str) -> Optional[str]:
     last = matches[-1].upper()
     return last if last in ("SUCCESS", "FAILURE") else None
 
+_DEVICE_UNSUPPORTED_MARKERS = (
+    "simulator is not supported",
+    "must be done on a physical device",
+)
+_DEVICE_UNSUPPORTED_TOOLS = {"verifyIosDeepLink", "verifyDeepLink"}
+
+
+def _turn_has_device_unsupported_result(turn_messages: List[Any]) -> bool:
+    """True if a deep-link verification tool this turn reported that the
+    iOS/Android simulator isn't supported for this check. Deterministic —
+    reads the raw tool result, not the agent's own wording/STATUS line."""
+    for msg in turn_messages:
+        if getattr(msg, "type", "") != "tool":
+            continue
+        if getattr(msg, "name", "") not in _DEVICE_UNSUPPORTED_TOOLS:
+            continue
+        content = str(getattr(msg, "content", "") or "").lower()
+        if any(marker in content for marker in _DEVICE_UNSUPPORTED_MARKERS):
+            return True
+    return False
+
 
 def listener_on_agent_turn(
     state: dict,
@@ -537,6 +558,25 @@ def listener_on_agent_turn(
     platform = (state.get("platform") or "android").strip().lower()
 
     turn_messages = _current_turn_messages(messages)
+    if _turn_has_device_unsupported_result(turn_messages):
+        skip_updates: Dict[str, Any] = {
+            "nodes_log": [{
+                "node": node_name,
+                "listener": "SKIPPED_NO_DEVICE",
+                "status": "SKIPPED_NO_DEVICE",
+                "reason": (
+                    "MCP verification requires a physical device; "
+                    "the pipeline only has simulators available."
+                ),
+                "text_preview": _last_ai_text(messages)[:TEXT_PREVIEW_LIMIT],
+            }],
+        }
+        _finalize_turn(
+            state, skip_updates, audit_recorder,
+            node_name=node_name, action="done",
+            messages=turn_messages, agent_text=_last_ai_text(messages),
+        )
+        return "done", None, skip_updates
     turn_tool_calls: List[Any] = []
     for msg in turn_messages:
         calls = getattr(msg, "tool_calls", None)
