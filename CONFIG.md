@@ -46,7 +46,7 @@ locally).
 | `DEV_KEY` | — | `infra/application/mcp_environment.py` | Injected into the MCP subprocess environment during health checks. |
 | `OPENAI_API_KEY` | — (required) | `infra/agents/sdkAgent/tools/agent.py` | OpenAI key used by the SDK integration agent (`ChatOpenAI`). |
 | `OPENAI_API_KEY` / `GPT_API_KEY` | — | `infra/agents/promptGanertorAgent/tools/prompt_agent_core.py` | Either name accepted for the prompt-generator agent. |
-| `OPENAI_MODEL` | `"gpt-4o-mini"` | `infra/agents/promptGanertorAgent/tools/prompt_agent_core.py` | Model used by the prompt-generator agent. |
+| `OPENAI_MODEL` | `"gpt-5.4"` | `infra/agents/promptGanertorAgent/tools/prompt_agent_core.py`, `infra/agents/answerAgent/answer_agent.py`, `infra/agents/sdkAgent/tools/agent.py` | Preferred model for all project agents, with `MODEL_NAME` as a fallback. |
 | `ANDROID_HOME` / `ANDROID_SDK_ROOT` | auto-detected | `infra/agents/sdkAgent/tools/emulator.py` | Android SDK location for `adb`/emulator/Appium. |
 | `LOCALAPPDATA` (Windows only) | — | `infra/agents/sdkAgent/tools/emulator.py` | Used to build the default SDK path `%LOCALAPPDATA%\Android\Sdk`. |
 | `PATH` | augmented | `infra/agents/sdkAgent/tools/emulator.py` | `platform-tools`, `emulator`, and `cmdline-tools/latest/bin` are prepended. |

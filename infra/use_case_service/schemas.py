@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-LlmModel = Literal["gpt-4o-mini", "gpt-4.1", "claude-3-5-sonnet", "claude-3-7-sonnet"]
-DEFAULT_LLM_MODEL: LlmModel = "gpt-4o-mini"
+
+from infra.load_env import load_project_env
+
+load_project_env()
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-5.4"
+
+
+LlmModel = Literal[
+    "gpt-4o-mini",
+    "gpt-5.3",
+    "gpt-5.4",
+    "claude-3-5-sonnet",
+    "claude-3-7-sonnet"
+]
+DEFAULT_LLM_MODEL: LlmModel = OPENAI_MODEL
 
 
 class IOSMinimalPolicy(BaseModel):
