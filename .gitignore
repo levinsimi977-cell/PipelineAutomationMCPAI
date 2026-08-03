@@ -18,7 +18,13 @@ venv/
 env/
 .env
 sandboxes/
+# Local pipeline execution artifacts
+sandboxes/
+data/runs/
 
+# Build artifacts
+DerivedData/
+build/
 # Packaging / distribution
 *.egg-info/
 dist/
